@@ -1,0 +1,10 @@
+{
+  "name": "@todo-app/api-python",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'TODO: docker build -t todo-app-api-python .'",
+    "test": "echo 'TODO: pytest tests/'",
+    "lint": "echo 'TODO: ruff check .'"
+  }
+}

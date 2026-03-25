@@ -1,0 +1,62 @@
+groups:
+  - name: todo-app-api.rules
+    rules:
+      - alert: HighTodoAppErrorRate
+        expr: rate(http_requests_total{job="todo-app-api", status=~"5.."}[5m]) > 0.01
+        for: 1m
+        labels:
+          severity: critical
+          service: "todo-app-api"
+        annotations:
+          summary: "High error rate on TodoApp API"
+          description: "The error rate for the TodoApp API is above 1% for more than 1 minute."
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="todo-app-api"} > 2000000
+        for: 2m
+        labels:
+          severity: warning
+          service: "todo-app-api"
+        annotations:
+          summary: "High memory usage in TodoApp API"
+          description: "Memory usage is above 200MB for more than 2 minutes."
+
+      - alert: HighRequestLatency
+        expr: rate(http_request_duration_seconds_sum{job="todo-app-api"}[5m]) / rate(http_request_duration_seconds_count{job="todo-app-api"}[5m]) > 0.5
+        for: 1m
+        labels:
+          severity: critical
+          service: "todo-app-api"
+        annotations:
+          summary: "High API latency"
+          description: "Average request duration is above 0.5 seconds for more than 1 minute."
+
+      - alert: LowRequestRate
+        expr: sum(rate(http_requests_total{job="todo-app-api"}[5m])) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: "todo-app-api"
+        annotations:
+          summary: "Low traffic on TodoApp API"
+          description: "Request rate is below 0.1 requests per second for more than 5 minutes."
+
+      - alert: ServiceDown
+        expr: up{job="todo-app-api"} == 0 or absent(up{job="todo-app-api"})
+        for: 1m
+        labels:
+          severity: critical
+          service: "todo-app-api"
+        annotations:
+          summary: "TodoApp API is down"
+          description: "The TodoApp API service is not responding to Prometheus scrapes."
+
+      - alert: SlowResponseTime
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: "todo-app-api"
+        annotations:
+          summary: "Slow response time detected"
+          description: "95th percentile of response time is above 2 seconds"

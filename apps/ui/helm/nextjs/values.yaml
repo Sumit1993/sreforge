@@ -1,0 +1,16 @@
+replicaCount: 1
+
+image:
+  repository: todo-app-ui
+  pullPolicy: IfNotPresent
+  tag: "latest"
+  domain: localhost:5000
+
+service:
+  type: ClusterIP
+  port: 3000
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

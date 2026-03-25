@@ -1,0 +1,249 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Todo App PR Timeline//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Todo App PR Timeline
+X-WR-TIMEZONE:Asia/Kolkata
+
+BEGIN:VEVENT
+DTSTART:20260113T090000
+DTEND:20260113T093000
+SUMMARY:Create PR: Chore - Remove deprecated endpoints
+DESCRIPTION:PR #1: Cleanup\n\nAction: Create PR\nBranch: chore/remove-deprecated-endpoints\n\nCommand:\ngit checkout -b chore/remove-deprecated-endpoints\ngit add .\ngit commit -m "chore: remove deprecated test endpoints"\ngit push -u origin chore/remove-deprecated-endpoints\ngh pr create --title "Chore: Remove deprecated endpoints" --body "Cleanup of unused test code"
+UID:pr-1-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260113T110000
+DTEND:20260113T111500
+SUMMARY:Merge PR: Chore - Remove deprecated endpoints
+DESCRIPTION:Merge PR #1\n\nCommand:\ngh pr merge 1 --merge
+UID:pr-1-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260113T140000
+DTEND:20260113T143000
+SUMMARY:Create PR: Refactor - Extract rate limiter
+DESCRIPTION:PR #2: Foundation for race condition bug\n\nAction: Create PR\nBranch: refactor/extract-rate-limiter\n\nThis PR extracts rate limiting to a separate class. No bug yet - sets up for later.\n\nCommand:\ngit checkout main && git pull\ngit checkout -b refactor/extract-rate-limiter\n# Make changes to extract RateLimiter class\ngit add .\ngit commit -m "refactor: extract rate limiter for testability"\ngit push -u origin refactor/extract-rate-limiter\ngh pr create --title "Refactor: Extract rate limiter for testability" --body "Extracts rate limiting logic to separate class for better testing."
+UID:pr-2-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260113T160000
+DTEND:20260113T161500
+SUMMARY:Merge PR: Refactor - Extract rate limiter
+DESCRIPTION:Merge PR #2\n\nCommand:\ngh pr merge 2 --merge
+UID:pr-2-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260114T090000
+DTEND:20260114T093000
+SUMMARY:Create PR: feat - Add input validation
+DESCRIPTION:PR #3: Introduces schema validation gap bug\n\nBUG: ValidationPipe has transform:false\n\nAction: Create PR\nBranch: feat/input-validation\n\nCommand:\ngit checkout main && git pull\ngit checkout -b feat/input-validation\n# Create DTO and add ValidationPipe with transform:false\ngit add .\ngit commit -m "feat: add input validation for todo endpoints"\ngit push -u origin feat/input-validation\ngh pr create --title "feat: Add input validation for todo endpoints" --body "Adds class-validator decorators to prevent invalid input."
+UID:pr-3-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260114T110000
+DTEND:20260114T111500
+SUMMARY:Add Comment: Should we use transform:true?
+DESCRIPTION:Add misleading hint comment to PR #3\n\nCommand:\ngh pr comment 3 --body "Should we add transform: true? Leaving as false for now since we handle types manually in the service layer."
+UID:pr-3-comment@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260114T140000
+DTEND:20260114T141500
+SUMMARY:Merge PR: feat - Add input validation
+DESCRIPTION:Merge PR #3\n\nCommand:\ngh pr merge 3 --merge
+UID:pr-3-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260114T150000
+DTEND:20260114T153000
+SUMMARY:Create PR: Enhancement - Add correlation IDs
+DESCRIPTION:PR #4: Works correctly in controller\n\nNo bug - this one works. Sets up for correlation ID loss in next PR.\n\nAction: Create PR\nBranch: feat/correlation-ids\n\nCommand:\ngit checkout main && git pull\ngit checkout -b feat/correlation-ids\n# Add ContextLogger to controller with proper correlation ID\ngit add .\ngit commit -m "feat: add correlation IDs for request tracing"\ngit push -u origin feat/correlation-ids\ngh pr create --title "Enhancement: Add correlation IDs for request tracing" --body "Adds correlation IDs to improve request tracing and debugging."
+UID:pr-4-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260114T170000
+DTEND:20260114T171500
+SUMMARY:Merge PR: Enhancement - Add correlation IDs
+DESCRIPTION:Merge PR #4\n\nCommand:\ngh pr merge 4 --merge
+UID:pr-4-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260115T090000
+DTEND:20260115T093000
+SUMMARY:Create PR: Refactor - Add service logging
+DESCRIPTION:PR #5: Breaks correlation ID propagation\n\nBUG: Service creates new ContextLogger without parent correlation ID\n\nAction: Create PR\nBranch: refactor/service-logging\n\nCommand:\ngit checkout main && git pull\ngit checkout -b refactor/service-logging\n# Add new ContextLogger in service (without correlation ID from controller)\ngit add .\ngit commit -m "refactor: add structured logging to service layer"\ngit push -u origin refactor/service-logging\ngh pr create --title "Refactor: Add service layer logging" --body "Adds structured logging to TodosService for better observability."
+UID:pr-5-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260115T100000
+DTEND:20260115T101500
+SUMMARY:Add Comment: LGTM good separation
+DESCRIPTION:Add misleading approval comment to PR #5\n\nCommand:\ngh pr comment 5 --body "LGTM! Good separation of concerns. The service having its own logger makes it more self-contained."
+UID:pr-5-comment@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260115T120000
+DTEND:20260115T121500
+SUMMARY:Merge PR: Refactor - Add service logging
+DESCRIPTION:Merge PR #5\n\nCommand:\ngh pr merge 5 --merge
+UID:pr-5-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260115T140000
+DTEND:20260115T143000
+SUMMARY:Create PR: Performance - Add request caching
+DESCRIPTION:PR #6: Introduces cache TTL bug\n\nBUG: TTL check uses <= instead of < causing one extra retention cycle\n\nAction: Create PR\nBranch: perf/request-caching\n\nCommand:\ngit checkout main && git pull\ngit checkout -b perf/request-caching\n# Add RequestCache with TTL bug (<=)\ngit add .\ngit commit -m "perf: add request caching for external API calls"\ngit push -u origin perf/request-caching\ngh pr create --title "Performance: Add request caching" --body "Reduces external API calls by caching responses with TTL-based invalidation."
+UID:pr-6-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260115T150000
+DTEND:20260115T151500
+SUMMARY:Add Comment: Tested 30min stable memory
+DESCRIPTION:Add misleading test result comment to PR #6\n\nCommand:\ngh pr comment 6 --body "Tested under load for 30 minutes - stable memory profile. The cache invalidation is working correctly."
+UID:pr-6-comment@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260115T170000
+DTEND:20260115T171500
+SUMMARY:Merge PR: Performance - Add request caching
+DESCRIPTION:Merge PR #6\n\nCommand:\ngh pr merge 6 --merge
+UID:pr-6-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260116T090000
+DTEND:20260116T093000
+SUMMARY:Create PR: Fix - Cache cleanup timing
+DESCRIPTION:PR #7: Introduces closure capture bug\n\nBUG: Closure captures old Map reference after cache recreation\n\nAction: Create PR\nBranch: fix/cache-cleanup\n\nCommand:\ngit checkout main && git pull\ngit checkout -b fix/cache-cleanup\n# "Fix" that introduces closure capture bug\ngit add .\ngit commit -m "fix: improve cache cleanup timing"\ngit push -u origin fix/cache-cleanup\ngh pr create --title "Fix: Cache cleanup timing" --body "Fixes edge case in cache cleanup when under high load."
+UID:pr-7-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260116T110000
+DTEND:20260116T111500
+SUMMARY:Merge PR: Fix - Cache cleanup timing
+DESCRIPTION:Merge PR #7\n\nCommand:\ngh pr merge 7 --merge
+UID:pr-7-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260116T130000
+DTEND:20260116T133000
+SUMMARY:Create PR: Configure axios timeout
+DESCRIPTION:PR #8: Sets axios timeout to 5 seconds\n\nNo bug yet - this is correct. Sets up for timeout mismatch.\n\nAction: Create PR\nBranch: config/axios-timeout\n\nCommand:\ngit checkout main && git pull\ngit checkout -b config/axios-timeout\n# Configure HttpModule with 5000ms timeout\ngit add .\ngit commit -m "config: set axios timeout for external API calls"\ngit push -u origin config/axios-timeout\ngh pr create --title "Configure axios timeout" --body "Adds explicit timeout configuration for external HTTP calls."
+UID:pr-8-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260116T140000
+DTEND:20260116T141500
+SUMMARY:Merge PR: Configure axios timeout
+DESCRIPTION:Merge PR #8\n\nCommand:\ngh pr merge 8 --merge
+UID:pr-8-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260116T150000
+DTEND:20260116T153000
+SUMMARY:Create PR: Performance - Fail-fast timeout
+DESCRIPTION:PR #9: Introduces timeout mismatch bug\n\nBUG: Service timeout (3s) doesn't match axios timeout (5s)\n\nAction: Create PR\nBranch: perf/fail-fast-timeout\n\nCommand:\ngit checkout main && git pull\ngit checkout -b perf/fail-fast-timeout\n# Add SERVICE_TIMEOUT = 3000 (doesn't match axios 5000)\ngit add .\ngit commit -m "perf: add fail-fast timeout for slow external APIs"\ngit push -u origin perf/fail-fast-timeout\ngh pr create --title "Performance: Add fail-fast timeout" --body "Users shouldn't wait more than 3s for external dependencies."
+UID:pr-9-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260116T160000
+DTEND:20260116T161500
+SUMMARY:Add Comment: Matches axios config
+DESCRIPTION:Add incorrect hint comment to PR #9\n\nCommand:\ngh pr comment 9 --body "Looks good! This matches the axios timeout configuration."
+UID:pr-9-comment@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260116T170000
+DTEND:20260116T171500
+SUMMARY:Merge PR: Performance - Fail-fast timeout
+DESCRIPTION:Merge PR #9\n\nCommand:\ngh pr merge 9 --merge
+UID:pr-9-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T090000
+DTEND:20260117T093000
+SUMMARY:Create PR: Reliability - Add retry mechanism
+DESCRIPTION:PR #10: Introduces aggressive retry bug\n\nBUG: Backoff factor 1.5x (should be 2x), jitter too small\n\nAction: Create PR\nBranch: feat/retry-mechanism\n\nCommand:\ngit checkout main && git pull\ngit checkout -b feat/retry-mechanism\n# Add fetchWithRetry with 1.5x backoff and small jitter\ngit add .\ngit commit -m "feat: add retry mechanism for external API failures"\ngit push -u origin feat/retry-mechanism\ngh pr create --title "Reliability: Add retry mechanism" --body "Adds exponential backoff retry for external API calls."
+UID:pr-10-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T100000
+DTEND:20260117T101500
+SUMMARY:Add Comment: Exponential backoff best practice
+DESCRIPTION:Add misleading approval comment to PR #10\n\nCommand:\ngh pr comment 10 --body "Nice! Exponential backoff is industry best practice. The 1.5x factor provides a good balance between retry speed and load."
+UID:pr-10-comment@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T120000
+DTEND:20260117T121500
+SUMMARY:Merge PR: Reliability - Add retry mechanism
+DESCRIPTION:Merge PR #10\n\nCommand:\ngh pr merge 10 --merge
+UID:pr-10-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T140000
+DTEND:20260117T143000
+SUMMARY:Create PR: Optimize rate limiter checks
+DESCRIPTION:PR #11: Introduces race condition bug\n\nBUG: Separates check and increment - TOCTOU vulnerability\n\nAction: Create PR\nBranch: perf/optimize-rate-limiter\n\nCommand:\ngit checkout main && git pull\ngit checkout -b perf/optimize-rate-limiter\n# Separate check and increment operations\ngit add .\ngit commit -m "perf: optimize rate limiter checks"\ngit push -u origin perf/optimize-rate-limiter\ngh pr create --title "Optimize rate limiter checks" --body "Separates check and increment for better performance."
+UID:pr-11-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T150000
+DTEND:20260117T151500
+SUMMARY:Add Comment: Nice optimization
+DESCRIPTION:Add misleading approval comment to PR #11\n\nCommand:\ngh pr comment 11 --body "Nice optimization! Separating the check from increment should reduce lock contention under high load."
+UID:pr-11-comment@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T160000
+DTEND:20260117T161500
+SUMMARY:Merge PR: Optimize rate limiter checks
+DESCRIPTION:Merge PR #11\n\nCommand:\ngh pr merge 11 --merge
+UID:pr-11-merge@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T170000
+DTEND:20260117T173000
+SUMMARY:Create PR: docs - Add architecture docs
+DESCRIPTION:PR #12: Adds misleading documentation\n\nRed herrings: Wrong timeout values, claims cache is memory-efficient\n\nAction: Create PR\nBranch: docs/architecture\n\nCommand:\ngit checkout main && git pull\ngit checkout -b docs/architecture\n# Create docs/ARCHITECTURE.md, TROUBLESHOOTING.md, PERFORMANCE.md\ngit add .\ngit commit -m "docs: add architecture and troubleshooting documentation"\ngit push -u origin docs/architecture\ngh pr create --title "docs: Add architecture documentation" --body "Adds documentation for architecture, troubleshooting, and performance."
+UID:pr-12-create@todoapp
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART:20260117T173000
+DTEND:20260117T174500
+SUMMARY:Merge PR: docs - Add architecture docs
+DESCRIPTION:Merge PR #12 - COMPLETE!\n\nAll bugs introduced across 12 PRs.\n\nCommand:\ngh pr merge 12 --merge
+UID:pr-12-merge@todoapp
+END:VEVENT
+
+END:VCALENDAR

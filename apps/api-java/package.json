@@ -1,0 +1,10 @@
+{
+  "name": "@todo-app/api-java",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'TODO: mvn package -DskipTests'",
+    "test": "echo 'TODO: mvn test'",
+    "lint": "echo 'TODO: mvn checkstyle:check'"
+  }
+}

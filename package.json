@@ -3,17 +3,24 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
+    "test": "turbo run test",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
+    "deploy:k8s": "turbo run deploy:k8s",
+    "deploy:vm": "turbo run deploy:vm",
+    "deploy:firebase": "turbo run deploy:firebase",
+    "deploy:supabase": "turbo run deploy:supabase",
+    "db:migrate": "turbo run db:migrate",
+    "db:seed": "turbo run db:seed"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
     "turbo": "^2.8.20",
     "typescript": "5.9.2"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@10.32.1",
   "engines": {
     "node": ">=18"
   }

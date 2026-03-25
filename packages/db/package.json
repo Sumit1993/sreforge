@@ -1,0 +1,14 @@
+{
+  "name": "@todo-app/db",
+  "version": "1.0.0",
+  "main": "./dist/client.js",
+  "types": "./dist/client.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "db:migrate": "echo 'TODO: prisma migrate deploy'",
+    "db:seed": "echo 'TODO: prisma seed'"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

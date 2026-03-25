@@ -1,0 +1,10 @@
+{
+  "name": "@todo-app/supabase-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Deno - no build step needed'",
+    "test": "echo 'TODO'",
+    "lint": "echo 'TODO'"
+  }
+}

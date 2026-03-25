@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - "localhost:9093"
+
+scrape_configs:
+  - job_name: 'todo-app-api'
+    static_configs:
+      - targets: ['${PROMETHEUS_TARGET_URL}']
+    metrics_path: /api/metrics
+    scheme: https 

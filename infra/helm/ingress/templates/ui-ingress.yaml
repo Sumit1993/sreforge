@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "todo-app-ingress.fullname" . }}-ui
+spec:
+  ingressClassName: "nginx"
+  rules:
+    - host: {{ .Values.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.ui.serviceName }}
+                port:
+                  number: {{ .Values.ui.servicePort }}

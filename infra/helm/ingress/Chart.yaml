@@ -1,0 +1,6 @@
+apiVersion: v2
+name: todo-app-ingress
+description: Ingress configuration for Next.js and NestJS services.
+type: application
+version: 0.1.0
+appVersion: "1.0"

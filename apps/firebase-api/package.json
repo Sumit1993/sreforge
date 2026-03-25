@@ -1,0 +1,10 @@
+{
+  "name": "@todo-app/firebase-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'TODO: tsc'",
+    "test": "echo 'TODO'",
+    "lint": "echo 'TODO'"
+  }
+}
