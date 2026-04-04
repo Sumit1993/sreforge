@@ -1,8 +1,17 @@
-// @todo-app/core - Shared business logic
-// To be populated in Phase 1 with:
-// - Domain entities (Todo)
-// - Port interfaces (ITodoRepository, ICacheProvider, ILogger)
-// - DTOs with zod validation
-// - Pure TodoService
+export {
+  TodoSchema,
+  CreateTodoSchema,
+  UpdateTodoSchema,
+} from './domain/index.js';
 
-export {};
+export type {
+  Todo,
+  CreateTodoInput,
+  UpdateTodoInput,
+} from './domain/index.js';
+
+export type {
+  ITodoRepository,
+  ICacheProvider,
+  ILogger,
+} from './ports/index.js';

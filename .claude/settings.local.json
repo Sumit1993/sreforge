@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /e/ExtrasCode/workspace/todo-app)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker compose:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm run:*)"
+    ]
+  }
+}

@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
 import { ContextLogger } from '../logger';
+import { PrismaTodoRepository } from './adapters/prisma-todo.repository';
+import { RedisCacheProvider } from '../cache/redis-cache.provider';
 
 interface CacheEntry {
   data: any;
@@ -11,16 +12,26 @@ interface CacheEntry {
 export class TodosService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new ContextLogger('TodosService');
 
+  // BUG #3: In-memory cache kept alongside Redis.
+  // The closure capture bug is preserved: startCacheCleanup captures `this.requestCache`
+  // by reference at init time. If recreateCacheIfNeeded reassigns it, the cleanup
+  // interval still references the old Map -- causing a memory leak.
   private requestCache: Map<string, CacheEntry> = new Map();
   private readonly CACHE_TTL_MS = 60000;
   private cleanupInterval: NodeJS.Timeout;
+
+  // BUG #4: Timeout mismatch -- SERVICE_TIMEOUT (3s) vs HttpModule.timeout (5s)
+  // The timeout wrapper still wraps DB operations.
   private readonly SERVICE_TIMEOUT = 3000;
 
-  // Retry configuration
+  // BUG #5: Aggressive retry -- retries ALL errors including Prisma validation errors
   private readonly MAX_RETRIES = 3;
   private readonly INITIAL_RETRY_DELAY = 100;
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly todoRepository: PrismaTodoRepository,
+    private readonly redisCacheProvider: RedisCacheProvider,
+  ) {}
 
   onModuleInit() {
     this.startCacheCleanup();
@@ -32,6 +43,9 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // BUG #3: Closure captures `cache` reference at startup.
+  // If `this.requestCache` is reassigned in recreateCacheIfNeeded(),
+  // the cleanup interval still references the old Map.
   private startCacheCleanup() {
     const cache = this.requestCache;
 
@@ -55,6 +69,7 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
     }, 30000);
   }
 
+  // BUG #3 continued: This reassigns this.requestCache, breaking the cleanup interval
   private recreateCacheIfNeeded() {
     if (this.requestCache.size > 1000) {
       this.logger.warn('Cache size exceeded threshold, recreating', {
@@ -80,8 +95,8 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Retry wrapper with exponential backoff
-   * Provides resilience against transient failures
+   * BUG #5: Retry wrapper with exponential backoff
+   * Retries ALL errors including validation errors (should skip 4xx-equivalent)
    */
   private async withRetry<T>(
     operation: () => Promise<T>,
@@ -115,6 +130,7 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
     throw lastError;
   }
 
+  // BUG #4: Timeout of 3s wraps DB operations; HttpModule has 5s timeout (mismatch)
   private withTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
@@ -128,30 +144,43 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
   async getTodos() {
     const cacheKey = 'todos:all';
 
+    // Check in-memory cache first (buggy -- see closure capture bug)
     const cached = this.getCached(cacheKey);
     if (cached) {
       return cached;
     }
 
-    this.logger.log('Fetching todos from external API');
+    // Check Redis cache
+    const redisCached = await this.redisCacheProvider.get<any>(cacheKey);
+    if (redisCached) {
+      this.logger.log('Redis cache hit', { key: cacheKey });
+      this.setCache(cacheKey, redisCached);
+      return redisCached;
+    }
+
+    this.logger.log('Fetching todos from database');
     const startTime = Date.now();
 
     try {
-      const response = await this.withRetry(
+      const todos = await this.withRetry(
         () => this.withTimeout(
-          this.httpService.axiosRef.get('https://dummyjson.com/todos'),
+          this.todoRepository.findAll(),
           'getTodos'
         ),
         'getTodos'
       );
 
+      const result = { todos, total: todos.length, skip: 0, limit: todos.length };
+
       this.logger.logPerformance('getTodos', Date.now() - startTime, {
-        count: response.data?.todos?.length || 0,
+        count: todos.length,
       });
 
-      this.setCache(cacheKey, response.data);
+      // Set both caches
+      this.setCache(cacheKey, result);
+      await this.redisCacheProvider.set(cacheKey, result, this.CACHE_TTL_MS);
 
-      return response.data;
+      return result;
     } catch (error) {
       this.logger.error('Failed to fetch todos', error as Error);
       throw error;
@@ -161,48 +190,45 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
   async addTodo(todo: string, userId: number) {
     this.logger.log('Adding new todo', { todo, userId });
     this.requestCache.delete('todos:all');
+    await this.redisCacheProvider.delete('todos:all');
 
-    const response = await this.withRetry(
+    const created = await this.withRetry(
       () => this.withTimeout(
-        this.httpService.axiosRef.post(
-          'https://dummyjson.com/todos/add',
-          { todo, completed: false, userId },
-        ),
+        this.todoRepository.create({ todo, userId }),
         'addTodo'
       ),
       'addTodo'
     );
-    return response.data;
+    return created;
   }
 
   async toggleTodoStatus(id: number, completed: boolean) {
     this.logger.log('Toggling todo status', { id, completed });
     this.requestCache.delete('todos:all');
+    await this.redisCacheProvider.delete('todos:all');
 
-    const response = await this.withRetry(
+    const updated = await this.withRetry(
       () => this.withTimeout(
-        this.httpService.axiosRef.put(
-          `https://dummyjson.com/todos/${id}`,
-          { completed },
-        ),
+        this.todoRepository.update(id, { completed }),
         'toggleTodoStatus'
       ),
       'toggleTodoStatus'
     );
-    return response.data;
+    return updated;
   }
 
   async deleteTodo(id: number) {
     this.logger.log('Deleting todo', { id });
     this.requestCache.delete('todos:all');
+    await this.redisCacheProvider.delete('todos:all');
 
-    const response = await this.withRetry(
+    const deleted = await this.withRetry(
       () => this.withTimeout(
-        this.httpService.axiosRef.delete(`https://dummyjson.com/todos/${id}`),
+        this.todoRepository.delete(id),
         'deleteTodo'
       ),
       'deleteTodo'
     );
-    return response.data;
+    return deleted;
   }
 }

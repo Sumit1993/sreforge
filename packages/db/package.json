@@ -3,12 +3,29 @@
   "version": "1.0.0",
   "main": "./dist/client.js",
   "types": "./dist/client.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/client.js",
+      "types": "./dist/client.d.ts"
+    }
+  },
   "scripts": {
-    "build": "tsc",
-    "db:migrate": "echo 'TODO: prisma migrate deploy'",
-    "db:seed": "echo 'TODO: prisma seed'"
+    "build": "prisma generate && tsc",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:push": "prisma db push"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.5.0",
+    "@prisma/client": "^7.5.0",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
+    "@types/pg": "8.11.11",
+    "prisma": "^7.5.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0"
   }
 }
