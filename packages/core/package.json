@@ -1,9 +1,24 @@
 {
   "name": "@todo-app/core",
   "version": "1.0.0",
+  "description": "Shared domain schemas, ports, and environment validation for the Todo App platform",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**",
+    "src/**",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sumit1993/todo-app-monorepo.git",
+    "directory": "packages/core"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -16,6 +31,10 @@
     "./ports": {
       "import": "./dist/ports/index.js",
       "types": "./dist/ports/index.d.ts"
+    },
+    "./env": {
+      "import": "./dist/env.js",
+      "types": "./dist/env.d.ts"
     }
   },
   "scripts": {

@@ -10,7 +10,10 @@ import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../../.env'],
+    }),
     DatabaseModule,
     TodosModule,
     MetricsModule,

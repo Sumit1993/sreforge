@@ -1,0 +1,81 @@
+# --- Global ---
+global:
+  namespace: todo-app
+  host: todo.app.local
+
+# --- Gateway API ---
+gateway:
+  enabled: true
+  className: todo-gateway-class
+  controllerName: traefik.io/gateway-controller
+  hostname: todo.app.local
+  defaultBackend: nestjs
+
+# --- NestJS API (enabled by default) ---
+api:
+  enabled: true
+  language: nestjs
+  image:
+    repository: todo-app-api
+    tag: latest
+  service:
+    port: 3000
+  env:
+    NODE_ENV: production
+    PORT: "3000"
+  secretEnv:
+    DATABASE_URL: "postgresql://todo:todopass@todo-app-postgresql:5432/tododb"
+    REDIS_URL: "redis://todo-app-valkey:6379"
+  gateway:
+    enabled: true
+    gatewayName: todo-gateway
+    hostname: todo.app.local
+    pathPrefix: /api
+
+# --- Next.js UI ---
+ui:
+  enabled: true
+  image:
+    repository: todo-app-ui
+    tag: latest
+  service:
+    port: 3000
+  gateway:
+    enabled: true
+    gatewayName: todo-gateway
+    hostname: todo.app.local
+
+# --- PostgreSQL ---
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  auth:
+    database: tododb
+    username: todo
+    password: todopass
+  storage: 10Gi
+
+# --- Valkey (Redis-compatible cache) ---
+valkey:
+  enabled: true
+  image:
+    repository: valkey/valkey
+    tag: "8-alpine"
+  maxmemory: 64mb
+  evictionPolicy: allkeys-lru
+
+# Phase 4: Multi-language APIs (disabled)
+# api-python:
+#   enabled: false
+#   language: python
+#   image:
+#     repository: todo-app-api-python
+#     tag: latest
+#   service:
+#     port: 8000
+# api-java:
+#   enabled: false
+# api-go:
+#   enabled: false

@@ -1,6 +1,19 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
+  "globalDependencies": [".env"],
+  "globalPassThroughEnv": [
+    "NODE_ENV",
+    "API_PORT",
+    "UI_PORT",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "METRICS_PROVIDER",
+    "LOCAL_PUSHGATEWAY_URL",
+    "GRAFANA_LOKI_URL",
+    "GRAFANA_API_KEY",
+    "NEXT_PUBLIC_API_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

@@ -22,57 +22,119 @@ The app itself is a simple Todo CRUD API -- the complexity is in the infrastruct
 
 ## 3. Current State
 
-| Package | Stack | Status |
-|---------|-------|--------|
-| `apps/api` | NestJS 11, Node 20, PostgreSQL 16, Redis 7 | Working (local) |
-| `apps/ui` | Next.js 15, React 19 | Working (local) |
-| `packages/core` | Zod schemas, ports/adapters interfaces | Done |
-| `packages/db` | Prisma 7, PostgreSQL, migrations, seed | Done |
-| `infra/docker/dev` | Docker Compose (PostgreSQL + Redis) | Done |
+### Service Repos (AI agent-visible)
 
-- API uses real PostgreSQL database with Prisma 7 ORM (adapter-pg driver) and Redis cache (ioredis)
-- Hexagonal architecture: core defines ports (ITodoRepository, ICacheProvider, ILogger), API provides adapters
-- 7 intentionally planted code-level bugs preserved (validation gap, correlation ID loss, cache TTL, closure capture, timeout mismatch, aggressive retry, rate limiter race)
+| Repo | Stack | Status |
+|------|-------|--------|
+| `todo-app-api-nestjs` | NestJS 11, Node 20, PostgreSQL 16, Valkey 8 | Working (local) — being extracted from monorepo |
+| `todo-app-ui` | Next.js 15, React 19 | Working (local) — being extracted from monorepo |
+| `todo-app-api-python` | FastAPI, Python 3.12 | Pending |
+| `todo-app-api-go` | Gin, Go 1.22 | Pending |
+| `todo-app-api-java` | Spring Boot 3, Java 21 | Pending |
+
+### Ops Repos (AI agent-visible)
+
+| Repo | Contents | Status |
+|------|----------|--------|
+| `todo-app-ops-k8s` | Helm charts, Gateway API manifests, runbooks | Being extracted from monorepo |
+| `todo-app-ops-docker` | Docker Compose configs, runbooks | Being extracted from monorepo |
+| `todo-app-ops-vm` | Kamal v2 deploy configs, runbooks | Being extracted from monorepo |
+
+### Shared Packages
+
+| Package | Registry | Status |
+|---------|----------|--------|
+| `@todo-app/core` | GitHub Packages (npm) | Being extracted — Zod schemas, ports/adapters interfaces, env validation |
+
+### Orchestrator (PRIVATE — admin only)
+
+| Component | Contents | Status |
+|-----------|----------|--------|
+| `todo-app-monorepo` (this repo) | Issue injection system, orchestration scripts, scenario definitions | Active |
+
+### What is working today
+- NestJS API with real PostgreSQL (Prisma 7, adapter-pg) and Valkey cache (ioredis)
+- Hexagonal architecture: `@todo-app/core` defines ports (ITodoRepository, ICacheProvider, ILogger), API provides adapters
+- 7 intentionally planted code-level bugs: validation gap, correlation ID loss, cache TTL, closure capture, timeout mismatch, aggressive retry, rate limiter race
 - Local Prometheus + Alertmanager with 6 alert rules
-- DevSpace + Helm charts for local K8s (Rancher Desktop)
-- VCS: GitHub only
+- Helm charts for local K8s (Rancher Desktop)
+- VCS: GitHub only (GitLab + Bitbucket mirroring planned for Phase 8)
 
 ---
 
 ## 4. Target State
 
-### 4.1 Repository: New Turborepo Monorepo
+### 4.1 Repository Architecture: Polyrepo Model
 
-Create a **new** GitHub repo with fresh git history. Copy code from the 3 existing repos. Archive originals as read-only reference (preserving PR/bug injection history).
+The platform uses a **polyrepo model**. Each service and ops surface is an independent GitHub
+repository that looks like it belongs to a real engineering team. A private orchestrator repo
+(never visible to the AI agent) controls the simulation.
 
 ```
-todo-app/
-  turbo.json
-  package.json
+# ── What the AI agent can access ──────────────────────────────────────────────
 
-  apps/
-    api/              TypeScript    NestJS 11       port 3000
-    api-python/       Python        FastAPI         port 8000
-    api-java/         Java          Spring Boot     port 8080
-    api-go/           Go            Gin             port 8081
-    ui/               TypeScript    Next.js 15      port 3000
-    firebase-api/     TypeScript    Cloud Functions
-    supabase-api/     TypeScript    Deno Edge Fn
+github.com/todo-corp/todo-app-api-nestjs      TypeScript    NestJS 11       port 3000
+github.com/todo-corp/todo-app-api-python      Python        FastAPI         port 8000
+github.com/todo-corp/todo-app-api-java        Java          Spring Boot     port 8080
+github.com/todo-corp/todo-app-api-go          Go            Gin             port 8081
+github.com/todo-corp/todo-app-ui              TypeScript    Next.js 15      port 3001
 
-  packages/
-    core/             Shared business logic (zod, ports/adapters, ZERO Node.js deps)
-    db/               Prisma schema, client, migrations, seed
-    config/           Shared ESLint, TypeScript, Prettier
+github.com/todo-corp/todo-app-ops-k8s         SRE-owned     Helm charts, Gateway API, runbooks
+github.com/todo-corp/todo-app-ops-docker      SRE-owned     Docker Compose, runbooks
+github.com/todo-corp/todo-app-ops-vm          SRE-owned     Kamal v2 configs, runbooks
 
+npm: @todo-app/core (GitHub Packages)         Shared        Zod schemas, ports/adapters interfaces
+
+# ── What only the admin sees (PRIVATE — never exposed to AI agent) ────────────
+
+github.com/[admin]/todo-app-monorepo          Orchestrator  Issue injection, scenario definitions,
+                                                            orchestration scripts (this repo)
+```
+
+#### Per-repo structure
+
+Each **service repo** (`todo-app-api-nestjs`, `todo-app-ui`, etc.) contains:
+```
+<service>/
+  src/              Application code
+  prisma/           (API only) Schema + migrations
+  Dockerfile        Multi-stage build
+  .env.example      Service-specific env vars only
+  .github/
+    workflows/      CI: build, test, docker push to GHCR
+  README.md         Realistic team-facing docs (no simulation references)
+```
+
+Each **ops repo** (`todo-app-ops-k8s`, etc.) contains:
+```
+<ops-repo>/
+  helm/             (k8s only) Helm charts: api, ui, postgresql, valkey, umbrella
+  docker/           (docker only) docker-compose.yml + overrides
+  kamal/            (vm only) deploy.yml per language
+  docs/
+    runbooks/       On-call runbooks — these are linked from Prometheus alerts
+                    (the AI agent's entry point into the ops repo)
+  README.md         Realistic SRE-facing docs
+```
+
+The **orchestrator** (`todo-app-monorepo`, private) contains:
+```
+todo-app-monorepo/
   infra/
-    helm/             K8s Helm charts (api, ui, postgresql, redis, monitoring, umbrella)
-    docker/           Docker Compose full stack
-    kamal/            Kamal deploy configs per language (VM topology)
-    profiles/         Deployment profile YAMLs (the "button" to deploy any combination)
-    issues/           Issue injection system (67 scenarios)
-    prometheus/       Prometheus + Alertmanager configs
-    scripts/          Load test, deploy-all, health-check-all
-    dagger/           Optional: portable CI/CD pipelines (same pipeline on GH/GL/BB)
+    issues/         67 issue injection scenario YAMLs
+    prometheus/     Prometheus + Alertmanager configs (admin monitoring)
+    dagger/         Optional: portable CI/CD pipelines
+  scripts/
+    orchestrate.sh  Main admin CLI (inject, validate, reset, status)
+    clone-workspace.sh  Git clone all repos into workspace/
+  workspace/        (gitignored) Live git clones of all service + ops repos
+  SPEC.md           This document
+```
+
+#### Serverless adapters (future)
+```
+github.com/todo-corp/todo-app-firebase-api    TypeScript    Cloud Functions
+github.com/todo-corp/todo-app-supabase-api    TypeScript    Deno Edge Functions
 ```
 
 ### 4.2 Deployment Topologies
@@ -164,24 +226,116 @@ Tooling:
 
 ---
 
-## 5. Architecture Decisions
+## 5. Agent Simulation Model
+
+This section describes the full experience the AI agent goes through. It exists only in
+this private orchestrator repo — service and ops repos contain no simulation references.
+
+### 5.1 How the Agent Receives a Task
+
+The agent is given a Prometheus/Grafana alert. The alert fires in the monitoring stack and
+contains a `runbookUrl` pointing to the relevant ops repo:
+
+```
+Alert: PodOOMKilled
+Severity: critical
+Labels:  pod="todo-app-api-nestjs-xxx", namespace="todo-app"
+runbookUrl: https://github.com/todo-corp/todo-app-ops-k8s/blob/main/docs/runbooks/pod-oom-kill.md
+```
+
+The agent has access to:
+- GitHub repos in the `todo-corp` org (service + ops repos only)
+- Prometheus/Grafana metrics API
+- kubectl (read-only or scoped)
+- Standard shell tools
+
+The agent does **not** have access to:
+- This orchestrator repo
+- Any `injector.sh` or scenario YAML files
+- The `SPEC.md` document
+
+### 5.2 Typical Agent Workflow
+
+```
+1. ALERT FIRES
+   Prometheus alert fires (injected by orchestrate.sh)
+   Alert payload contains runbookUrl → todo-app-ops-k8s/docs/runbooks/<issue>.md
+
+2. AGENT READS RUNBOOK
+   Agent fetches the runbook from the ops repo
+   Runbook says: "Check memory limits in helm/api-nestjs/values.yaml"
+   Runbook links to the service repo for context on expected memory usage
+
+3. AGENT INVESTIGATES
+   Agent clones / browses todo-app-ops-k8s
+   Finds a recent commit: "chore: right-size API memory to reduce cloud costs"
+   Sees memory limit changed to 32Mi (was 256Mi)
+   Correlates with the OOMKilled event timestamps
+
+4. AGENT FIXES
+   Agent proposes: increase memory limit back to 256Mi in values.yaml
+   Agent opens a PR or commits directly to todo-app-ops-k8s
+
+5. ADMIN VALIDATES
+   Admin runs: ./scripts/orchestrate.sh validate --scenario oom-kill-nestjs
+   Validator checks: pod is Running, no OOMKilled events in last 5 minutes
+```
+
+### 5.3 What Makes It Realistic
+
+- **Realistic commits**: The injector commits with real-looking author names and messages
+  (e.g., `"alex-sre <alex@todo-corp.example>"`, `"chore: right-size API memory"`)
+- **Runbooks as breadcrumbs**: Each ops repo has `docs/runbooks/` written from an SRE
+  perspective. The runbooks are the designed entry point for the agent.
+- **No simulation artifacts**: Service and ops repos contain zero references to "injection",
+  "simulation", "scenario", or "orchestrator"
+- **Chained scenarios**: Some issues require changes across two repos (e.g., bad Helm config
+  + a code-level retry that amplifies the failure), mirroring real cascading incidents
+
+### 5.4 Issue Injection Flow (Admin Side)
+
+```bash
+# 1. Ensure workspace repos are cloned and up to date
+./scripts/clone-workspace.sh
+
+# 2. Inject an issue (commits to external repo with realistic message)
+./scripts/orchestrate.sh inject --scenario oom-kill-nestjs --env k8s
+
+# 3. Observe: Prometheus alert fires within ~2 minutes
+
+# 4. Hand alert payload to the AI agent
+
+# 5. After agent attempts fix, validate
+./scripts/orchestrate.sh validate --scenario oom-kill-nestjs
+
+# 6. Reset environment for next scenario
+./scripts/orchestrate.sh reset --scenario oom-kill-nestjs
+```
+
+---
+
+## 6. Architecture Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Monorepo tool | Turborepo | Build caching, parallel execution, dependency graph. Non-JS apps use thin `package.json` wrappers |
-| Shared core | Hexagonal (ports/adapters) | Core logic uses zod (works in Node + Deno). Adapters per platform handle DB, cache, logging |
-| ORM | Prisma (NestJS), Supabase client (Deno), Firestore SDK (Firebase) | Best tool per runtime |
-| Database | PostgreSQL (K8s/Docker/VM/Supabase) + Firestore (Firebase) | Real DB replaces dummyjson.com proxy |
-| Cache | Redis (multi-instance: K8s/Docker/VM), in-memory Map (serverless) | Redis needed for HPA/cluster -- atomic `INCR`+`EXPIRE` for rate limiting |
-| K8s deploy | Helm umbrella chart | Standard K8s packaging. Profile YAML generates Helm values overrides per language |
+| Repo model | **Polyrepo** — each service + ops surface is a standalone repo | AI agent must not be able to detect simulation context. Monorepo structure leaks orchestration. |
+| Orchestrator | Private `todo-app-monorepo` repo with shell scripts | Admin-only control plane. Never exposed to AI agent. |
+| Shared schemas | `@todo-app/core` published to **GitHub Packages** (npm) | Realistic: real orgs publish shared libs to a registry. TypeScript services consume `@todo-app/core: ^1.0.0`. Python/Java/Go define equivalent schemas natively. |
+| Per-service config | Each service has its own `.env.example` | No shared root `.env`. Each repo is independently deployable. Config validated by Zod at runtime (`@todo-app/core/env` in TS services). |
+| Shared core logic | Hexagonal (ports/adapters) | Core logic uses Zod (works in Node + Deno). Adapters per platform handle DB, cache, logging. |
+| ORM | Prisma (NestJS), SQLAlchemy (Python), JPA (Java), pgx (Go) | Best tool per runtime |
+| Database | PostgreSQL (K8s/Docker/VM/Supabase) + Firestore (Firebase) | Real DB for all topologies |
+| Cache | Valkey (multi-instance: K8s/Docker/VM), in-memory Map (serverless) | Valkey (BSD fork of Redis) needed for HPA/cluster — atomic `INCR`+`EXPIRE` for rate limiting. Wire-compatible with ioredis client |
+| K8s routing | Gateway API v1.5 + Traefik | HTTPRoute-based routing. Community ingress-nginx archived March 2026. Traefik pre-installed in K3s |
+| K8s deploy | Helm 4 umbrella chart (in `todo-app-ops-k8s`) | Standard K8s packaging. Values files per environment (dev/staging/prod). |
 | K8s cloud | OCI OKE Basic (free) + Always Free ARM; fallback to k3s | Only truly free persistent option (4 OCPUs, 24GB RAM, 200GB, 1 LB) |
-| VM deploy | **Kamal** (13.9k stars, MIT, by 37signals) | Zero-downtime Docker deploy to VMs via SSH. Built-in proxy, SSL, health checks. Replaces custom PM2/NGINX/systemd scripts |
-| Docker deploy | Docker Compose | Standard multi-container orchestration. Profile selects which compose file + overrides |
+| VM deploy | **Kamal** v2 (13.9k stars, MIT, by 37signals) in `todo-app-ops-vm` | Zero-downtime Docker deploy to VMs via SSH. Built-in proxy, SSL, health checks. |
+| Docker deploy | Docker Compose in `todo-app-ops-docker` | Standard multi-container orchestration. |
 | Serverless deploy | Firebase CLI + Supabase CLI | Native platform CLIs, no abstraction needed |
-| CI/CD portability | **Dagger** (optional, 15.6k stars) | Same pipeline code runs on GitHub Actions, GitLab CI, Bitbucket Pipelines. Eliminates 3x YAML maintenance |
+| CI/CD portability | **Dagger** (optional, 15.6k stars) | Same pipeline code runs on GitHub Actions, GitLab CI, Bitbucket Pipelines. |
 | VCS mirroring | GitHub Actions push-mirror (not bidirectional) | Simple, deterministic, avoids merge conflicts |
 | CI/CD split | Different VCS -> different deploy targets | Realistic enterprise complexity for AI agent |
-| Fresh monorepo | New repo, no git history migration | Clean slate; originals preserve bug-injection PR timeline |
+| Agent entry point | Prometheus alert with `runbookUrl` → ops repo | See Section 5. Runbooks in ops repos guide the agent to the injected issue. |
 
 ---
 
@@ -193,7 +347,7 @@ No single existing tool covers all 4 topologies from one config. We compose the 
 
 | Topology | Tool | Why This Tool |
 |----------|------|---------------|
-| **K8s** | **Helm** | Industry standard. Umbrella chart deploys entire stack. Profile YAML -> Helm values override per language |
+| **K8s** | **Helm 4** + **Gateway API** | Helm umbrella chart deploys entire stack. Gateway API v1.5 (HTTPRoute) for routing via Traefik. Profile YAML -> Helm values override per language |
 | **VM** | **Kamal** v2 (37signals) | Docker-to-VM via SSH with zero-downtime deploys, built-in proxy (`kamal-proxy`), Let's Encrypt SSL, health checks. 13.9k stars, MIT, default in Rails 8 |
 | **Docker** | **Docker Compose** | Standard. Profile selects compose file + env overrides |
 | **Serverless** | **Firebase CLI + Supabase CLI** | Native platform tools, no abstraction needed |
@@ -213,6 +367,7 @@ No single existing tool covers all 4 topologies from one config. We compose the 
 | **Waypoint** (HashiCorp) | - | **OSS abandoned.** Now proprietary SaaS (HCP Waypoint). Do not adopt |
 | **SST** | - | **Team pivoted** to AI product (OpenCode). Maintenance mode only |
 | **Encore** | - | Go/TS only, locks you into their framework abstractions |
+| **ingress-nginx** (community) | 18k | **Repository archived March 2026.** No further releases or security patches. Migrated to Gateway API + Traefik |
 
 ### 6.3 Kamal for VM Topology (Detail)
 
@@ -268,11 +423,11 @@ accessories:
     directories:
       - data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
+  valkey:
+    image: valkey/valkey:8-alpine
     host: 129.xxx.xxx.xxx
     port: "6379:6379"
-    cmd: "redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru"
+    cmd: "valkey-server --maxmemory 64mb --maxmemory-policy allkeys-lru"
 
 env:
   clear:
@@ -294,7 +449,7 @@ healthcheck:
 - Let's Encrypt SSL (replaces Certbot setup)
 - Health check verification before traffic switch
 - `kamal app logs` / `kamal app exec` for debugging
-- Accessories management (PostgreSQL, Redis as Docker containers on same VM)
+- Accessories management (PostgreSQL, Valkey as Docker containers on same VM)
 - Rolling deployments and rollback via `kamal rollback`
 
 **What we still need**:
@@ -349,15 +504,16 @@ pipelines:
 
 ```
 Namespaces:
-  ingress-system/    NGINX Ingress Controller
-  todo-app/          All 4 API services + UI + Ingress + NetworkPolicy
-  data/              PostgreSQL (StatefulSet) + Redis (Deployment)
+  todo-app/          All 4 API services + UI + HTTPRoutes + NetworkPolicy
+  data/              PostgreSQL (StatefulSet) + Valkey (Deployment)
   monitoring/        Prometheus + Grafana + Alertmanager (kube-prometheus-stack)
 ```
 
-Per-service K8s resources: Deployment, Service, HPA, PDB, ConfigMap, Secret, ServiceMonitor, NetworkPolicy.
+Traefik (pre-installed in K3s/Rancher Desktop) serves as the Gateway API controller. Community `kubernetes/ingress-nginx` was archived March 2026.
 
-Ingress routes (multi-backend):
+Per-service K8s resources: Deployment, Service, HPA, PDB, ConfigMap, Secret, ServiceMonitor, NetworkPolicy, HTTPRoute.
+
+Gateway API routes (multi-backend):
 ```
 /api/nestjs/*  -> api:3000
 /api/python/*  -> api-python:8000
@@ -377,7 +533,7 @@ Resource budget on OCI Free (24GB RAM):
 | Go | 32Mi | 64Mi |
 | UI | 128Mi | 256Mi |
 | PostgreSQL | 128Mi | 256Mi |
-| Redis | 32Mi | 64Mi |
+| Valkey | 32Mi | 64Mi |
 | Prometheus | 256Mi | 512Mi |
 | Alertmanager | 32Mi | 64Mi |
 | **Total** | **~1GB** | **~2.1GB** |
@@ -516,21 +672,21 @@ A **profile** is a deployable combination of: API language + topology + componen
 ```
 infra/profiles/
   # Kubernetes profiles
-  nestjs-k8s-full.yaml          NestJS + PG + Redis + full monitoring on K8s
-  python-k8s-full.yaml          FastAPI + PG + Redis + full monitoring on K8s
-  java-k8s-full.yaml            Spring Boot + PG + Redis + full monitoring on K8s
-  go-k8s-full.yaml              Gin + PG + Redis + full monitoring on K8s
-  polyglot-k8s.yaml             ALL 4 APIs + PG + Redis + monitoring on K8s
+  nestjs-k8s-full.yaml          NestJS + PG + Valkey + full monitoring on K8s
+  python-k8s-full.yaml          FastAPI + PG + Valkey + full monitoring on K8s
+  java-k8s-full.yaml            Spring Boot + PG + Valkey + full monitoring on K8s
+  go-k8s-full.yaml              Gin + PG + Valkey + full monitoring on K8s
+  polyglot-k8s.yaml             ALL 4 APIs + PG + Valkey + monitoring on K8s
 
   # Docker Compose profiles
-  nestjs-docker-full.yaml       NestJS + PG + Redis + ELK + Prometheus on Docker
+  nestjs-docker-full.yaml       NestJS + PG + Valkey + ELK + Prometheus on Docker
   python-docker-minimal.yaml    FastAPI + PG only on Docker
   polyglot-docker.yaml          ALL 4 APIs + full stack on Docker
 
   # VM profiles (via Kamal)
-  nestjs-vm.yaml                NestJS + PG + Redis on VM via Kamal
-  python-vm.yaml                FastAPI + PG + Redis on VM via Kamal
-  java-vm.yaml                  Spring Boot + PG + Redis on VM via Kamal
+  nestjs-vm.yaml                NestJS + PG + Valkey on VM via Kamal
+  python-vm.yaml                FastAPI + PG + Valkey on VM via Kamal
+  java-vm.yaml                  Spring Boot + PG + Valkey on VM via Kamal
   go-vm.yaml                    Go binary + PG on VM via Kamal
 
   # Serverless profiles
@@ -560,8 +716,8 @@ components:
     version: "16"
     storage: 10Gi
   cache:
-    type: redis
-    version: "7"
+    type: valkey
+    version: "8"
     maxmemory: 64mb
   monitoring:
     prometheus: true
@@ -593,7 +749,7 @@ deploy:
     api.readinessProbe.initialDelaySeconds: 5
     ui.enabled: true
     postgresql.enabled: true
-    redis.enabled: true
+    valkey.enabled: true
     monitoring.enabled: true
 
 # Runtime characteristics (used by issue injection to calibrate scenarios)
@@ -639,7 +795,7 @@ components:
   database:
     type: postgresql              # Kamal accessory (Docker on same VM)
   cache:
-    type: redis                   # Kamal accessory
+    type: valkey                   # Kamal accessory
   monitoring:
     node_exporter: true           # Host metrics for Prometheus
     prometheus_scrape: true       # Prometheus scrapes from central instance
@@ -654,7 +810,7 @@ build:
 deploy:
   method: kamal                    # NOT helm -- Kamal handles VM deployment
   config: ./infra/kamal/java/config/deploy.yml
-  accessories: [db, redis]         # Kamal manages PG + Redis as Docker containers on VM
+  accessories: [db, valkey]        # Kamal manages PG + Valkey as Docker containers on VM
   pre_deploy:
     - "docker exec todo-app-api-java-db-1 psql -U todo tododb -c 'SELECT 1'"   # verify DB
   healthcheck:
@@ -689,47 +845,60 @@ applicable_issues:
   - deploy-flyway-checksum
 ```
 
-### 10.5 Deployment CLI
+### 10.5 Orchestrator CLI
 
-A single command deploys any profile:
+All admin operations go through `scripts/orchestrate.sh` in the private orchestrator repo.
+This script is never visible to the AI agent.
 
 ```bash
-# Deploy a specific profile
-./deploy.sh --profile nestjs-k8s-full --target local
-./deploy.sh --profile python-docker-minimal
-./deploy.sh --profile java-vm --target oci
+# Initial setup: clone all service + ops repos into workspace/
+./scripts/clone-workspace.sh
 
-# Deploy all 4 APIs to K8s (polyglot mode)
-./deploy.sh --profile polyglot-k8s --target oci
+# Deploy an environment (runs helm/compose/kamal against the ops repo)
+./scripts/orchestrate.sh deploy --env k8s --target local
+./scripts/orchestrate.sh deploy --env k8s --target oci
+./scripts/orchestrate.sh deploy --env docker
+./scripts/orchestrate.sh deploy --env vm --target oci
 
-# Switch which API the ingress routes /api/* to
-./deploy.sh switch --backend python
+# Inject an issue (commits bad config/code to the external repo with realistic author+message)
+./scripts/orchestrate.sh inject --scenario startup-jvm-slow --env k8s
+./scripts/orchestrate.sh inject --scenario oom-kill-nestjs --env k8s
+
+# Validate that the AI agent fixed the issue
+./scripts/orchestrate.sh validate --scenario startup-jvm-slow
+
+# Reset: revert injected changes in the external repo
+./scripts/orchestrate.sh reset --scenario startup-jvm-slow
+
+# Status of all running deployments
+./scripts/orchestrate.sh status
+
+# Switch which API the gateway routes /api/* to
+./scripts/orchestrate.sh switch --backend python --env k8s
 
 # Tear down
-./deploy.sh teardown --profile nestjs-k8s-full
-
-# Status of all deployments
-./deploy.sh status
+./scripts/orchestrate.sh teardown --env k8s
 ```
 
-Under the hood, `deploy.sh` dispatches to the right tool per topology:
+Under the hood, `orchestrate.sh` dispatches to the right tool per topology:
 
-| Topology | What `deploy.sh` Runs |
-|----------|-----------------------|
-| K8s | `helm upgrade --install todo-app ./infra/helm/umbrella -f <profile-values.yaml>` |
-| Docker | `docker compose -f infra/docker/<profile>/docker-compose.yml up -d` |
-| VM | `kamal deploy -c infra/kamal/<language>/config/deploy.yml` |
-| Serverless | `firebase deploy --only functions,hosting` / `supabase functions deploy` |
+| Topology | What `orchestrate.sh` Runs |
+|----------|---------------------------|
+| K8s | `helm upgrade --install` using charts from `workspace/todo-app-ops-k8s/helm/` |
+| Docker | `docker compose up -d` using files from `workspace/todo-app-ops-docker/` |
+| VM | `kamal deploy` using config from `workspace/todo-app-ops-vm/kamal/<language>/` |
+| Serverless | `firebase deploy` / `supabase functions deploy` |
 
-**The key insight**: `deploy.sh` is a ~100-line dispatcher, not a deployment engine. The real work is done by Helm, Docker Compose, Kamal, and platform CLIs. The profile YAML just wires the right config to the right tool.
+**The key insight**: `orchestrate.sh` is a thin dispatcher. The real deployment configs live
+in the ops repos (`todo-app-ops-k8s`, `todo-app-ops-docker`, `todo-app-ops-vm`) — exactly
+where the AI agent would look. The orchestrator just manages the workspace clones.
 
-Kamal-specific commands exposed through deploy.sh:
+Kamal-specific commands via orchestrate.sh:
 ```bash
-./deploy.sh --profile nestjs-vm --target oci         # kamal deploy
-./deploy.sh rollback --profile nestjs-vm             # kamal rollback
-./deploy.sh logs --profile nestjs-vm                 # kamal app logs
-./deploy.sh exec --profile nestjs-vm -- bash          # kamal app exec
-./deploy.sh accessories --profile nestjs-vm           # kamal accessory details (PG, Redis status)
+./scripts/orchestrate.sh deploy --env vm --target oci    # kamal deploy
+./scripts/orchestrate.sh rollback --env vm               # kamal rollback
+./scripts/orchestrate.sh logs --env vm --service nestjs  # kamal app logs
+./scripts/orchestrate.sh exec --env vm -- bash           # kamal app exec
 ```
 
 ### 10.6 Deployment-Specific Issue Scenarios
@@ -857,13 +1026,17 @@ The original 33 scenarios (infra/app/config/db/deploy/security/cross-service) pl
 ### 11.2 Scenario Lifecycle
 
 ```
-1. SELECT profile    ->  ./deploy.sh --profile java-k8s-full --target local
-2. INJECT issue      ->  ./injector.sh inject startup-jvm-slow --profile java-k8s-full
-3. OBSERVE symptoms  ->  Grafana dashboard, Slack alert, kubectl events
-4. AI AGENT detects  ->  Reads alerts, logs, metrics via APIs
-5. AI AGENT resolves ->  Patches readinessProbe.initialDelaySeconds: 30 -> 60
-6. VALIDATE fix      ->  ./validator.sh check startup-jvm-slow
-7. CLEANUP           ->  ./injector.sh cleanup startup-jvm-slow
+1. DEPLOY env        ->  ./scripts/orchestrate.sh deploy --env k8s --target local
+2. INJECT issue      ->  ./scripts/orchestrate.sh inject --scenario startup-jvm-slow --env k8s
+                         (commits bad Helm values to workspace/todo-app-ops-k8s
+                          with a realistic author + commit message, then pushes to GitHub)
+3. OBSERVE symptoms  ->  Grafana dashboard, Slack alert (#critical), kubectl events
+                         Alert contains runbookUrl → todo-app-ops-k8s/docs/runbooks/jvm-slow.md
+4. AI AGENT detects  ->  Agent reads alert, follows runbookUrl, clones ops repo
+5. AI AGENT diagnoses->  Finds recent "cost savings" commit that lowered readiness probe delays
+6. AI AGENT resolves ->  Patches readinessProbe.initialDelaySeconds back to 30s in values.yaml
+7. VALIDATE fix      ->  ./scripts/orchestrate.sh validate --scenario startup-jvm-slow
+8. CLEANUP           ->  ./scripts/orchestrate.sh reset --scenario startup-jvm-slow
 ```
 
 ### 11.3 Scenario YAML (Deployment-Aware)
@@ -885,13 +1058,16 @@ description: |
 
 injection:
   type: helm-values-override
+  target_repo: todo-app-ops-k8s             # external repo to commit to
+  commit_message: "chore: align probe timing with NestJS defaults across all services"
+  commit_author: "alex-sre <alex@todo-corp.example>"
   steps:
-    - action: helm-upgrade
-      chart: infra/helm/umbrella
+    - action: patch-file
+      file: helm/api-java/values.yaml
       set:
-        api-java.readinessProbe.initialDelaySeconds: 5     # too short for Java
-        api-java.readinessProbe.timeoutSeconds: 1
-        api-java.livenessProbe.initialDelaySeconds: 10     # also too short
+        readinessProbe.initialDelaySeconds: 5     # too short for Java (was 30)
+        readinessProbe.timeoutSeconds: 1
+        livenessProbe.initialDelaySeconds: 10     # also too short (was 60)
 
 expected_symptoms:
   pod_status: CrashLoopBackOff
@@ -947,36 +1123,70 @@ cleanup:
 
 ## 12. Implementation Phases
 
-| Phase | Focus | Duration | Status |
-|-------|-------|----------|--------|
-| 0 | New Turborepo monorepo + core extraction | Week 1 | Done |
-| 1 | PostgreSQL + Redis integration | Week 2 | Done |
-| 2 | K8s topology (Helm umbrella, OCI OKE) + deploy.sh + profiles | Week 3 | Pending |
-| 3 | VM via **Kamal** + Docker Compose topologies | Week 3 (parallel) | Pending |
-| 4 | Multi-language APIs (Go, Python, Java) + per-language Helm/Kamal configs | Weeks 4-5 | Pending |
-| 5 | Serverless adapters (Firebase, Supabase) | Week 6 | Pending |
-| 6 | Issue injection system (67 scenarios) + injector/validator CLI | Week 7 | Pending |
-| 7 | Monitoring + Sentry + Slack | Week 7 (parallel) | Pending |
-| 8 | Multi-VCS + CI/CD (+ optional Dagger for pipeline portability) | Week 8 | Pending |
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 0 | Turborepo monorepo + NestJS API + PostgreSQL/Valkey + core extraction | ✅ Done |
+| 1 | PostgreSQL + Valkey integration, hexagonal arch, Helm charts (local) | ✅ Done |
+| 1.5 | **Polyrepo decomposition** — extract service repos, ops repos, publish `@todo-app/core` | 🔄 In Progress |
+| 2 | K8s topology — `todo-app-ops-k8s`, OCI OKE, Gateway API, `orchestrate.sh` | Pending |
+| 3 | VM + Docker topologies — `todo-app-ops-vm` (Kamal), `todo-app-ops-docker` | Pending |
+| 4 | Multi-language APIs — `todo-app-api-python`, `todo-app-api-go`, `todo-app-api-java` + per-language ops configs | Pending |
+| 5 | Serverless adapters — `todo-app-firebase-api`, `todo-app-supabase-api` | Pending |
+| 6 | Issue injection system — 67 scenarios + cross-repo injector/validator in orchestrator | Pending |
+| 7 | Monitoring + Sentry + Slack + runbooks in ops repos | Pending |
+| 8 | Multi-VCS + CI/CD per service repo (+ optional Dagger for portability) | Pending |
+
+### Phase 1.5 Detail: Polyrepo Decomposition
+
+Extract from this monorepo into standalone repos:
+- `todo-app-api-nestjs` — from `apps/api` (reuse existing GitHub repo if available)
+- `todo-app-ui` — from `apps/ui` (reuse existing GitHub repo)
+- `todo-app-ops-k8s` — from `infra/helm/`
+- `todo-app-ops-docker` — from `infra/docker/dev/`
+- `todo-app-ops-vm` — from `infra/kamal/`
+- `@todo-app/core` — publish `packages/core` to GitHub Packages
+
+Transform this repo into the private orchestrator:
+- Remove `apps/`, `packages/` from tracked files (move to `workspace/` or delete)
+- Replace `deploy.sh` with `scripts/orchestrate.sh`
+- Remove `turbo.json` (orchestrator uses shell scripts, not Turborepo)
 
 ---
 
 ## 13. Success Criteria
 
-- [ ] `turbo run build && turbo run test` passes for all apps/packages (all 4 languages)
+### Polyrepo integrity (Phase 1.5)
+- [ ] `git clone todo-app-api-nestjs && pnpm install && pnpm build && pnpm test` passes with no knowledge of orchestrator
+- [ ] `git clone todo-app-ui && pnpm install && pnpm build` passes standalone
+- [ ] `helm lint` passes for all charts in `todo-app-ops-k8s`
+- [ ] An AI agent given access only to `todo-app-api-nestjs` + `todo-app-ops-k8s` cannot detect simulation context from any file in those repos
+- [ ] `@todo-app/core` published to GitHub Packages and consumable as `npm install @todo-app/core`
+
+### Deployment (Phase 2-3)
+- [ ] `./scripts/orchestrate.sh deploy --env k8s --target local` deploys full stack
+- [ ] `./scripts/orchestrate.sh deploy --env k8s --target oci` deploys all APIs to OCI
+- [ ] `./scripts/orchestrate.sh deploy --env docker` → all services healthy
+- [ ] `./scripts/orchestrate.sh deploy --env vm --target oci` → Kamal deploys with kamal-proxy + SSL
+- [ ] `./scripts/orchestrate.sh switch --backend python --env k8s` routes /api/* to FastAPI
+
+### Multi-language (Phase 4)
 - [ ] All 4 APIs return identical responses for the same requests
-- [ ] `./deploy.sh --profile nestjs-k8s-full --target local` deploys full stack
-- [ ] `./deploy.sh --profile polyglot-k8s --target oci` deploys all 4 APIs to OCI
-- [ ] `./deploy.sh --profile nestjs-docker-full` -> all services healthy
-- [ ] `./deploy.sh --profile nestjs-vm --target oci` -> Kamal deploys with kamal-proxy + SSL
-- [ ] `./deploy.sh switch --backend python` routes /api/* to FastAPI
-- [ ] Firebase + Supabase emulators serve CRUD
 - [ ] UI backend selector switches between 4 API implementations
+- [ ] Firebase + Supabase emulators serve CRUD
+
+### Observability (Phase 7)
 - [ ] Grafana Cloud dashboards show metrics from all topologies + all languages
 - [ ] Per-language metrics: event loop lag (Node), GC pauses (Java), goroutine count (Go)
 - [ ] Sentry captures errors with platform + language tags
 - [ ] Slack receives alerts when a service goes down
-- [ ] `./injector.sh inject startup-jvm-slow --profile java-k8s-full` -> CrashLoopBackOff -> resolution validated
-- [ ] `./injector.sh inject container-python-workers` -> OOMKilled -> resolution validated
-- [ ] Push to GitHub -> GitLab + Bitbucket mirrors update
+- [ ] Prometheus alert `runbookUrl` links resolve to real runbook docs in ops repos
+
+### Issue injection (Phase 6)
+- [ ] `./scripts/orchestrate.sh inject --scenario startup-jvm-slow --env k8s` → CrashLoopBackOff visible in Grafana + Slack
+- [ ] `./scripts/orchestrate.sh inject --scenario oom-kill-nestjs --env k8s` → OOMKilled alert fires with correct runbookUrl
+- [ ] `./scripts/orchestrate.sh validate --scenario startup-jvm-slow` → passes after agent fixes probe timing
+- [ ] Injected commits have realistic author names and messages (no "orchestrator" or "inject" in git log)
+
+### VCS + CI/CD (Phase 8)
+- [ ] Push to GitHub → GitLab + Bitbucket mirrors update
 - [ ] `k6` load test populates all dashboards

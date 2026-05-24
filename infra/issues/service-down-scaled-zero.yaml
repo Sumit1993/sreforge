@@ -1,0 +1,24 @@
+id: service-down-scaled-zero
+description: ServiceDown — API deployment scaled to 0 replicas
+severity: critical
+alert_expected: ServiceDown
+target_env: k8s
+
+injection:
+  target_repo: todo-app-ops-k8s
+  target_file: helm/api/values.yaml
+  commit_message: "chore: scale down API during maintenance window"
+  commit_author: "alex-devops <alex@todo-corp.example>"
+  patch: |
+    replicaCount: 0
+
+resolution:
+  description: Set replicaCount back to at least 1 and apply helm upgrade
+  fix_file: helm/api/values.yaml
+  hint: |
+    replicaCount: 1
+  runbook: docs/runbooks/service-down.md
+
+validation:
+  check: kubectl get deployment todo-app-api -n todo-app -o jsonpath='{.status.readyReplicas}'
+  expect_value: "1"

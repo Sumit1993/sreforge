@@ -51,6 +51,9 @@ logs/
 # Vercel
 .vercel
 
+# Orchestrator workspace — git clones of service+ops repos (never commit these)
+workspace/
+
 # Misc
 .DS_Store
 *.pem

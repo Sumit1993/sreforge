@@ -10,7 +10,15 @@
       "Bash(docker compose:*)",
       "Bash(pnpm add:*)",
       "Bash(pnpm test:*)",
-      "Bash(pnpm run:*)"
+      "Bash(pnpm run:*)",
+      "WebSearch",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "Bash(helm lint:*)",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "Bash(git -C /e/ExtrasCode/workspace/todo-app/todo-app-api status --short)",
+      "Bash(git -C /e/ExtrasCode/workspace/todo-app/todo-app-api log --oneline -5)"
     ]
   }
 }

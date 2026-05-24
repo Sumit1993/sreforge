@@ -1,0 +1,27 @@
+enabled: true
+
+image:
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+storage: 10Gi
+
+auth:
+  database: tododb
+  username: todo
+  password: todopass
+
+service:
+  type: ClusterIP
+  port: 5432
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+
+networkPolicy:
+  enabled: true

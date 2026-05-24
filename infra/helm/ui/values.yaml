@@ -1,0 +1,55 @@
+enabled: true
+
+replicaCount: 1
+
+image:
+  repository: todo-app-ui
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3000
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+env:
+  NODE_ENV: production
+  PORT: "3000"
+
+networkPolicy:
+  enabled: true
+
+gateway:
+  enabled: true
+  gatewayName: todo-gateway
+  hostname: todo.app.local

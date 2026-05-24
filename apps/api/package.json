@@ -1,7 +1,7 @@
 {
-  "name": "@todo-app/api",
+  "name": "todo-app-api-nestjs",
   "version": "0.0.1",
-  "description": "",
+  "description": "Todo App REST API — NestJS + PostgreSQL + Valkey",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
@@ -9,6 +9,7 @@
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
+    "dev": "dotenv -e .env -- nest start --watch",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
@@ -17,7 +18,10 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "db:migrate": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.0",
@@ -27,8 +31,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
-    "@todo-app/core": "workspace:*",
-    "@todo-app/db": "workspace:*",
+    "@todo-app/core": "^1.0.0",
     "axios": "^1.6.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -41,6 +44,7 @@
     "winston": "^3.17.0"
   },
   "devDependencies": {
+    "prisma": "^7.5.0",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",

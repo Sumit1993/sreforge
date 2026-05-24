@@ -153,12 +153,14 @@ async function bootstrap() {
   }
 
   // Enable validation for all endpoints
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: false, // Handle type conversion manually in service layer
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: false, // Handle type conversion manually in service layer
+    }),
+  );
 
-  await app.listen(process.env.PORT || 3000);
+  await app.listen(process.env.API_PORT || process.env.PORT || 3000);
 }
 bootstrap();

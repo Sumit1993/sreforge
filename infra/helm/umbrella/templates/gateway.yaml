@@ -1,0 +1,27 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gateway.className }}
+  labels:
+    {{- include "todo-app.labels" . | nindent 4 }}
+spec:
+  controllerName: {{ .Values.gateway.controllerName }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: todo-gateway
+  labels:
+    {{- include "todo-app.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: {{ .Values.gateway.hostname }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- end }}

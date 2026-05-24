@@ -15,3 +15,6 @@ export type {
   ICacheProvider,
   ILogger,
 } from './ports/index.js';
+
+export { EnvSchema, parseEnv } from './env.js';
+export type { Env } from './env.js';

@@ -1,0 +1,61 @@
+name: polyglot-k8s
+description: "All 4 APIs + full stack on Kubernetes"
+
+api: all
+ui: nextjs
+topology: kubernetes
+target: local
+namespace: todo-app
+
+components:
+  database:
+    type: postgresql
+    version: "16"
+    storage: 10Gi
+  cache:
+    type: valkey
+    version: "8"
+    maxmemory: 64mb
+  monitoring:
+    prometheus: false
+    grafana: false
+    alertmanager: false
+
+build:
+  command: "turbo run build"
+  docker:
+    images:
+      - context: ./apps/api
+        file: ./apps/api/Dockerfile
+        tag: "todo-app-api:{{git-sha}}"
+      - context: ./apps/api-python
+        file: ./apps/api-python/Dockerfile
+        tag: "todo-app-api-python:{{git-sha}}"
+      - context: ./apps/api-java
+        file: ./apps/api-java/Dockerfile
+        tag: "todo-app-api-java:{{git-sha}}"
+      - context: ./apps/api-go
+        file: ./apps/api-go/Dockerfile
+        tag: "todo-app-api-go:{{git-sha}}"
+
+deploy:
+  method: helm
+  chart: ./infra/helm/umbrella
+  values:
+    api.enabled: "true"
+    api-python.enabled: "true"
+    api-java.enabled: "true"
+    api-go.enabled: "true"
+    ui.enabled: "true"
+    postgresql.enabled: "true"
+    valkey.enabled: "true"
+    gateway.enabled: "true"
+
+characteristics:
+  total_memory_budget: 2100MB
+
+applicable_issues:
+  - deploy-helm-values-mismatch
+  - startup-jvm-slow
+  - container-python-workers
+  - container-go-maxprocs

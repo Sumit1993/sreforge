@@ -1,0 +1,73 @@
+enabled: true
+
+replicaCount: 1
+
+language: nestjs
+
+image:
+  repository: todo-app-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3000
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+env:
+  NODE_ENV: production
+  PORT: "3000"
+
+secretEnv:
+  DATABASE_URL: ""
+  REDIS_URL: ""
+
+serviceMonitor:
+  enabled: false
+  path: /metrics
+  interval: 15s
+
+networkPolicy:
+  enabled: true
+
+gateway:
+  enabled: true
+  gatewayName: todo-gateway
+  hostname: todo.app.local
+  pathPrefix: /api
+  additionalPaths: []
+
+initContainers:
+  migration:
+    enabled: false
+    command: []

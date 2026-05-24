@@ -1,0 +1,23 @@
+enabled: true
+
+image:
+  repository: valkey/valkey
+  tag: "8-alpine"
+  pullPolicy: IfNotPresent
+
+maxmemory: 64mb
+evictionPolicy: allkeys-lru
+
+service:
+  type: ClusterIP
+  port: 6379
+
+resources:
+  requests:
+    memory: "32Mi"
+    cpu: "25m"
+  limits:
+    memory: "64Mi"
+
+networkPolicy:
+  enabled: true
