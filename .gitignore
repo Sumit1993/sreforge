@@ -57,3 +57,7 @@ workspace/
 # Misc
 .DS_Store
 *.pem
+internal-docs
+.docs-hub
+mage/**/artifacts/
+mage/.learnings/
