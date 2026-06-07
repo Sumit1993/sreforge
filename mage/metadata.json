@@ -1,9 +1,9 @@
 {
   "schema": "mage.v1",
-  "mode": "in-repo",
-  "project": "todo-app-monorepo",
-  "hub_path": null,
-  "hub_repo": null,
+  "mode": "external",
+  "project": "sreforge",
+  "hub_path": "/home/sumit/sources/sreforge-memory",
+  "hub_repo": "https://github.com/Sumit1993/sreforge-memory.git",
   "hub_refs": [],
-  "linked_at": "2026-06-01T20:25:17Z"
+  "linked_at": "2026-06-03T19:38:54Z"
 }

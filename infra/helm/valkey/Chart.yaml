@@ -1,5 +1,0 @@
-apiVersion: v2
-name: valkey
-description: Valkey 8 cache subchart for todo-app
-version: 0.1.0
-type: application

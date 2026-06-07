@@ -1,63 +1,7 @@
-# Dependencies
 node_modules/
-.pnp
-.pnp.js
-
-# Build outputs
 dist/
-.next/
-build/
-out/
-
-# Turbo
 .turbo/
-
-# Local env files
 .env
-.env.*
-!.env.example
-
-# Testing
-coverage/
-
-# TypeScript
-*.tsbuildinfo
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-
-# Java
-target/
-*.class
-*.jar
-
-# Go
-/server
-
-# IDE
-.idea/
-.vscode/
-
-# Monitoring data
-infra/prometheus/data/
-infra/prometheus/*.exe
-
-# Logs
-logs/
 *.log
-
-# Vercel
-.vercel
-
-# Orchestrator workspace — git clones of service+ops repos (never commit these)
-workspace/
-
-# Misc
 .DS_Store
-*.pem
-internal-docs
-.docs-hub
-mage/**/artifacts/
-mage/.learnings/
+*.stackdump

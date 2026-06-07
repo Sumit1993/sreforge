@@ -1,5 +1,0 @@
-apiVersion: v2
-name: postgresql
-description: PostgreSQL 16 StatefulSet subchart for todo-app
-version: 0.1.0
-type: application
