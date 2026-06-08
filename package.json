@@ -5,5 +5,11 @@
   "packageManager": "pnpm@10.32.1",
   "engines": {
     "node": ">=18"
+  },
+  "scripts": {
+    "guard": "node tools/contamination-guard/scan.mjs",
+    "guard:strict": "node tools/contamination-guard/scan.mjs --strict",
+    "detell": "node tools/detell-judge/judge.mjs",
+    "detell:grade": "node tools/detell-judge/judge.mjs --grade"
   }
 }
