@@ -1,159 +1,94 @@
-# Turborepo starter
+# SREForge
 
-This Turborepo starter is maintained by the Turborepo core team.
+A contamination-controlled, event-triggered **evaluation harness for autonomous
+SWE/SRE agents**. SREForge authors incidents on controlled substrates, hands an
+agent a neutral on-call page, and grades the agent on whether its **deployed
+fix actually resolves the incident** — verified behaviourally, under the
+still-active fault. You cannot bluff a behavioural oracle.
 
-## Using this example
+## Why it's different
 
-Run the following command:
+- **Closed-loop behavioural verification (the signature capability).** The fault
+  stimulus keeps running while the fix is verified. An alert clears only because
+  the deployed change works — not because the harness stopped poking the system.
+  This is the anti-cheat: diff-matching is at most a hint, never the grade.
+- **Contamination-free by construction.** v1 substrates are self-built, so there
+  is no public solution to memorise. Adopted third-party apps get a de-tell pass
+  before use.
+- **Authored, reproducible incidents.** A determinism gate confirms the incident
+  has actually reproduced before the agent is ever handed the page.
+- **Honest, neutral framing.** The agent is never told it's in a harness.
 
-```sh
-npx create-turbo@latest
+## Taxonomy
+
+Four axes:
+
+| Axis | What | Example |
+|------|------|---------|
+| **engine** | the domain-agnostic harness | `core/` |
+| **use-case** | a problem domain | `todo-app` |
+| **stack** | a concrete deployable substrate | `node-compose` |
+| **scenario** | one authored incident on a stack | `latency-retry-storm` |
+
+Two scenario **profiles**: `incident` (live deploy + behavioural verify — the
+focus of v1) and `patch` (DeepSWE-style pinned repo + hidden tests, deferred).
+
+## Layout
+
+```
+core/                                  # @sreforge/core — the engine (TypeScript)
+  src/{triggers,context,runner,deploy,verify,record,cleanup}/
+use-cases/
+  todo-app/
+    stacks/node-compose/               # the substrate: NestJS API + Postgres +
+      apps/{api,ui}  packages/{core,db,…}   #  Valkey + Prometheus + Alertmanager + Grafana
+      compose/docker-compose.yml       # the self-contained local closed loop
+      observability/                   # prometheus.yml, alertmanager.yml, rules/
+      load/driver.mjs                  # zero-dep baseline / storm load driver
+      scripts/                         # up · down · confirm-fire · verify-clear · incident
+    scenarios/latency-retry-storm/     # the authored incident (scenario.toml, trigger, solution, oracle)
+mage/                                  # pointer to the external knowledge-base hub
 ```
 
-## What's inside?
+The durable design knowledge lives in an external **mage** hub
+(`sreforge-memory`); this repo's `AGENTS.md` explains how to navigate it.
 
-This Turborepo includes the following packages/apps:
+## v1 — the `latency-retry-storm` incident (validated end-to-end)
 
-### Apps and Packages
+A planted retry-of-non-transient-error bug in the Todo API turns malformed
+`DELETE /api/todos/<non-integer>` requests into a ~270ms retry storm. Under
+sustained malformed load, p99 latency crosses 0.3s and the
+`TodoApiLatencyP99High` alert fires. The reference fix (`ParseIntPipe` on the id
+param + a retry filter for non-transient errors) makes those requests a fast
+4xx — so the alert clears **while the load is still running**.
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+### Run it
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Requires Docker (compose) + Node 18+ + pnpm. From the stack directory:
 
 ```sh
-cd my-turborepo
-turbo build
+cd use-cases/todo-app/stacks/node-compose
+bash scripts/incident.sh      # full loop: up → fire → fix → CI → redeploy → verify → reset
 ```
 
-Without global `turbo`, use your package manager:
+Or drive the pieces yourself:
 
 ```sh
-cd my-turborepo
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+bash scripts/up.sh                          # build + start the stack
+node load/driver.mjs --mode=storm           # inject the fault (leave running)
+node scripts/confirm-fire.mjs               # determinism gate: wait for the alert
+node scripts/status.mjs                     # live p99 + firing alerts
+node scripts/verify-clear.mjs               # after a fix+redeploy: clears under load?
+bash scripts/down.sh                        # tear down
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Endpoints once up: API `http://localhost:3000/api` · Prometheus `:9090` ·
+Alertmanager `:9093` · Grafana `:3002`.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Status
 
-```sh
-turbo build --filter=docs
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+v1 substrate + scenario are built and the incident loop is validated
+(trigger → confirm-fire → fix → CI gate → redeploy → behavioural verify →
+reset). The `core/` engine is a typed skeleton; wiring the scenario runner
+through it is the next milestone. See `mage/` (the knowledge-base hub) for the
+full plan and decisions.

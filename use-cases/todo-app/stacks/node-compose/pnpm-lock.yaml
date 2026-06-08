@@ -47,9 +47,6 @@ importers:
       '@todo-app/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@todo-app/db':
-        specifier: workspace:*
-        version: link:../../packages/db
       axios:
         specifier: ^1.6.2
         version: 1.13.6
@@ -135,6 +132,9 @@ importers:
       prettier:
         specifier: ^3.4.2
         version: 3.8.1
+      prisma:
+        specifier: ^7.5.0
+        version: 7.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.2)
       source-map-support:
         specifier: ^0.5.21
         version: 0.5.21
@@ -162,16 +162,6 @@ importers:
       winston-transport:
         specifier: ^4.9.0
         version: 4.9.0
-
-  apps/api-go: {}
-
-  apps/api-java: {}
-
-  apps/api-python: {}
-
-  apps/firebase-api: {}
-
-  apps/supabase-api: {}
 
   apps/ui:
     dependencies:

@@ -33,10 +33,6 @@
       "cache": false,
       "persistent": true
     },
-    "deploy:k8s": { "dependsOn": ["build"], "cache": false },
-    "deploy:vm": { "dependsOn": ["build"], "cache": false },
-    "deploy:firebase": { "dependsOn": ["build"], "cache": false },
-    "deploy:supabase": { "dependsOn": ["build"], "cache": false },
     "db:migrate": { "cache": false },
     "db:seed": { "dependsOn": ["db:migrate"], "cache": false }
   }

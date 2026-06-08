@@ -63,7 +63,7 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
       if (removed > 0) {
         this.logger.log('Cache cleanup completed', {
           entriesRemoved: removed,
-          entriesRemaining: cache.size
+          entriesRemaining: cache.size,
         });
       }
     }, 30000);
@@ -73,7 +73,7 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
   private recreateCacheIfNeeded() {
     if (this.requestCache.size > 1000) {
       this.logger.warn('Cache size exceeded threshold, recreating', {
-        oldSize: this.requestCache.size
+        oldSize: this.requestCache.size,
       });
       this.requestCache = new Map();
     }
@@ -116,12 +116,15 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
           // Add small jitter to prevent thundering herd
           const jitter = Math.random() * 10;
 
-          this.logger.warn(`Retry attempt ${attempt + 1}/${this.MAX_RETRIES} for ${operationName}`, {
-            delay: Math.round(delay + jitter),
-            error: lastError.message,
-          });
+          this.logger.warn(
+            `Retry attempt ${attempt + 1}/${this.MAX_RETRIES} for ${operationName}`,
+            {
+              delay: Math.round(delay + jitter),
+              error: lastError.message,
+            },
+          );
 
-          await new Promise(resolve => setTimeout(resolve, delay + jitter));
+          await new Promise((resolve) => setTimeout(resolve, delay + jitter));
         }
       }
     }
@@ -134,7 +137,9 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
   private withTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
-        reject(new Error(`${operation} timed out after ${this.SERVICE_TIMEOUT}ms`));
+        reject(
+          new Error(`${operation} timed out after ${this.SERVICE_TIMEOUT}ms`),
+        );
       }, this.SERVICE_TIMEOUT);
     });
 
@@ -163,14 +168,16 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const todos = await this.withRetry(
-        () => this.withTimeout(
-          this.todoRepository.findAll(),
-          'getTodos'
-        ),
-        'getTodos'
+        () => this.withTimeout(this.todoRepository.findAll(), 'getTodos'),
+        'getTodos',
       );
 
-      const result = { todos, total: todos.length, skip: 0, limit: todos.length };
+      const result = {
+        todos,
+        total: todos.length,
+        skip: 0,
+        limit: todos.length,
+      };
 
       this.logger.logPerformance('getTodos', Date.now() - startTime, {
         count: todos.length,
@@ -193,11 +200,12 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
     await this.redisCacheProvider.delete('todos:all');
 
     const created = await this.withRetry(
-      () => this.withTimeout(
-        this.todoRepository.create({ todo, userId }),
-        'addTodo'
-      ),
-      'addTodo'
+      () =>
+        this.withTimeout(
+          this.todoRepository.create({ todo, userId }),
+          'addTodo',
+        ),
+      'addTodo',
     );
     return created;
   }
@@ -208,11 +216,12 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
     await this.redisCacheProvider.delete('todos:all');
 
     const updated = await this.withRetry(
-      () => this.withTimeout(
-        this.todoRepository.update(id, { completed }),
-        'toggleTodoStatus'
-      ),
-      'toggleTodoStatus'
+      () =>
+        this.withTimeout(
+          this.todoRepository.update(id, { completed }),
+          'toggleTodoStatus',
+        ),
+      'toggleTodoStatus',
     );
     return updated;
   }
@@ -223,11 +232,8 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
     await this.redisCacheProvider.delete('todos:all');
 
     const deleted = await this.withRetry(
-      () => this.withTimeout(
-        this.todoRepository.delete(id),
-        'deleteTodo'
-      ),
-      'deleteTodo'
+      () => this.withTimeout(this.todoRepository.delete(id), 'deleteTodo'),
+      'deleteTodo',
     );
     return deleted;
   }

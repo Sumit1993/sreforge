@@ -1,3 +1,27 @@
+# SREForge node-compose substrate — self-contained local closed loop.
+#
+#   postgres + valkey  -> datastores
+#   migrate            -> one-shot: prisma migrate deploy + seed, then exits
+#   api                -> NestJS Todo API (the service under test)
+#   prometheus         -> scrapes api /api/metrics, evaluates the alert rules
+#   alertmanager       -> realistic alerting surface (harness reads Prometheus)
+#   grafana            -> dashboards / agent-facing observability endpoint
+#
+# Build context is the node-compose root (..), because the API image is built
+# from the whole pnpm workspace (see apps/api/Dockerfile).
+
+x-api-build: &api-build
+  context: ..
+  dockerfile: apps/api/Dockerfile
+  target: runtime
+
+x-api-env: &api-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://todo:todopass@postgres:5432/tododb
+  REDIS_URL: redis://valkey:6379
+  API_PORT: "3000"
+  FRONTEND_URL: http://localhost:3001
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -26,5 +50,78 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot schema migration + seed. Reuses the API image (which carries the
+  # Prisma CLI + schema). Runs to completion, then api waits on it.
+  migrate:
+    build: *api-build
+    image: sreforge/todo-api:dev
+    working_dir: /app
+    command: ["sh", "-c", "pnpm --filter @todo-app/db run db:migrate && pnpm --filter @todo-app/db run db:seed"]
+    environment: *api-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: *api-build
+    image: sreforge/todo-api:dev
+    ports:
+      - "3000:3000"
+    environment: *api-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/rules:/etc/prometheus/rules:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2h
+      - --web.enable-lifecycle
+    depends_on:
+      api:
+        condition: service_healthy
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ../observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ../observability/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   pgdata:
+  grafana-data:

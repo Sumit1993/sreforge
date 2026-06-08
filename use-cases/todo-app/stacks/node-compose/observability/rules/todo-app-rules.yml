@@ -1,62 +1,51 @@
+# SREForge v1 alert rules for the todo-api service.
+#
+# Primary signal for the `latency-retry-storm` scenario is TodoApiLatencyP99High.
+# Thresholds are tuned to the validated behaviour of the planted incident:
+#   - healthy baseline p99 stays <= ~0.1s
+#   - under the malformed-DELETE retry storm, each bad request costs ~270ms of
+#     retry backoff, so p99 interpolates to ~0.49s within the (0.1, 0.5] bucket
+# A threshold of 0.3s cleanly separates incident from healthy with margin both
+# ways. Histogram buckets are [0.1, 0.5, 1, 2, 5]; labels are method/route/status;
+# the `job` label is added by Prometheus scrape config.
 groups:
   - name: todo-app-api.rules
     rules:
-      - alert: HighTodoAppErrorRate
-        expr: rate(http_requests_total{job="todo-app-api", status=~"5.."}[5m]) > 0.01
-        for: 1m
+      - alert: TodoApiLatencyP99High
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job="todo-app-api"}[30s]))) > 0.3
+        for: 30s
         labels:
           severity: critical
-          service: "todo-app-api"
+          service: todo-api
         annotations:
-          summary: "High error rate on TodoApp API"
-          description: "The error rate for the TodoApp API is above 1% for more than 1 minute."
+          summary: "High p99 request latency on todo-api"
+          description: "p99 HTTP request latency is {{ $value | humanizeDuration }} (threshold 300ms) for the todo-api service."
 
-      - alert: HighMemoryUsage
-        expr: process_resident_memory_bytes{job="todo-app-api"} > 2000000
-        for: 2m
+      # Secondary signal — the retry storm also surfaces as 5xx. After the fix the
+      # malformed request becomes a fast 4xx, so this clears alongside the latency
+      # alert (used by the oracle's no-new-alerts / no-regression check).
+      - alert: TodoApiHighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="todo-app-api", status=~"5.."}[1m]))
+            /
+            clamp_min(sum(rate(http_requests_total{job="todo-app-api"}[1m])), 1e-9)
+          ) > 0.05
+        for: 30s
         labels:
           severity: warning
-          service: "todo-app-api"
+          service: todo-api
         annotations:
-          summary: "High memory usage in TodoApp API"
-          description: "Memory usage is above 200MB for more than 2 minutes."
+          summary: "Elevated 5xx error rate on todo-api"
+          description: "5xx error ratio is {{ $value | humanizePercentage }} (threshold 5%) for the todo-api service."
 
-      - alert: HighRequestLatency
-        expr: rate(http_request_duration_seconds_sum{job="todo-app-api"}[5m]) / rate(http_request_duration_seconds_count{job="todo-app-api"}[5m]) > 0.5
-        for: 1m
+      # Sanity — the scrape target is unreachable.
+      - alert: TodoApiDown
+        expr: up{job="todo-app-api"} == 0
+        for: 30s
         labels:
           severity: critical
-          service: "todo-app-api"
+          service: todo-api
         annotations:
-          summary: "High API latency"
-          description: "Average request duration is above 0.5 seconds for more than 1 minute."
-
-      - alert: LowRequestRate
-        expr: sum(rate(http_requests_total{job="todo-app-api"}[5m])) < 0.1
-        for: 5m
-        labels:
-          severity: warning
-          service: "todo-app-api"
-        annotations:
-          summary: "Low traffic on TodoApp API"
-          description: "Request rate is below 0.1 requests per second for more than 5 minutes."
-
-      - alert: ServiceDown
-        expr: up{job="todo-app-api"} == 0 or absent(up{job="todo-app-api"})
-        for: 1m
-        labels:
-          severity: critical
-          service: "todo-app-api"
-        annotations:
-          summary: "TodoApp API is down"
-          description: "The TodoApp API service is not responding to Prometheus scrapes."
-
-      - alert: SlowResponseTime
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 2
-        for: 5m
-        labels:
-          severity: warning
-          service: "todo-app-api"
-        annotations:
-          summary: "Slow response time detected"
-          description: "95th percentile of response time is above 2 seconds"
+          summary: "todo-api is down"
+          description: "Prometheus has been unable to scrape todo-api for 30s."

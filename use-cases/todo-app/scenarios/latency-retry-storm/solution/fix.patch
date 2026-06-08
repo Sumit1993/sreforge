@@ -1,0 +1,71 @@
+diff --git a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts
+index ccea9de..3472357 100644
+--- a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts
++++ b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts
+@@ -5,6 +5,7 @@ import {
+   Patch,
+   Delete,
+   Param,
++  ParseIntPipe,
+   Body,
+ } from '@nestjs/common';
+ import { TodosService } from './todos.service';
+@@ -32,7 +33,7 @@ export class TodosController {
+ 
+   @Patch(':id')
+   async toggleTodoStatus(
+-    @Param('id') id: number,
++    @Param('id', ParseIntPipe) id: number,
+     @Body('completed') completed: boolean,
+   ) {
+     const logger = new ContextLogger('TodosController');
+@@ -41,7 +42,7 @@ export class TodosController {
+   }
+ 
+   @Delete(':id')
+-  async deleteTodo(@Param('id') id: number) {
++  async deleteTodo(@Param('id', ParseIntPipe) id: number) {
+     const logger = new ContextLogger('TodosController');
+     logger.log(`DELETE /todos/${id} - Deleting todo`);
+     return this.todosService.deleteTodo(id);
+diff --git a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts
+index c89cc08..58f58cf 100644
+--- a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts
++++ b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts
+@@ -95,8 +95,23 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
+   }
+ 
+   /**
+-   * BUG #5: Retry wrapper with exponential backoff
+-   * Retries ALL errors including validation errors (should skip 4xx-equivalent)
++   * Only transient failures (connection/timeout) are worth retrying. Retrying
++   * non-transient errors (client-side validation, record-not-found, unique/FK
++   * violations) just amplifies latency without any chance of success.
++   */
++  private isRetryable(error: unknown): boolean {
++    const name = (error as { constructor?: { name?: string } })?.constructor?.name ?? '';
++    if (name === 'PrismaClientValidationError') return false;
++    const code = (error as { code?: unknown })?.code;
++    if (typeof code === 'string' && ['P2025', 'P2002', 'P2003'].includes(code)) {
++      return false;
++    }
++    return true;
++  }
++
++  /**
++   * Retry wrapper with exponential backoff. Non-transient errors are rethrown
++   * immediately instead of being retried.
+    */
+   private async withRetry<T>(
+     operation: () => Promise<T>,
+@@ -110,6 +125,10 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
+       } catch (error) {
+         lastError = error as Error;
+ 
++        if (!this.isRetryable(error)) {
++          throw lastError;
++        }
++
+         if (attempt < this.MAX_RETRIES - 1) {
+           // Exponential backoff with factor of 1.5 for quick recovery
+           const delay = this.INITIAL_RETRY_DELAY * Math.pow(1.5, attempt);
