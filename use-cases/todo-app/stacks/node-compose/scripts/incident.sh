@@ -15,20 +15,23 @@ ROOT="$(pwd)"
 REPO_ROOT="$(git -C "$ROOT" rev-parse --show-toplevel)"
 SCEN="$REPO_ROOT/use-cases/todo-app/scenarios/latency-retry-storm"
 PATCH="$SCEN/solution/fix.patch"
-COMPOSE="docker compose -f compose/docker-compose.yml"
-FILES=(apps/api/src/todos/todos.controller.ts apps/api/src/todos/todos.service.ts)
+SIBLINGS="$(cd "$REPO_ROOT/.." && pwd)"
+OPS="$SIBLINGS/prismalens-labs/todo-app-ops"
+API="$SIBLINGS/prismalens-labs/todo-app-api"
+COMPOSE="docker compose -f $OPS/compose/docker-compose.yml"
+FILES=(src/todos/todos.controller.ts src/todos/todos.service.ts)
 STORM_PID=""
 
 cleanup() {
   [ -n "$STORM_PID" ] && kill "$STORM_PID" 2>/dev/null || true
-  git -C "$ROOT" checkout -- "${FILES[@]}" 2>/dev/null || true
+  git -C "$API" checkout -- "${FILES[@]}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 
 log "[1/6] bring up baseline (buggy) stack"
-git -C "$ROOT" checkout -- "${FILES[@]}" 2>/dev/null || true   # ensure buggy baseline
+git -C "$API" checkout -- "${FILES[@]}" 2>/dev/null || true   # ensure buggy baseline
 bash scripts/up.sh
 
 log "[2/6] inject fault — malformed-DELETE retry storm (~1.5 rps, held under the rate limit, stays running)"
@@ -41,9 +44,9 @@ node scripts/confirm-fire.mjs --timeout=180
 
 log "[4/6] fix submitted -> CI gate -> CD redeploy"
 echo "    applying reference fix to the run workspace"
-git -C "$ROOT" apply "$PATCH"
-echo "    CI gate: nest build"
-if pnpm --filter todo-app-api-nestjs build > /tmp/sreforge-ci.log 2>&1; then
+git -C "$API" apply "$PATCH"
+echo "    CI gate: build + test"
+if (cd "$API" && pnpm db:generate && pnpm build && pnpm test) > /tmp/sreforge-ci.log 2>&1; then
   echo "    CI green"
 else
   echo "    CI RED — aborting (no deploy):"; tail -20 /tmp/sreforge-ci.log; exit 1

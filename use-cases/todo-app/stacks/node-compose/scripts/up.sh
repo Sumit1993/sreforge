@@ -2,8 +2,10 @@
 # Build + start the node-compose stack, then wait until the API is healthy and
 # Prometheus is scraping it. Idempotent.
 set -euo pipefail
-cd "$(dirname "$0")/.."   # node-compose root
-COMPOSE="docker compose -f compose/docker-compose.yml"
+cd "$(dirname "$0")/.."   # node-compose harness dir
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+OPS="$(cd "$REPO_ROOT/.." && pwd)/prismalens-labs/todo-app-ops"
+COMPOSE="docker compose -f $OPS/compose/docker-compose.yml"
 
 echo "==> building + starting stack"
 $COMPOSE up -d --build

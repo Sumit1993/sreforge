@@ -44,8 +44,8 @@ alert_fired_at               = ""    # populated at runtime by the confirm-fire 
 # --- paths (relative to this scenario directory) -------------------------------
 # All paths are relative to use-cases/todo-app/scenarios/latency-retry-storm/.
 [paths]
-stack    = "../../stacks/node-compose"                       # the live substrate this scenario deploys against
-compose  = "../../stacks/node-compose/compose/docker-compose.yml"  # compose file the harness builds/redeploys with
+stack    = "../../stacks/node-compose"                       # harness-side run layer (load driver + lifecycle/oracle scripts)
+compose  = "../../../../../prismalens-labs/todo-app-ops/compose/docker-compose.yml"  # ops repo compose (sibling); incident.sh also resolves this absolutely at runtime
 trigger  = "trigger.md"                                      # the neutral on-call page handed to the agent
 solution = "solution/reference-fix.md"                       # canonical reference fix (non-blocking diff hint)
 oracle   = "verify/oracle.md"                                # v1 mitigation-oracle specification

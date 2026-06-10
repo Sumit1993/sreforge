@@ -1,7 +1,7 @@
-diff --git a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts
+diff --git a/src/todos/todos.controller.ts b/src/todos/todos.controller.ts
 index ccea9de..3472357 100644
---- a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts
-+++ b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.controller.ts
+--- a/src/todos/todos.controller.ts
++++ b/src/todos/todos.controller.ts
 @@ -5,6 +5,7 @@ import {
    Patch,
    Delete,
@@ -28,16 +28,15 @@ index ccea9de..3472357 100644
      const logger = new ContextLogger('TodosController');
      logger.log(`DELETE /todos/${id} - Deleting todo`);
      return this.todosService.deleteTodo(id);
-diff --git a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts
-index c89cc08..58f58cf 100644
---- a/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts
-+++ b/use-cases/todo-app/stacks/node-compose/apps/api/src/todos/todos.service.ts
-@@ -95,8 +95,23 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
+diff --git a/src/todos/todos.service.ts b/src/todos/todos.service.ts
+index 27c4fb2..cfa9fbc 100644
+--- a/src/todos/todos.service.ts
++++ b/src/todos/todos.service.ts
+@@ -89,7 +89,23 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
    }
  
    /**
--   * BUG #5: Retry wrapper with exponential backoff
--   * Retries ALL errors including validation errors (should skip 4xx-equivalent)
+-   * Retry wrapper with exponential backoff for transient failures.
 +   * Only transient failures (connection/timeout) are worth retrying. Retrying
 +   * non-transient errors (client-side validation, record-not-found, unique/FK
 +   * violations) just amplifies latency without any chance of success.
@@ -58,7 +57,7 @@ index c89cc08..58f58cf 100644
     */
    private async withRetry<T>(
      operation: () => Promise<T>,
-@@ -110,6 +125,10 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
+@@ -103,6 +119,10 @@ export class TodosService implements OnModuleInit, OnModuleDestroy {
        } catch (error) {
          lastError = error as Error;
  

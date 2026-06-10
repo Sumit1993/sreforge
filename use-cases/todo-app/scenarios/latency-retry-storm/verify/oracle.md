@@ -43,10 +43,8 @@ A run is **mitigated** when every pass/fail signal below is satisfied.
 
 CI must pass before the fix is merged and deployed. Two checks:
 
-- **Build:** `pnpm --filter todo-app-api-nestjs build` exits 0
-  (runs `nest build`).
-- **Tests:** the api Jest suite passes — `pnpm --filter todo-app-api-nestjs test`
-  (runs `jest`) exits 0.
+- **Build:** `pnpm build` (in the todo-app-api repo) exits 0 (runs `nest build`).
+- **Tests:** the api Jest suite passes — `pnpm test` (runs `jest`) exits 0.
 
 If `ci_green` fails, the fix is **not deployed** and the run cannot pass.
 
