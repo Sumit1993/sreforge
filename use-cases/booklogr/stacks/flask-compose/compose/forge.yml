@@ -1,0 +1,80 @@
+# Local Git forge for the booklogr substrate — Gitea + a self-hosted Actions
+# runner. This is a SEPARATE, long-lived compose project from the app stack
+# (docker-compose.yml): the forge holds the imported repo and must persist
+# across runs, while the app deployment is reset every run.
+#
+# It gives us, locally and with zero github.com:
+#   - a real Git remote (the run workspace's `origin`, NOT the public upstream
+#     — retrieval isolation, D13/D15),
+#   - real PR + CI/CD via Gitea Actions (the CI gate is .gitea/workflows/ci.yml).
+#
+# Bring-up order (see scripts/import-substrate.sh):
+#   1. docker compose -f forge.yml up -d gitea
+#   2. create the admin user + a runner registration token
+#   3. set GITEA_RUNNER_REGISTRATION_TOKEN in .env, then up the act_runner
+#   4. import the substrate (mirror push) + push the instrumented baseline
+
+# Explicit project name — the compose dir is `compose/`, which would otherwise
+# collide with other stacks that also live in a `compose/` dir.
+name: booklogr-forge
+
+services:
+  gitea:
+    image: docker.gitea.com/gitea:1.26.2
+    container_name: booklogr-gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__server__SSH_PORT: "222"
+      # Enable Actions (CI/CD) globally; still must be enabled per-repo.
+      GITEA__actions__ENABLED: "true"
+      # Resolve `uses:` actions (e.g. actions/checkout@v4) from GitHub (reachable
+      # here). Gitea 1.26 only accepts the keyword "github" (not a full URL).
+      GITEA__actions__DEFAULT_ACTIONS_URL: github
+      # Local single-instance forge: open it up for scripted setup.
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "false"
+    volumes:
+      - gitea-data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "3000:3000"   # web UI + HTTP git
+      - "222:22"      # SSH git (host 222 -> container 22)
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  act_runner:
+    build:
+      context: ../gitea
+      dockerfile: runner.Dockerfile
+    image: booklogr-act-runner:local
+    container_name: booklogr-act-runner
+    restart: unless-stopped
+    environment:
+      GITEA_INSTANCE_URL: http://gitea:3000
+      # Must be set in .env before the runner can register (the setup generates
+      # it from Gitea, which has to be up first). Empty here so `up gitea` alone
+      # still parses; an empty token just fails registration at runtime.
+      GITEA_RUNNER_REGISTRATION_TOKEN: ${GITEA_RUNNER_REGISTRATION_TOKEN:-}
+      GITEA_RUNNER_NAME: booklogr-local-runner
+      CONFIG_FILE: /config.yaml
+    volumes:
+      - ../gitea/runner-config.yaml:/config.yaml:ro
+      - act-runner-data:/data
+      # Host Docker daemon — ci.yml's `docker build` runs on the host (the
+      # runner maps ubuntu-latest to host execution; see runner-config.yaml).
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      gitea:
+        condition: service_healthy
+
+volumes:
+  gitea-data:
+  act-runner-data:

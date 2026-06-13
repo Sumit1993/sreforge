@@ -13,3 +13,4 @@ export interface Cleanup {
 }
 
 export { ComposeCleanup } from "./cleanup.js";
+export type { ComposeCleanupOptions } from "./cleanup.js";

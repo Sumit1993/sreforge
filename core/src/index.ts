@@ -51,16 +51,30 @@ export { NoopAgentRunner } from "./runner/index.js";
 export type { AutoMerge, CdDeployer, CiGate } from "./deploy/index.js";
 export {
   ComposeCdDeployer,
-  ComposeCiGate,
-  GitAutoMerge,
+  GiteaAutoMerge,
+  GiteaCiGate,
+  GiteaClient,
+} from "./deploy/index.js";
+export type {
+  CiRunStatus,
+  ComposeCdDeployerOptions,
+  GiteaAutoMergeOptions,
+  GiteaCiGateOptions,
+  GiteaClientOptions,
+  PullRequestRef,
 } from "./deploy/index.js";
 
 // ---- Verify ---------------------------------------------------------------
 export type { Oracle, OracleContext } from "./verify/index.js";
-export { CompoundedOracle, MitigationOracle } from "./verify/index.js";
+export {
+  CompoundedOracle,
+  MitigationOracle,
+  PrometheusAlertProbe,
+} from "./verify/index.js";
 export type {
   AlertProbe,
   MitigationOracleOptions,
+  PrometheusAlertProbeOptions,
   WeightedOracle,
 } from "./verify/index.js";
 
@@ -72,3 +86,4 @@ export type { FileRunRecorderOptions } from "./record/index.js";
 // ---- Cleanup --------------------------------------------------------------
 export type { Cleanup } from "./cleanup/index.js";
 export { ComposeCleanup } from "./cleanup/index.js";
+export type { ComposeCleanupOptions } from "./cleanup/index.js";

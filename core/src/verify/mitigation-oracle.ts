@@ -74,6 +74,14 @@ export class MitigationOracle implements Oracle {
       return failClosed(this.id, "ci was not green; fix never deployed");
     }
 
+    // The fix must also have become live. If the CD redeploy failed the alert
+    // cannot clear by any legitimate means, so short-circuit rather than burn
+    // the full clear budget waiting on a fix that never deployed.
+    const deployed = ctx.deploy?.redeployed ?? false;
+    if (!deployed) {
+      return failClosed(this.id, "deploy did not succeed; fix never became live");
+    }
+
     // Signal 2 — wait (bounded) for the alert to clear.
     const startedAt = this.#probe.now();
     const deadline = startedAt + mitigation.maxClearTimeSeconds * 1_000;

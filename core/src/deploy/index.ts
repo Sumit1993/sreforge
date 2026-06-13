@@ -30,6 +30,13 @@ export interface CdDeployer {
   redeploy(service: string): Promise<DeployResult>;
 }
 
-export { ComposeCiGate } from "./ci-gate.js";
-export { GitAutoMerge } from "./ci-gate.js";
+export { GiteaCiGate, GiteaAutoMerge } from "./ci-gate.js";
+export type { GiteaCiGateOptions, GiteaAutoMergeOptions } from "./ci-gate.js";
 export { ComposeCdDeployer } from "./cd-deployer.js";
+export type { ComposeCdDeployerOptions } from "./cd-deployer.js";
+export { GiteaClient } from "./gitea-client.js";
+export type {
+  GiteaClientOptions,
+  CiRunStatus,
+  PullRequestRef,
+} from "./gitea-client.js";

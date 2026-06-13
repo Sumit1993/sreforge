@@ -163,7 +163,11 @@ export class Conductor {
       // Phase: cleanup — always restore the baseline for the next run.
       await timed(timings, "cleanup", () =>
         this.#deps.cleanup.reset(config.agentContext.runWorkspace),
-      ).catch(() => undefined);
+      ).catch((err: unknown) => {
+        process.stderr.write(
+          `[conductor] cleanup failed: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      });
     }
   }
 

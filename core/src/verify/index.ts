@@ -36,3 +36,5 @@ export { CompoundedOracle } from "./oracle.js";
 export type { WeightedOracle } from "./oracle.js";
 export { MitigationOracle } from "./mitigation-oracle.js";
 export type { AlertProbe, MitigationOracleOptions } from "./mitigation-oracle.js";
+export { PrometheusAlertProbe } from "./prometheus-alert-probe.js";
+export type { PrometheusAlertProbeOptions } from "./prometheus-alert-probe.js";

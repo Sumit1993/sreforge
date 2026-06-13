@@ -1,0 +1,172 @@
+# booklogr deployment + observability stack.
+#
+#   booklogr-db    -> Postgres datastore
+#   booklogr-api   -> Flask API, gunicorn -w 4
+#                     + prometheus-flask-exporter multiprocess metrics on :9090
+#   booklogr-web   -> React/Vite UI behind nginx
+#   prometheus     -> scrapes booklogr-api:9090/metrics, evaluates alert rules
+#   alertmanager   -> alert routing (firing state is read from Prometheus)
+#   grafana        -> observability dashboards
+#
+# The API + web build from the application checkout at ../substrate/booklogr
+# (populated by scripts/import-substrate.sh; gitignored). The observability
+# config lives here in the deployment overlay, not in the application repo.
+#
+# The Git forge + runner are a SEPARATE, long-lived compose project
+# (compose/forge.yml): this stack is rebuilt on deploy, while the forge (which
+# holds the repo) persists.
+
+# Explicit project name — the compose dir is `compose/`, which would otherwise
+# collide with other stacks that also live in a `compose/` dir.
+name: booklogr
+
+x-substrate: &substrate ../substrate/booklogr
+
+services:
+  booklogr-db:
+    image: postgres:16-alpine
+    container_name: booklogr-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: booklogr
+      POSTGRES_PASSWORD: booklogrpass
+      POSTGRES_DB: booklogr
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booklogr -d booklogr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  booklogr-api:
+    build:
+      context: *substrate
+      dockerfile: Dockerfile
+    image: booklogr-api:local
+    container_name: booklogr-api
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://booklogr:booklogrpass@booklogr-db:5432/booklogr
+      SINGLE_USER_MODE: "true"
+      AUTH_SECRET_KEY: dev-secret-not-for-production
+      AUTH_DEFAULT_USER: ${AUTH_DEFAULT_USER:-demo@booklogr.app}
+      AUTH_DEFAULT_PASSWORD: ${AUTH_DEFAULT_PASSWORD:-demo}
+      # Shared dir for the multi-worker Prometheus metrics aggregation. Also set
+      # by the entrypoint; declared here so it is correct even if the entrypoint
+      # is run unpatched.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+      # Book metadata providers. Override to point at a private metadata mirror
+      # for air-gapped or CI deployments instead of the public APIs.
+      DATA_PROVIDER: ${DATA_PROVIDER:-http://book-metadata:8080}
+      DATA_PROVIDER_FALLBACK: ${DATA_PROVIDER_FALLBACK:-http://book-metadata:8080}
+    depends_on:
+      booklogr-db:
+        condition: service_healthy
+      book-metadata:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/', timeout=3).status==200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
+
+  booklogr-web:
+    build:
+      context: ../substrate/booklogr/web
+      dockerfile: Dockerfile
+    image: booklogr-web:local
+    container_name: booklogr-web
+    ports:
+      - "5150:80"
+    environment:
+      BL_API_ENDPOINT: http://localhost:5000/
+      BL_GOOGLE_ID: ""
+      BL_DEMO_MODE: "false"
+    depends_on:
+      booklogr-api:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: booklogr-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/rules:/etc/prometheus/rules:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2h
+      - --web.enable-lifecycle
+    depends_on:
+      booklogr-api:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    container_name: booklogr-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ../observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: booklogr-grafana
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ../observability/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # The external book-metadata API the app depends on. Models a slow/degraded
+  # upstream (fixed injected latency) deterministically, so the incident never
+  # depends on — or hits — the real public API.
+  book-metadata:
+    build:
+      context: ../stub
+      dockerfile: Dockerfile
+    image: booklogr-book-metadata:local
+    container_name: booklogr-book-metadata
+    environment:
+      LATENCY_MS: ${UPSTREAM_LATENCY_MS:-1200}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).status==200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Load driver (the storm). On-demand only — started with `--profile load`,
+  # never as part of the default stack bring-up.
+  k6:
+    image: grafana/k6:latest
+    container_name: booklogr-k6
+    profiles: ["load"]
+    command: ["run", "/scripts/booklogr-storm.js"]
+    environment:
+      API_URL: http://booklogr-api:5000
+      RATE: ${RATE:-25}
+    volumes:
+      - ../load:/scripts:ro
+    depends_on:
+      booklogr-api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  grafana-data:

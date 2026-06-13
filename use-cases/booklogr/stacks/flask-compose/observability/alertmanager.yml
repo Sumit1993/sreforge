@@ -1,0 +1,16 @@
+# Alertmanager config for booklogr.
+# Firing alerts are consumed from Prometheus directly by the on-call tooling;
+# routing to external notifiers (PagerDuty/Slack) is handled outside this
+# instance, so the local receiver is a no-op.
+global:
+  resolve_timeout: 1m
+
+route:
+  group_by: ['alertname', 'service']
+  group_wait: 5s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'null'
+
+receivers:
+  - name: 'null'

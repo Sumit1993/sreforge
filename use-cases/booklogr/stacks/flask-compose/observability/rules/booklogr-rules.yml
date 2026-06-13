@@ -1,0 +1,50 @@
+# Alert rules for the booklogr API service.
+#
+# Metric names are prometheus-flask-exporter's defaults: the request-duration
+# histogram is flask_http_request_duration_seconds_bucket (labels
+# method/path/status; the `job` label is added by the scrape config). Buckets
+# are prometheus-client defaults (.005 .01 .025 .05 .1 .25 .5 1 2.5 5 10).
+#
+# p99 threshold 300ms: healthy service-wide p99 sits well under 100ms. Sustained
+# p99 above 300ms means the external book-metadata lookups are backing up (their
+# upstreams degrading) and tying up request workers — what we page on.
+groups:
+  - name: booklogr-api.rules
+    rules:
+      - alert: BooklogrApiLatencyP99High
+        expr: histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[30s]))) > 0.3
+        for: 30s
+        labels:
+          severity: critical
+          service: booklogr-api
+        annotations:
+          summary: "High p99 request latency on booklogr-api"
+          description: "p99 HTTP request latency is {{ $value | humanizeDuration }} (threshold 300ms) for the booklogr-api service."
+
+      # Secondary signal — when the upstream degrades, book lookups also surface
+      # as 5xx (raised exceptions / 503).
+      - alert: BooklogrApiHighErrorRate
+        expr: |
+          (
+            sum(rate(flask_http_request_total{job="booklogr-api", status=~"5.."}[1m]))
+            /
+            clamp_min(sum(rate(flask_http_request_total{job="booklogr-api"}[1m])), 1e-9)
+          ) > 0.05
+        for: 30s
+        labels:
+          severity: warning
+          service: booklogr-api
+        annotations:
+          summary: "Elevated 5xx error rate on booklogr-api"
+          description: "5xx error ratio is {{ $value | humanizePercentage }} (threshold 5%) for the booklogr-api service."
+
+      # Sanity — the scrape target is unreachable.
+      - alert: BooklogrApiDown
+        expr: up{job="booklogr-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: booklogr-api
+        annotations:
+          summary: "booklogr-api is down"
+          description: "Prometheus has been unable to scrape booklogr-api for 30s."
