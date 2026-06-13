@@ -2,8 +2,8 @@
   "schema": "mage.v1",
   "mode": "external",
   "project": "sreforge",
-  "hub_path": "/home/sumit/sources/sreforge-memory",
+  "hub_path": "/home/sumit/sources/sreforge-workspace/sreforge-memory",
   "hub_repo": "https://github.com/Sumit1993/sreforge-memory.git",
   "hub_refs": [],
-  "linked_at": "2026-06-03T19:38:54Z"
+  "linked_at": "2026-06-10T10:57:25Z"
 }
