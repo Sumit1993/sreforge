@@ -53,7 +53,6 @@ alert_fired_at               = ""    # populated at runtime by the confirm-fire 
 [paths]
 stack    = "../../stacks/flask-compose"                          # BINDING — harness-side run layer for this substrate
 compose  = "../../stacks/flask-compose/compose/docker-compose.yml"  # BINDING — in-repo compose file (not an external ops repo)
-trigger  = "trigger.md"                                          # BINDING — the neutral on-call page handed to the agent
 solution = "solution/fix.patch"                                 # BINDING — canonical reference fix (harness-internal, not agent-facing)
 oracle   = "verify/oracle.md"                                    # BINDING — v1 mitigation-oracle specification (harness-internal)
 

@@ -38,8 +38,10 @@ services:
       GITEA__service__DISABLE_REGISTRATION: "false"
     volumes:
       - gitea-data:/data
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
+      # NOTE: host /etc/timezone + /etc/localtime are intentionally NOT bind-mounted.
+      # On WSL2 + Rancher Desktop /etc/localtime is a symlink (-> zoneinfo/Etc/UTC)
+      # that the docker-mount layer resolves to a directory, so the bind fails with
+      # "mount a directory onto a file" and Gitea won't start. Gitea defaults to UTC.
     ports:
       - "3000:3000"   # web UI + HTTP git
       - "222:22"      # SSH git (host 222 -> container 22)
