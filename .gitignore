@@ -5,3 +5,17 @@ dist/
 *.log
 .DS_Store
 *.stackdump
+
+# Local Claude Code config (machine-specific; never shared)
+.claude/settings.local.json
+.claude/settings.local.json.bak
+
+# Python build artifacts
+__pycache__/
+*.pyc
+
+# Scenario authoring notes (the detailed reference solution + injection recipe)
+# stay harness-internal — like a benchmark's answer key. The published package
+# ships the neutral trigger, the oracle spec, and solution/fix.patch.
+**/scenarios/*/solution/reference-fix.md
+**/scenarios/*/inject/README.md

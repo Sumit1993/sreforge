@@ -9,3 +9,7 @@ substrate/
 # Compose-managed local state (if any binds land here).
 gitea-data/
 act-runner-data/
+
+# Per-run records written by the conductor driver (run-incident.mjs) — ephemeral
+# run artifacts (record.json / diff.patch / transcript.txt), regenerated each run.
+runs/
