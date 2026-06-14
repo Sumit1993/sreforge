@@ -71,7 +71,17 @@ fi
 echo "==> 5. working checkout + baseline instrumentation + local CI (two commits)"
 rm -rf "$WORK_DIR"
 git clone "$PUSH_REMOTE" "$WORK_DIR"
-commit() { git -C "$WORK_DIR" -c user.name="$GITEA_ADMIN_USER" -c user.email="$GITEA_ADMIN_EMAIL" commit "$@"; }
+# Author the baseline commits under the upstream's own authorship (the
+# most-recent upstream author), captured dynamically so this generalizes to any
+# substrate — keeping the instrumentation + CI commits consistent with the
+# imported project's existing history rather than a separate tooling identity.
+MAINT_NAME="$(git -C "$WORK_DIR" log -1 --format='%an')"
+MAINT_EMAIL="$(git -C "$WORK_DIR" log -1 --format='%ae')"
+commit() {
+  GIT_AUTHOR_NAME="$MAINT_NAME" GIT_AUTHOR_EMAIL="$MAINT_EMAIL" \
+  GIT_COMMITTER_NAME="$MAINT_NAME" GIT_COMMITTER_EMAIL="$MAINT_EMAIL" \
+  git -C "$WORK_DIR" commit "$@"
+}
 
 # commit 1 — observability instrumentation (a separate concern from CI, so a
 # separate commit, the way a real team would land two PRs).

@@ -16,3 +16,5 @@ export interface AgentRunner {
 }
 
 export { NoopAgentRunner } from "./agent-runner.js";
+export { ScriptedFixAgentRunner } from "./scripted-fix-runner.js";
+export type { ScriptedFixAgentRunnerOptions } from "./scripted-fix-runner.js";

@@ -28,7 +28,7 @@ git -C "$WORK" add -A
 if git -C "$WORK" diff --cached --quiet; then
   echo "nothing to commit (already on baseline)"
 else
-  git -C "$WORK" commit -m "Disable response cache for search while debugging stale results" >/dev/null
+  git -C "$WORK" commit -m "Disable response caching on book search" >/dev/null
   echo "committed regression"
 fi
 git -C "$WORK" push origin HEAD

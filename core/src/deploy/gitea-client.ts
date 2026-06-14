@@ -93,11 +93,30 @@ export class GiteaClient {
     return { index: pr.number, headSha: pr.head?.sha ?? "" };
   }
 
+  /** Opens a PR from `branch` into `base`. Returns the new PR index, or null if
+   *  the forge rejected it (e.g. no diff between branch and base, or a PR for
+   *  the branch is already open). The head is the bare branch name (same-repo
+   *  PR) so a later {@link openPrForBranch} lookup (`?head=owner:branch`)
+   *  resolves the same PR. */
+  async createPr(branch: string, base: string, title: string): Promise<number | null> {
+    const res = await this.#fetch(`/pulls`, {
+      method: "POST",
+      body: JSON.stringify({ head: branch, base, title }),
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const body = (await res.json()) as { number?: number };
+    return typeof body.number === "number" ? body.number : null;
+  }
+
   /** Merges a PR by index. Returns whether it merged + the merge commit SHA. */
   async mergePr(index: number): Promise<MergeOutcome> {
     const res = await this.#fetch(`/pulls/${index}/merge`, {
       method: "POST",
-      body: JSON.stringify({ Do: "merge", delete_branch_after_merge: false }),
+      // Delete the per-run fix branch on merge so the forge history an agent
+      // clones does not accumulate prior runs' branches (a subtle tell).
+      body: JSON.stringify({ Do: "merge", delete_branch_after_merge: true }),
     });
     if (!res.ok) {
       return { merged: false };
