@@ -1,7 +1,7 @@
 {
   "name": "sreforge",
   "private": true,
-  "description": "SREForge — a contamination-controlled, event-triggered evaluation harness for autonomous SWE/SRE agents. core/ = the engine (built in v1); use-cases/todo-app/ = use-case #1. Knowledge base: external hub 'sreforge-memory', project 'sreforge'.",
+  "description": "SREForge — a contamination-controlled, event-triggered evaluation harness for autonomous SWE/SRE agents. core/ = the engine (built in v1); use-cases/booklogr/ = use-case #1. Knowledge base: external hub 'sreforge-memory', project 'sreforge'.",
   "packageManager": "pnpm@10.32.1",
   "engines": {
     "node": ">=18"

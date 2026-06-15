@@ -4,7 +4,7 @@
  * Public surface for driving one contamination-controlled incident run:
  *   trigger → context → run → deploy → verify → record → cleanup.
  *
- * This package contains NO use-case/stack/scenario logic (no todo-app). Those
+ * This package contains NO use-case/stack/scenario logic. Those
  * live under `use-cases/` and wire the engine via the interfaces re-exported
  * here.
  */

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bring up the booklogr app deployment + observability overlay (the resettable
-# stack). The forge (compose/forge.yml) is brought up separately and persists.
+# stack). The shared forge (infra/forge/forge.yml) is brought up separately and persists.
 # Requires the substrate to have been imported (substrate/booklogr present).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

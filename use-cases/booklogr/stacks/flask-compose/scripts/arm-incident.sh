@@ -40,8 +40,8 @@ git -C "$STACK/substrate/booklogr" clean -fd
 # timeout) can never get a free worker and the container never reports healthy.
 # The incident is established by APPLYING load to a healthy baseline, not by
 # booting the baseline under load — so stop the storm, settle, then re-apply it.
-echo "==> Quiescing load (stop k6) before regressed redeploy..."
-docker stop booklogr-k6 >/dev/null 2>&1 || true
+echo "==> Quiescing load (stop edge-client) before regressed redeploy..."
+docker stop edge-client >/dev/null 2>&1 || true
 
 # 4. Redeploy the regressed api and wait healthy (max ~90s)
 echo "==> Deploying regressed booklogr-api..."
@@ -65,8 +65,8 @@ fi
 echo "==> booklogr-api is healthy"
 
 # 5. Ensure the storm is running (on-demand load profile)
-echo "==> Ensuring k6 load storm is running..."
-RATE="${RATE:-25}" docker compose -p booklogr -f "$STACK/compose/docker-compose.yml" --profile load up -d k6
+echo "==> Ensuring the load storm is running (edge-client)..."
+RATE="${RATE:-25}" docker compose -p booklogr-edge -f "$STACK/compose/load.yml" up -d
 
 # 6. Confirm the alert fires (D10 gate)
 echo "==> Waiting for alert to fire (timeout=240s)..."

@@ -4,7 +4,7 @@ A programmatic gate that enforces **D8 (de-tell)** and **D12 (physical
 substrate/harness separation)** as a build check instead of a doc decision.
 
 The threat it defends against: an agent-under-test is handed a substrate repo
-(`prismalens-labs/todo-app-{api,ui,ops}`) plus its live deployment, and is
+(e.g. `booklogr/booklogr` in the local Gitea forge) plus its live deployment, and is
 supposed to diagnose an incident *as if it were a real production system*. If
 the repo contains `// BUG #5`, a README boasting an "Incident Simulation
 Dashboard", a `sreforge`-named Dockerfile, or committed logs with the harness's
@@ -21,7 +21,7 @@ than a check the build runs.**
 |-------|------|----------------|
 | Planted-bug markers | BLOCK | `// BUG #5: retries ALL errors` |
 | Harness vocabulary | BLOCK | `sreforge`, `harness`, `oracle`, `de-tell`, `contamination` |
-| Scenario / oracle names | BLOCK | `latency-retry-storm`, `confirm-fire`, `verify-clear` |
+| Scenario / oracle names | BLOCK | `latency-cache-stampede`, `confirm-fire`, `verify-clear` |
 | Simulation product copy | BLOCK | "Incident Simulation Dashboard", "trigger Prometheus alerts" |
 | Injection confessions | BLOCK | "malformed ValidationPipe injection", "sed injection" |
 | Harness files/dirs present | BLOCK | `load/`, `scenarios/`, `.claude/settings.local.json`, `driver.mjs` |
@@ -62,10 +62,9 @@ loudest tell of all. The substrate stays clean; the guard reaches in from
 outside.
 
 Enforcement points (all harness-side):
-- **Restructure acceptance gate** — after splitting `node-compose/` into the
-  `prismalens-labs/*` repos, every substrate must scan clean before it's
-  considered done. Run it against the contaminated `node-compose/apps/*` today
-  and it FAILs with 38 blocks — that's the RED you make GREEN.
+- **Import acceptance gate** — an imported substrate must scan clean before it's
+  used as a use case: run the guard against the checkout and treat any BLOCK as a
+  contamination leak to fix before the substrate goes live.
 - **Conductor preflight** — `core/` should run the guard against the substrate
   checkout before deploying it to an agent, and refuse to launch on any BLOCK.
 - **sreforge pre-commit / CI** — scan the substrate working copies on commit.

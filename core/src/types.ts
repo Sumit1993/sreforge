@@ -4,8 +4,8 @@
  * These types are the spine of the closed-loop incident run:
  *   trigger → context → run → deploy → verify → record → cleanup.
  *
- * Nothing here may reference a concrete use-case, stack, or scenario
- * (e.g. the todo-app). The engine is domain-agnostic by construction.
+ * Nothing here may reference a concrete use-case, stack, or scenario.
+ * The engine is domain-agnostic by construction.
  */
 
 // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ export type RunPhase =
 export interface Trigger {
   /** Stable identifier of the trigger kind, e.g. `"prometheus-alert"`. */
   readonly source: string;
-  /** The firing alert's name, e.g. `"TodoApiLatencyP99High"`. */
+  /** The firing alert's name, e.g. `"ApiLatencyP99High"`. */
   readonly alertName: string;
   /** Alert severity as reported by the source, if any. */
   readonly severity?: string;

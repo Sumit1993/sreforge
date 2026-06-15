@@ -13,8 +13,8 @@
 # config lives here in the deployment overlay, not in the application repo.
 #
 # The Git forge + runner are a SEPARATE, long-lived compose project
-# (compose/forge.yml): this stack is rebuilt on deploy, while the forge (which
-# holds the repo) persists.
+# (infra/forge/forge.yml, shared across use cases): this stack is rebuilt on
+# deploy, while the forge (which holds the repo) persists.
 
 # Explicit project name — the compose dir is `compose/`, which would otherwise
 # collide with other stacks that also live in a `compose/` dir.
@@ -96,10 +96,13 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ../observability/rules:/etc/prometheus/rules:ro
+      # Mount the whole observability/ dir, NOT individual files. On WSL2 +
+      # Rancher Desktop a single-FILE bind is staged through the docker-mounts
+      # shim and can resolve as a directory on recreate (the failure that broke
+      # the forge mounts); a directory bind is stable.
+      - ../observability:/etc/prometheus/conf:ro
     command:
-      - --config.file=/etc/prometheus/prometheus.yml
+      - --config.file=/etc/prometheus/conf/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=2h
       - --web.enable-lifecycle
@@ -115,9 +118,10 @@ services:
     ports:
       - "9093:9093"
     volumes:
-      - ../observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Directory bind (not a single file) — see the prometheus note above.
+      - ../observability:/etc/alertmanager/conf:ro
     command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --config.file=/etc/alertmanager/conf/alertmanager.yml
 
   grafana:
     image: grafana/grafana:11.4.0
@@ -129,7 +133,9 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     volumes:
-      - ../observability/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      # Bind the grafana/ dir as the provisioning datasources dir (directory
+      # bind, not a single file) — see the prometheus note above.
+      - ../observability/grafana:/etc/grafana/provisioning/datasources:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
@@ -151,21 +157,9 @@ services:
       timeout: 5s
       retries: 5
 
-  # Load driver (the storm). On-demand only — started with `--profile load`,
-  # never as part of the default stack bring-up.
-  k6:
-    image: grafana/k6:latest
-    container_name: booklogr-k6
-    profiles: ["load"]
-    command: ["run", "/scripts/booklogr-storm.js"]
-    environment:
-      API_URL: http://booklogr-api:5000
-      RATE: ${RATE:-25}
-    volumes:
-      - ../load:/scripts:ro
-    depends_on:
-      booklogr-api:
-        condition: service_healthy
+# The load driver lives in its OWN compose project (compose/load.yml, project
+# booklogr-edge), so it is never part of this deployment — an agent inspecting
+# the running stack sees only the product, not a synthetic load injector (de-tell).
 
 volumes:
   pgdata:

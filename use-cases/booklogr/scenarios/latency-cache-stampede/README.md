@@ -51,7 +51,7 @@ Individual pieces, if you want to step through the observability path by hand:
 ./up.sh
 
 # 3. start the k6 constant-arrival-rate storm (runs continuously)
-docker compose -f compose/docker-compose.yml --profile load up k6
+docker compose -p booklogr-edge -f compose/load.yml up -d
 
 # 4. wait for BooklogrApiLatencyP99High to enter the firing state
 node scripts/confirm-fire.mjs --alert BooklogrApiLatencyP99High

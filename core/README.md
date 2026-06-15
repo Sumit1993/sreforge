@@ -4,8 +4,8 @@ The **domain-agnostic engine** of SREForge — a contamination-controlled,
 event-triggered evaluation harness for autonomous SWE/SRE agents.
 
 `core/` orchestrates one incident run end-to-end and contains **no**
-use-case, stack, or scenario logic. It never references the todo-app (or any
-other substrate); domains plug in through the interfaces this package exports.
+use-case, stack, or scenario logic. It never references a concrete substrate;
+domains plug in through the interfaces this package exports.
 
 ## Role
 
