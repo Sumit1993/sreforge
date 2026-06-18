@@ -4,6 +4,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # = $SCRIPTS
 STACK="$(dirname "$HERE")"                              # = stacks/flask-compose
 SCRIPTS="$HERE"
+. "$HERE/lib-deploy.sh"   # neutral DEPLOY_DIR + COMPOSE_FILE/LOAD_FILE (de-tell)
 
 # 1. Guard: substrate must be imported
 echo "==> Checking substrate workspace..."
@@ -23,15 +24,18 @@ for lb in $(git -C "$WORK" for-each-ref --format='%(refname:short)' 'refs/heads/
   git -C "$WORK" branch -D "$lb" >/dev/null 2>&1 || true
 done
 
-# 2. Re-regress the forge default branch (reset main to immutable regressed baseline)
-echo "==> Re-regressing forge: resetting origin/main to origin/baseline..."
+# 2. Re-regress the forge default branch (reset main to the immutable regressed
+#    baseline). The baseline anchor is a LOCAL branch — never published to origin
+#    (see import-substrate.sh) — so we push it straight onto origin/main; the
+#    agent-visible forge never shows a tell-tale `baseline` branch.
+echo "==> Re-regressing forge: resetting origin/main from the local baseline anchor..."
 git -C "$STACK/substrate/booklogr" fetch origin --prune --quiet
-git -C "$STACK/substrate/booklogr" push -f origin origin/baseline:main
+git -C "$STACK/substrate/booklogr" push -f origin baseline:main
 
 # 3. Reset the local workspace onto the regressed baseline on a clean main
-echo "==> Resetting local workspace to origin/baseline..."
-git -C "$STACK/substrate/booklogr" checkout -B main origin/baseline
-git -C "$STACK/substrate/booklogr" reset --hard origin/baseline
+echo "==> Resetting local workspace to the baseline anchor..."
+git -C "$STACK/substrate/booklogr" checkout -B main baseline
+git -C "$STACK/substrate/booklogr" reset --hard baseline
 git -C "$STACK/substrate/booklogr" clean -fd
 
 # 3b. Quiesce any in-flight load BEFORE bringing up the regressed baseline.
@@ -45,7 +49,7 @@ docker stop edge-client >/dev/null 2>&1 || true
 
 # 4. Redeploy the regressed api and wait healthy (max ~90s)
 echo "==> Deploying regressed booklogr-api..."
-docker compose -p booklogr -f "$STACK/compose/docker-compose.yml" up -d --build booklogr-api
+docker compose -p booklogr -f "$COMPOSE_FILE" up -d --build booklogr-api
 
 echo "==> Waiting for booklogr-api to become healthy (max 90s)..."
 healthy=0
@@ -66,7 +70,7 @@ echo "==> booklogr-api is healthy"
 
 # 5. Ensure the storm is running (on-demand load profile)
 echo "==> Ensuring the load storm is running (edge-client)..."
-RATE="${RATE:-25}" docker compose -p booklogr-edge -f "$STACK/compose/load.yml" up -d
+RATE="${RATE:-25}" docker compose -p booklogr-edge -f "$LOAD_FILE" up -d
 
 # 6. Confirm the alert fires (D10 gate)
 echo "==> Waiting for alert to fire (timeout=240s)..."

@@ -26,6 +26,8 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
+import { homedir } from "node:os";
+import fs from "node:fs";
 import {
   runIncident,
   PrometheusAlertTrigger,
@@ -61,9 +63,25 @@ const PROM_URL = env.PROM_URL || "http://localhost:9090";
 const ALERT = env.ALERT || "BooklogrApiLatencyP99High";
 const SERVICE = env.SERVICE || "booklogr-api";
 const PROJECT = env.COMPOSE_PROJECT || "booklogr";
-const COMPOSE_FILE = resolve(STACK, "compose/docker-compose.yml");
+// Deploy from a NEUTRAL symlink so docker-inspect project labels don't leak the
+// harness path (mirrors scripts/lib-deploy.sh). The symlink target is invisible
+// to the agent; only the neutral path appears in com.docker.compose.project.*.
+function resolveDeployDir(stack) {
+  for (const c of [process.env.SREFORGE_DEPLOY_DIR, "/srv/booklogr", join(homedir(), "srv/booklogr")].filter(Boolean)) {
+    try {
+      fs.mkdirSync(dirname(c), { recursive: true });
+      try { fs.symlinkSync(stack, c); } catch (e) { if (e.code !== "EEXIST") throw e; }
+      if (fs.realpathSync(c) === fs.realpathSync(stack)) return c;
+    } catch { /* try next candidate */ }
+  }
+  return stack;
+}
+const COMPOSE_FILE = resolve(resolveDeployDir(STACK), "compose/docker-compose.yml");
 const WORKSPACE = resolve(STACK, "substrate/booklogr");
-const BASELINE_REF = env.BASELINE_REF || "origin/baseline";
+// Local branch, not origin/baseline: the baseline anchor is kept host-side only
+// so the agent-visible forge never carries a `baseline` branch (de-tell). The
+// cleanup's `git reset --hard <ref>` resolves it from the local workspace.
+const BASELINE_REF = env.BASELINE_REF || "baseline";
 
 if (!TOKEN) {
   console.error("FATAL: GITEA_TOKEN is not set. Run `set -a; source .env; set +a` first.");

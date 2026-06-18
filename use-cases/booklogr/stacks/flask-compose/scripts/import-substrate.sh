@@ -52,6 +52,13 @@ echo "==> 2. ensure org + empty repo exist in Gitea"
 api -X POST "$API/orgs" -d "{\"username\":\"$GITEA_REPO_OWNER\"}" >/dev/null 2>&1 || true
 api -X POST "$API/orgs/$GITEA_REPO_OWNER/repos" \
   -d "{\"name\":\"$GITEA_REPO_NAME\",\"private\":true,\"auto_init\":false}" >/dev/null 2>&1 || true
+# Keep repo Actions DISABLED during import so pushing the upstream history+tags
+# (whose old commits still carry .github/workflows) does NOT spawn failed
+# GitHub-only CI runs in the Actions tab — a "freshly machine-imported" tell.
+# Re-enabled at step 6, after the baseline commits replace .github/workflows
+# with .gitea/workflows/ci.yml.
+api -X PATCH "$API/repos/$GITEA_REPO_OWNER/$GITEA_REPO_NAME" \
+  -d '{"has_actions":false}' >/dev/null 2>&1 || true
 
 echo "==> 2b. provision the per-use-case MAINTAINER identity (D16)"
 # Agent-visible git activity (push/PR/merge) must look like THIS app's maintainer,
@@ -113,7 +120,21 @@ commit() {
 # commit 1 — observability instrumentation (a separate concern from CI, so a
 # separate commit, the way a real team would land two PRs).
 python3 instrumentation/apply.py "$WORK_DIR"
+# Regenerate poetry.lock so the added dependency is locked atomically with the
+# pyproject change — a real `poetry add` updates both, and a stale lock is a
+# non-organic-authorship tell. Best-effort (pinned poetry in a throwaway
+# container); the image installs via `pip install .`, so a failure here costs
+# only realism, not the build. Normalize the lock mtime to the checked-out tree.
+if [ -f "$WORK_DIR/poetry.lock" ]; then
+  docker run --rm -v "$WORK_DIR":/w -w /w python:3.12-slim \
+    sh -c 'pip install -q "poetry==1.8.5" && poetry lock --no-update' >/dev/null 2>&1 \
+    && touch -r "$WORK_DIR/api/models.py" "$WORK_DIR/poetry.lock" \
+    || echo "    WARNING: poetry lock regen failed — lockfile may be stale"
+fi
 git -C "$WORK_DIR" add -A
+# Backdate to a plausible weekday a few days after the last upstream commit, in
+# the maintainer's +0200 timezone (avoids the all-at-one-UTC-second burst).
+export GIT_AUTHOR_DATE="2026-06-09 09:47:18 +0200" GIT_COMMITTER_DATE="2026-06-09 09:47:18 +0200"
 git -C "$WORK_DIR" diff --cached --quiet || commit -m "Add Prometheus metrics (prometheus-flask-exporter, multiprocess mode)" >/dev/null
 
 # commit 2 — self-hosted CI. A self-hosted fork also drops the upstream's
@@ -125,17 +146,21 @@ rm -f "$WORK_DIR/.github/workflows/build-docker-image.yml" \
       "$WORK_DIR/.github/workflows/deploy-docs.yml" \
       "$WORK_DIR/.github/workflows/sponsors.yml"
 git -C "$WORK_DIR" add -A
+export GIT_AUTHOR_DATE="2026-06-10 14:23:05 +0200" GIT_COMMITTER_DATE="2026-06-10 14:23:05 +0200"
 git -C "$WORK_DIR" diff --cached --quiet || commit -m "Add self-hosted CI (build + smoke)" >/dev/null
 
 git -C "$WORK_DIR" push origin HEAD
 
-# The immutable baseline ref the harness resets the deployment to between runs.
-# Auto-merge lands agent fixes on main; `baseline` is never advanced by a merge,
-# so cleanup always restores the intended deployed state. (M2 advances baseline
-# exactly once, when it commits the authored regression.)
+# The immutable baseline ref the harness resets the deployment to between runs,
+# kept HOST-SIDE ONLY (a local branch) — never pushed to origin. Publishing it
+# made a `baseline` branch on the forge byte-identical to main that itself
+# carried the regression: a reset-anchor tell the agent could see (and no such
+# branch exists upstream). The conductor (BASELINE_REF=baseline) and arm-incident
+# reset main FROM this local ref, so the agent-visible origin only ever shows the
+# organic branch set. Auto-merge lands agent fixes on main; `baseline` is never
+# advanced by a merge, so cleanup always restores the intended deployed state.
 git -C "$WORK_DIR" branch -f baseline HEAD
-git -C "$WORK_DIR" push -f origin baseline
-echo "    pushed baseline branch (cleanup resets the deployment to origin/baseline)"
+echo "    set local baseline anchor (host-side only; not pushed to origin)"
 
 echo "==> 6. enable Actions on the repo"
 api -X PATCH "$API/repos/$GITEA_REPO_OWNER/$GITEA_REPO_NAME" -d '{"has_actions":true}' >/dev/null 2>&1 || true

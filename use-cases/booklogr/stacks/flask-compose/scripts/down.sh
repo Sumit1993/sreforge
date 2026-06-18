@@ -6,5 +6,6 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STACK="$(dirname "$HERE")"
 cd "$STACK"
-docker compose -p booklogr-edge -f compose/load.yml down 2>/dev/null || true
-docker compose -f compose/docker-compose.yml down -v "$@"
+. "$HERE/lib-deploy.sh"   # neutral DEPLOY_DIR + COMPOSE_FILE/LOAD_FILE
+docker compose -p booklogr-edge -f "$LOAD_FILE" down 2>/dev/null || true
+docker compose -f "$COMPOSE_FILE" down -v "$@"

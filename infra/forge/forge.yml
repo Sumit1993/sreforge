@@ -37,6 +37,11 @@ services:
       # Local single-instance forge: open it up for scripted setup.
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__service__DISABLE_REGISTRATION: "false"
+      # Require login to view any page/API — blocks ANONYMOUS user enumeration
+      # (/api/v1/users/search, /explore/users) that would otherwise expose the
+      # neutral `gitops` admin (+ its minute-fresh created timestamp). The agent's
+      # run-ops token still authenticates, so its repo access is unaffected.
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "true"
     volumes:
       - gitea-data:/data
       # NOTE: host /etc/timezone + /etc/localtime are intentionally NOT bind-mounted.
