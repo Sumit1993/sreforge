@@ -65,7 +65,7 @@ poll trigger → assemble context → run agent → CI gate → auto-merge
   is fix-only.
 - **Fix delivery:** a local per-run **run workspace**; **no github.com**. Deploy
   is CI gate → auto-merge (commit) → CD-on-merge redeploy.
-- **Tool surface:** shell + documented endpoints + `submit` (no MCP layer).
+- **Tool surface:** shell + documented endpoints + `submit` — universal primitives, no separate tool layer.
 
 The contracts (engine layout, closed-loop verify, run record, oracle taxonomy)
 are baked in now; the v1 implementation drives exactly one use-case scenario.
@@ -76,7 +76,6 @@ are baked in now; the v1 implementation drives exactly one use-case scenario.
   separate judge model) — drops into `CompoundedOracle` as one more weighted
   sub-oracle with no refactor; the submit payload then gains an `rca` field.
 - **`patch` profile** (declarative folder + hidden tests + reference solution).
-- **MCP tool layer** for the agent.
 - **GitHub fork/PR/branch-protection** apparatus.
 - **Multi-signal / Slack triggers** (the v2 trigger-bus generalization).
 - **Synthetic-history / personas** (cover identity).
