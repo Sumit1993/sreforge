@@ -45,7 +45,12 @@ export type { AgentBrief } from "./context/index.js";
 
 // ---- Runner ---------------------------------------------------------------
 export type { AgentRunner } from "./runner/index.js";
-export { NoopAgentRunner, ScriptedFixAgentRunner } from "./runner/index.js";
+export {
+  ExternalAgentRunner,
+  NoopAgentRunner,
+  ScriptedFixAgentRunner,
+} from "./runner/index.js";
+export type { ExternalAgentRunnerOptions } from "./runner/index.js";
 export type { ScriptedFixAgentRunnerOptions } from "./runner/index.js";
 
 // ---- Deploy ---------------------------------------------------------------

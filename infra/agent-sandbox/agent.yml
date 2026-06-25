@@ -1,0 +1,118 @@
+# =============================================================================
+# agent-sandbox — the on-box world an EXTERNAL SRE agent is placed into.
+#
+# This compose project IS THE AGENT'S ENTIRE WORLD. An external SRE agent is
+# exec'd into the single `agent-shell` container to investigate the booklogr
+# incident: it polls Alertmanager, queries the observability stack (Prometheus /
+# Grafana), reads the app, edits its per-run workspace clone, and submits.
+#
+# ISOLATION IS BY OMISSION (not by a firewall the agent could detect):
+#   - agent-shell joins ONLY the deploy-plane app network (booklogr_default).
+#     It is NOT on the forge network and NOT on the load network, so the
+#     harness (Gitea forge, the Actions runner, the k6 edge/load driver) is
+#     simply not routable. There is nothing to "see being blocked" — those
+#     names don't resolve and those hosts have no route. De-tell: the agent
+#     cannot tell a staged eval rig exists because, from inside this box, it
+#     doesn't.
+#   - NO /var/run/docker.sock bind and NO docker CLI: the agent cannot enumerate
+#     containers, networks, images, or labels. The "what is running" question
+#     is answerable only through the documented HTTP endpoints below — exactly
+#     the surface a real responder is handed.
+#
+# SUBMIT IS A HANDOFF TO THE ENGINE. The agent never pushes to the forge itself;
+# it hands its proposed change to the orchestration engine, which is what owns
+# the forge push / PR / CI. So this shell needs (and has) NO forge access at all.
+#
+# This is the MINIMAL D9 surface for the first increment: shell + documented
+# HTTP endpoints + submit, with NO docker access. The "scoped real docker plane"
+# (socket-proxy + docker-proxy-filter for app-only `docker ps`) is DEFERRED and
+# documented in README.md, not built here.
+#
+# Bring up (the deploy plane `booklogr` + `booklogr_default` must already exist):
+#   WORKSPACE_DIR=/abs/path/to/run-workspace-clone \
+#     docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml up -d
+#   docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml exec agent-shell sh
+# =============================================================================
+
+# Explicit, neutral project name. Distinct from the deploy plane (booklogr),
+# the forge (sreforge-forge), and the load plane (booklogr-edge).
+name: sreforge-agent
+
+services:
+  agent-shell:
+    # Neutral pre-baked image (agent-shell.Dockerfile): the responder's shell kit
+    # (curl/git/jq/ca-certificates) AND the submit handoff are baked in at BUILD
+    # time. This removes the observable runtime `apk add` step and the single-file
+    # submit bind mount (a /proc/mounts tell, and broken on WSL2 + Rancher Desktop,
+    # which resolves a single-file host bind as a directory — see the Dockerfile).
+    # The image tag is neutral (no harness vocabulary). The agent has no docker in
+    # the minimal sandbox, so image metadata is not agent-visible yet.
+    build:
+      context: .
+      dockerfile: agent-shell.Dockerfile
+    image: ops-shell:1
+    container_name: agent-shell
+    # Run as the host workspace owner's uid/gid (defaults to 1000, the image's
+    # `dev` user). This keeps every git/file write on the /workspace bind mount
+    # owner-consistent with the host engine and avoids git's "dubious ownership"
+    # refusal. Pass AGENT_UID/AGENT_GID = `id -u`/`id -g` when the host user is not
+    # uid 1000.
+    user: "${AGENT_UID:-1000}:${AGENT_GID:-1000}"
+    # Idle (sleep infinity, from the image CMD) so an external agent can be exec'd
+    # in at any time. No runtime install step.
+    restart: unless-stopped
+
+    # ---- Network: the deploy plane ONLY ----------------------------------
+    # Joining booklogr_default (the booklogr deploy project's default network)
+    # gives the agent service-DNS reach to the app + observability tier and
+    # NOTHING else. The forge network and the load network are not joined, so
+    # sreforge-gitea / sreforge-runner / edge-client are unreachable by omission.
+    networks:
+      - booklogr_default
+
+    # ---- Workspace: per-run clone ONLY, at a neutral path ----------------
+    # Read-write so the agent can edit and stage its fix. Sourced from
+    # ${WORKSPACE_DIR} — the per-run workspace clone the engine prepared.
+    # NEVER bind the harness repo (/home/sumit/sources/sreforge-workspace/sreforge):
+    # that would expose the eval rig (compose files, injector, oracle, scripts).
+    volumes:
+      # The per-run workspace clone is the agent's ONLY mount — its whole edit
+      # surface AND the only channel to the engine. The `submit` handoff is NOT
+      # mounted; it is BAKED into the image (agent-shell.Dockerfile) at
+      # /usr/local/bin/submit, which avoids the single-file-bind /proc/mounts tell
+      # and the WSL2 + Rancher "not a directory" start failure. submit still
+      # touches ONLY /workspace (commits the edits to a local branch + drops
+      # /workspace/.sreforge/submit.json for the HOST engine to watch); it has NO
+      # forge env, NO token, NO network — the boundary verify-boundary.sh asserts.
+      - ${WORKSPACE_DIR:?set WORKSPACE_DIR to the per-run workspace clone}:/workspace:rw
+
+    working_dir: /workspace
+
+    environment:
+      # ---- Documented endpoints (container-routable SERVICE DNS) ---------
+      # These resolve over booklogr_default. They are the agent's whole
+      # observability + app surface — no host ports, no harness hosts.
+      PROM_URL: "http://prometheus:9090"
+      ALERTMANAGER_URL: "http://alertmanager:9093"
+      GRAFANA_URL: "http://grafana:3000"
+      API_URL: "http://booklogr-api:5000"
+      # NOTE: there is no Loki in this stack; observability is Prometheus +
+      # Alertmanager + Grafana. LOKI_URL is intentionally omitted (telling the
+      # agent a log store exists when it doesn't would itself be a tell). If a
+      # Loki service is later added to the deploy plane, add LOKI_URL here.
+
+      # ---- Submit = engine handoff (the real shim) -----------------------
+      # `submit` is baked into the image at /usr/local/bin/submit
+      # (agent-shell.Dockerfile). It commits the agent's
+      # /workspace edits to a local branch and writes the completion sentinel
+      # /workspace/.sreforge/submit.json — all on the shared mount, with NO forge,
+      # NO push, NO network. The HOST engine (ExternalAgentRunner) watches the
+      # sentinel, captures the diff, and owns the forge push / PR / CI.
+      SUBMIT_CMD: "submit"
+
+# The deploy plane's default network, created by the booklogr compose project.
+# external: true — we ATTACH to it, we do not own or recreate it.
+networks:
+  booklogr_default:
+    external: true
+    name: booklogr_default

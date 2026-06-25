@@ -33,6 +33,7 @@ import {
   PrometheusAlertTrigger,
   ContextAssembler,
   ScriptedFixAgentRunner,
+  ExternalAgentRunner,
   GiteaClient,
   GiteaCiGate,
   GiteaAutoMerge,
@@ -106,20 +107,50 @@ const SUSTAINED_CLEAR_SECONDS = Number(env.SUSTAINED_CLEAR_SECONDS || 30);
 
 const client = new GiteaClient({ baseUrl: GITEA_URL, token: TOKEN, owner: OWNER, repo: REPO });
 
+// ---- runner mode (OPT-IN; default = scripted, fully backward compatible) ----
+// scripted (default): ScriptedFixAgentRunner replays the canned solution/fix.patch.
+// external           : ExternalAgentRunner picks up a REAL agent's submission from
+//                      the de-tell'd clean workspace (.run-workspace/booklogr, the
+//                      host side of the sandbox /workspace mount) — it waits for the
+//                      submit sentinel, captures the agent's diff, and replays it onto
+//                      the forge substrate exactly as the scripted runner replays a
+//                      patch. Both flags are accepted (AGENT_MODE per design, RUNNER
+//                      per the task) so either spelling works.
+const AGENT_MODE = (env.AGENT_MODE || env.RUNNER || "scripted").toLowerCase();
+const CLEAN_WORKSPACE = resolve(STACK, ".run-workspace/booklogr");
+
+// Both runners author the substrate fix commit under the project's own identity,
+// consistent with the rest of the forge history.
+const AUTHOR_NAME = "Andreas Backström";
+const AUTHOR_EMAIL = "mozzo242@gmail.com";
+
+const runner =
+  AGENT_MODE === "external"
+    ? new ExternalAgentRunner({
+        client,
+        // The agent edits the CLEAN clone; the runner replays its diff onto the
+        // substrate (config.agentContext.runWorkspace.path, unchanged below).
+        cleanWorkspacePath: CLEAN_WORKSPACE,
+        branch: `fix/${runId}`,
+        base: "main",
+        commitMessage,
+        authorName: AUTHOR_NAME,
+        authorEmail: AUTHOR_EMAIL,
+      })
+    : new ScriptedFixAgentRunner({
+        client,
+        patchPath,
+        branch: `fix/${runId}`,
+        base: "main",
+        commitMessage,
+        authorName: AUTHOR_NAME,
+        authorEmail: AUTHOR_EMAIL,
+      });
+
 const deps = {
   trigger: new PrometheusAlertTrigger({ prometheusUrl: PROM_URL, alertName: ALERT }),
   assembler: new ContextAssembler(),
-  runner: new ScriptedFixAgentRunner({
-    client,
-    patchPath,
-    branch: `fix/${runId}`,
-    base: "main",
-    commitMessage,
-    // Author fix commits under the project's own authorship, consistent with
-    // the rest of the forge history.
-    authorName: "Andreas Backström",
-    authorEmail: "mozzo242@gmail.com",
-  }),
+  runner,
   ciGate: new GiteaCiGate({ client, pollIntervalMs: 5_000, timeoutMs: 600_000 }),
   autoMerge: new GiteaAutoMerge({ client }),
   deployer: new ComposeCdDeployer({ composeFile: COMPOSE_FILE, projectName: PROJECT, timeoutMs: 300_000 }),
@@ -147,8 +178,15 @@ const config = {
       grafana: env.GRAFANA_URL || "http://localhost:3002",
       "booklogr-api": env.API_URL || "http://localhost:5000",
     },
+    // runWorkspace stays the SUBSTRATE in both modes: the conductor's CI / merge
+    // / redeploy / cleanup all key off it, and that is exactly where both runners
+    // land the fix. (External mode's clean-workspace path is a runner-internal
+    // input, not part of agentContext.)
     runWorkspace: { path: WORKSPACE, service: SERVICE },
-    submitCommand: "sreforge submit",
+    // The brief must name the EXACT command the agent's environment provides.
+    // In external mode the sandbox shim is `submit` (SUBMIT_CMD in agent.yml);
+    // the scripted path is engine-internal, so its value is informational only.
+    submitCommand: AGENT_MODE === "external" ? "submit" : "sreforge submit",
   },
   mitigation: {
     alertToClear: ALERT,
@@ -158,9 +196,13 @@ const config = {
   recordDir,
 };
 
-console.log(`[run-incident] runId=${runId} scenario=${scenarioId}`);
+console.log(`[run-incident] runId=${runId} scenario=${scenarioId} mode=${AGENT_MODE}`);
 console.log(`[run-incident] forge=${GITEA_URL} repo=${OWNER}/${REPO} alert=${ALERT}`);
-console.log(`[run-incident] patch=${patchPath}`);
+if (AGENT_MODE === "external") {
+  console.log(`[run-incident] cleanWorkspace=${CLEAN_WORKSPACE} (awaiting agent submit sentinel)`);
+} else {
+  console.log(`[run-incident] patch=${patchPath}`);
+}
 console.log(`[run-incident] workspace=${WORKSPACE} service=${SERVICE} compose=${COMPOSE_FILE}`);
 console.log(`[run-incident] passThreshold=${PASS_THRESHOLD} maxClear=${MAX_CLEAR_SECONDS}s sustained=${SUSTAINED_CLEAR_SECONDS}s`);
 
