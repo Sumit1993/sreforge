@@ -153,7 +153,29 @@ const deps = {
   runner,
   ciGate: new GiteaCiGate({ client, pollIntervalMs: 5_000, timeoutMs: 600_000 }),
   autoMerge: new GiteaAutoMerge({ client }),
-  deployer: new ComposeCdDeployer({ composeFile: COMPOSE_FILE, projectName: PROJECT, timeoutMs: 300_000 }),
+  deployer: new ComposeCdDeployer({
+    composeFile: COMPOSE_FILE,
+    projectName: PROJECT,
+    timeoutMs: 300_000,
+    // Readiness-gated rollout — OPT-IN via READINESS_GATE=on (default OFF = the
+    // historical deploy-directly-into-the-live-storm behavior, which lets the cache
+    // warm gradually under steady load and is what passed historically). When on:
+    // drain the storm off booklogr-api while the fixed build comes up COLD (so its
+    // healthcheck passes before the flood hits a cold cache), warm the cache (storm's
+    // fixed query set) once healthy, then resume the storm so the oracle still grades
+    // under STILL-ACTIVE load (D4). The gate provably fixes the deploy health race on
+    // a SLOW box, but draining-then-resuming slams the full storm onto a cold cache at
+    // once; for booklogr's per-WORKER in-process SimpleCache the front-door warm-up
+    // reaches only some gunicorn workers, so the resumed burst can stampede the upstream
+    // worse than gradual warming — so it is opt-in, not the default.
+    ...((env.READINESS_GATE || "off").toLowerCase() === "on"
+      ? {
+          quiesceCmd: { command: "docker", args: ["stop", "edge-client"] },
+          warmCmd: { command: "bash", args: [join(HERE, "warm-cache.sh")] },
+          resumeCmd: { command: "docker", args: ["start", "edge-client"] },
+        }
+      : {}),
+  }),
   oracle: new MitigationOracle({
     probe: new PrometheusAlertProbe({ prometheusUrl: PROM_URL }),
     passThreshold: PASS_THRESHOLD,
