@@ -10,6 +10,15 @@
     "guard": "node tools/contamination-guard/scan.mjs",
     "guard:strict": "node tools/contamination-guard/scan.mjs --strict",
     "detell": "node tools/detell-judge/judge.mjs",
-    "detell:grade": "node tools/detell-judge/judge.mjs --grade"
+    "detell:grade": "node tools/detell-judge/judge.mjs --grade",
+    "booklogr": "task --dir use-cases/booklogr/stacks/flask-compose"
+  },
+  "devDependencies": {
+    "@go-task/cli": "^3.51.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@go-task/cli"
+    ]
   }
 }

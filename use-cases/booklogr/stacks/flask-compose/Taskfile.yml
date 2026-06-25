@@ -1,0 +1,130 @@
+# Taskfile.yml — booklogr incident-rig lifecycle (go-task · https://taskfile.dev)
+#
+# The runnable table-of-contents for the rig. `task --list` prints the phases in
+# order; each recipe just WRAPS an existing script in scripts/ (which still run
+# standalone — see scripts/README.md). Nothing is moved or replaced; this only
+# makes the sequence and the entrypoints legible, and adds two things plain
+# scripts don't give for free:
+#   • change-detection — `build-core` is skipped when core's sources are unchanged
+#   • parallelism      — `verify` runs its three probes concurrently
+#
+# Lifecycle:  setup → up → arm → agent → run → verify → down
+#
+# task is a PINNED devDependency (@go-task/cli in the ROOT package.json) — not a
+# global install — so every dev/CI gets the same version (pnpm-lock.yaml). Get it
+# with `pnpm install` at the repo root. Run it via pnpm so the local binary is on
+# PATH (pnpm exec can't find it from this non-package subdir):
+#   pnpm booklogr                # the menu (this file's default task)
+#   pnpm booklogr <recipe>       # run a phase, e.g. `pnpm booklogr arm`
+#   pnpm exec task --dir use-cases/booklogr/stacks/flask-compose -n run   # flags (-n/--watch/--list)
+#
+# Scripts already self-resolve their own paths, so recipes are thin. The two
+# cross-boundary paths (the engine in core/, the sandbox compose in infra/) are
+# ../../../../ from this stack — the same hop run-incident.mjs already makes.
+version: '3'
+
+# .env (gitignored — GITEA_TOKEN, URLs) is loaded into every recipe's environment,
+# the same vars the scripts expect. Copy .env.example → .env first.
+dotenv: ['.env']
+
+tasks:
+  default:
+    desc: "List the phases (this menu)"
+    cmds: [task --list]
+    silent: true
+
+  # ── build ──────────────────────────────────────────────────────────────────
+  build-core:
+    desc: "Compile @sreforge/core — skipped when its TS sources are unchanged"
+    dir: ../../../../core
+    cmds: [npm run build]
+    sources: ['src/**/*.ts', 'tsconfig.json', 'package.json']
+    generates: ['dist/**/*.js']
+
+  # ── setup (once) ─────────────────────────────────────────────────────────────
+  setup:
+    desc: "[once] import the substrate into the forge + author the regression"
+    cmds:
+      - bash scripts/import-substrate.sh
+      - bash scripts/inject-regression.sh
+
+  # ── bring-up (per session) ───────────────────────────────────────────────────
+  up:
+    desc: "[session] bring up the deploy plane (app + observability)"
+    cmds: [bash scripts/up.sh]
+
+  # ── arm (per run) ────────────────────────────────────────────────────────────
+  arm:
+    desc: "[run] reset to the regressed baseline, start the storm, confirm the alert fires"
+    cmds: [bash scripts/arm-incident.sh]
+
+  # ── agent (per run) ──────────────────────────────────────────────────────────
+  agent:
+    desc: "[run] make the clean /workspace clone + bring up the agent sandbox"
+    cmds:
+      - |
+        WS="$(bash scripts/prepare-agent-workspace.sh)"
+        AGENT_UID=$(id -u) AGENT_GID=$(id -g) WORKSPACE_DIR="$WS" \
+          docker compose -p sreforge-agent \
+          -f ../../../../infra/agent-sandbox/agent.yml up -d --force-recreate
+
+  # ── run (per run; the engine) ────────────────────────────────────────────────
+  run:
+    desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>)"
+    deps: [build-core]
+    vars:
+      RUN_ID: '{{.id | default ""}}'
+    env:
+      RUNNER: '{{.RUNNER | default "scripted"}}'
+    cmds:
+      - node scripts/run-incident.mjs {{if .RUN_ID}}--run-id {{.RUN_ID}}{{end}}
+
+  # ── verify (any time; the three probes run IN PARALLEL via deps) ──────────────
+  verify:
+    desc: "boundary + de-tell + alert-pickup probes, concurrently"
+    deps: [verify:boundary, verify:detell, verify:pickup]
+
+  verify:boundary:
+    desc: "in-box: endpoints reachable, harness hidden, fs/git clean"
+    preconditions:
+      - sh: docker inspect agent-shell >/dev/null 2>&1
+        msg: "agent-shell not running — run `task agent` first"
+    cmds:
+      - docker cp scripts/verify-boundary.sh agent-shell:/tmp/vb.sh
+      - docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T agent-shell sh /tmp/vb.sh
+
+  verify:pickup:
+    desc: "in-box: the agent can self-serve the firing alert (REQUIRE_FIRING=1)"
+    preconditions:
+      - sh: docker inspect agent-shell >/dev/null 2>&1
+        msg: "agent-shell not running — run `task agent` first"
+    cmds:
+      - docker cp scripts/verify-alert-pickup.sh agent-shell:/tmp/vap.sh
+      - docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
+
+  verify:detell:
+    desc: "host: audit deploy containers for env/label/mount/log/image-clock tells"
+    cmds: [bash scripts/verify-detell.sh]
+
+  # ── diagnostics ──────────────────────────────────────────────────────────────
+  status:
+    desc: "one-shot: current p99 + which alerts are firing"
+    cmds: [node scripts/status.mjs]
+
+  # ── smoke (CI/e2e; sequential — each re-arms the stack) ──────────────────────
+  smoke:
+    desc: "run both smoke checks (positive then negative)"
+    cmds:
+      - task: smoke:positive
+      - task: smoke:negative
+  smoke:positive:
+    desc: "arm + reference fix → assert verdict passed"
+    cmds: [bash scripts/smoke-positive.sh]
+  smoke:negative:
+    desc: "arm + no-op fix → assert anti-cheat holds (not passed)"
+    cmds: [bash scripts/smoke-negative.sh]
+
+  # ── teardown ─────────────────────────────────────────────────────────────────
+  down:
+    desc: "[end] tear down deploy + load planes (-v); the forge persists"
+    cmds: [bash scripts/down.sh]

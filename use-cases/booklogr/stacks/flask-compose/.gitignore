@@ -16,3 +16,6 @@ runs/
 
 # clean per-run agent workspace (de-tell'd clone, regenerated each run)
 .run-workspace/
+
+# go-task change-detection checksums (Taskfile.yml sources/generates cache)
+.task/
