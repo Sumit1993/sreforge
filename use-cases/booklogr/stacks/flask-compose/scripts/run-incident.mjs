@@ -119,6 +119,22 @@ const client = new GiteaClient({ baseUrl: GITEA_URL, token: TOKEN, owner: OWNER,
 const AGENT_MODE = (env.AGENT_MODE || env.RUNNER || "scripted").toLowerCase();
 const CLEAN_WORKSPACE = resolve(STACK, ".run-workspace/booklogr");
 
+// ---- agent-facing endpoints (in-network DNS, NOT the host-published ports) ----
+// The agent runs INSIDE the deploy network (booklogr_default), so it reaches the
+// observability stack and the service by their compose service DNS names. From the
+// sandbox, `localhost` is the sandbox itself — the host PROM_URL/ALERTMANAGER_URL
+// above are the ENGINE's view (trigger + oracle probe from the host) and are not
+// reachable by the agent. Internal ports also differ from published ones (grafana
+// is 3000 inside the network, 3002 on the host), so this is a distinct view, not a
+// hostname swap. The agent picks the firing alerts up from alertmanager itself.
+const AGENT_ALERTMANAGER_URL = env.AGENT_ALERTMANAGER_URL || "http://alertmanager:9093";
+const AGENT_PROM_URL = env.AGENT_PROM_URL || "http://prometheus:9090";
+const AGENT_GRAFANA_URL = env.AGENT_GRAFANA_URL || "http://grafana:3000";
+const AGENT_API_URL = env.AGENT_API_URL || "http://booklogr-api:5000";
+// Where the source is mounted INSIDE the sandbox (agent.yml mounts the clean clone
+// at /workspace). Distinct from WORKSPACE, the host substrate the engine operates on.
+const AGENT_WORKSPACE = env.AGENT_WORKSPACE || "/workspace";
+
 // Both runners author the substrate fix commit under the project's own identity,
 // consistent with the rest of the forge history.
 const AUTHOR_NAME = "Andreas Backström";
@@ -194,21 +210,29 @@ const config = {
   profile: "incident",
   expectedAlert: ALERT,
   agentContext: {
+    // Agent-facing endpoints: in-network DNS (alerting stack first, where the
+    // agent picks up the firing alerts), NOT the host localhost ports the engine
+    // probes from. The agent self-serves incident context from these.
     services: {
-      prometheus: PROM_URL,
-      alertmanager: env.ALERTMANAGER_URL || "http://localhost:9093",
-      grafana: env.GRAFANA_URL || "http://localhost:3002",
-      "booklogr-api": env.API_URL || "http://localhost:5000",
+      alertmanager: AGENT_ALERTMANAGER_URL,
+      prometheus: AGENT_PROM_URL,
+      grafana: AGENT_GRAFANA_URL,
+      "booklogr-api": AGENT_API_URL,
     },
-    // runWorkspace stays the SUBSTRATE in both modes: the conductor's CI / merge
-    // / redeploy / cleanup all key off it, and that is exactly where both runners
-    // land the fix. (External mode's clean-workspace path is a runner-internal
-    // input, not part of agentContext.)
+    // runWorkspace stays the HOST SUBSTRATE in both modes: the conductor's CI /
+    // merge / redeploy / cleanup all key off it, and that is exactly where both
+    // runners land the fix. It is engine-facing and NOT shown to the agent.
+    // (External mode's clean-workspace path is a runner-internal input.)
     runWorkspace: { path: WORKSPACE, service: SERVICE },
-    // The brief must name the EXACT command the agent's environment provides.
-    // In external mode the sandbox shim is `submit` (SUBMIT_CMD in agent.yml);
-    // the scripted path is engine-internal, so its value is informational only.
-    submitCommand: AGENT_MODE === "external" ? "submit" : "sreforge submit",
+    // The agent's own view of its source: the in-sandbox mount, not the host
+    // substrate path — keeps the brief free of host paths (de-tell).
+    workspacePath: AGENT_WORKSPACE,
+    // The brief must name the EXACT command the agent's environment provides: the
+    // sandbox shim is `submit` (SUBMIT_CMD in agent.yml). The scripted runner never
+    // reads this (it ignores brief.prompt), but the conductor MATERIALIZES the brief
+    // in both modes — so keep the value neutral rather than a harness-flavored string
+    // a future runner could render verbatim into the agent's view (de-tell footgun).
+    submitCommand: "submit",
   },
   mitigation: {
     alertToClear: ALERT,

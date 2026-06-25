@@ -75,6 +75,17 @@ docker cp use-cases/booklogr/stacks/flask-compose/scripts/verify-boundary.sh age
 docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml exec agent-shell sh /tmp/vb.sh
 ```
 
+Its positive counterpart, `scripts/verify-alert-pickup.sh`, asserts the agent can
+do the on-call job the brief hands it: pick the firing alert up off Alertmanager
+and query Prometheus for the signals behind it, with no rig tell in what it sees.
+Pass `REQUIRE_FIRING=1` during an armed run to require the scenario's target alert:
+
+```sh
+docker cp use-cases/booklogr/stacks/flask-compose/scripts/verify-alert-pickup.sh agent-shell:/tmp/vap.sh
+docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+  exec -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
+```
+
 Host-side, `scripts/verify-detell.sh` audits the deploy-plane containers (env /
 labels / mounts / logs / image-clock) for leakage.
 

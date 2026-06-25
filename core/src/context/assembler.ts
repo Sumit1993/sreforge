@@ -27,39 +27,50 @@ export interface AgentBrief {
 export class ContextAssembler {
   assemble(trigger: Trigger, context: AgentContext): AgentBrief {
     return {
-      prompt: renderPrompt(trigger, context),
+      // The trigger is what OPENED the incident; the agent is not handed its
+      // contents. It reads the live, firing alerts off the alerting stack itself
+      // (the endpoints below) the way a real on-call would — see renderPrompt.
+      prompt: renderPrompt(context),
       alertName: trigger.alertName,
       context,
     };
   }
 }
 
-/** Renders the neutral incident brief text. */
-function renderPrompt(trigger: Trigger, context: AgentContext): string {
-  const summary =
-    trigger.annotations.summary ??
-    trigger.annotations.description ??
-    `Alert ${trigger.alertName} is firing.`;
-
+/**
+ * Renders the neutral incident brief — a page, not a diagnosis.
+ *
+ * It deliberately does NOT name the firing alert or restate its summary: the
+ * agent picks the active alerts up from the alerting stack (Alertmanager /
+ * Prometheus) and queries on from there for the signals behind them, exactly as
+ * a real responder does. Pre-digesting the alert would both spoon-feed the
+ * diagnosis and read like a benchmark prompt rather than a real page.
+ *
+ * Every value shown is the AGENT's view: in-network endpoint DNS and the
+ * in-sandbox source path — never a host port or a host filesystem path.
+ */
+function renderPrompt(context: AgentContext): string {
   const endpoints = Object.entries(context.services)
     .filter((entry): entry is [string, string] => typeof entry[1] === "string")
     .map(([name, url]) => `  - ${name}: ${url}`)
     .join("\n");
 
+  const sourcePath = context.workspacePath ?? "/workspace";
+
   return [
-    `An alert is currently firing on the ${context.runWorkspace.service} service.`,
+    `You are the on-call engineer for the ${context.runWorkspace.service} service.`,
     "",
-    `Alert: ${trigger.alertName}`,
-    `Since: ${trigger.firedAt}`,
-    `Summary: ${summary}`,
+    "One or more alerts are currently firing for this service. The alerting and",
+    "metrics stack is the source of truth — start there to see what is active and",
+    "the signals behind it, then work back to the cause in the service.",
     "",
-    "Available endpoints:",
+    "Endpoints:",
     endpoints,
     "",
-    `Service source is checked out at: ${context.runWorkspace.path}`,
+    `The service source is checked out at: ${sourcePath}`,
     "",
-    "Investigate the deployment, edit the service source in place to resolve the",
-    "issue, then submit your change with:",
+    "Investigate, edit the source in place to resolve the incident, then submit",
+    "your change with:",
     `  ${context.submitCommand}`,
   ].join("\n");
 }
