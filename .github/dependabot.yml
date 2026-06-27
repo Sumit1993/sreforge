@@ -1,0 +1,26 @@
+# Dependabot keeps the HARNESS's own dependencies patched. It is scoped to the
+# repo root only — deliberately NOT to use-cases/**, whose apps are the substrate
+# under evaluation (some carry intentional regressions) and must never be bumped
+# here. The npm ecosystem reads the root pnpm-lock.yaml.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
