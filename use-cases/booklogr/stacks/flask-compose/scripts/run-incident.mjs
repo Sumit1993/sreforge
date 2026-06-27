@@ -5,7 +5,7 @@
 // scenario: it wires the booklogr-specific config into the domain-agnostic
 // @sreforge/core Conductor and runs:
 //
-//   trigger(Prometheus alert firing) -> assemble brief -> ScriptedFixAgentRunner
+//   trigger(Prometheus alert firing) -> assemble brief -> ReferenceFixRunner
 //   (apply solution/fix.patch, branch, push, open PR) -> GiteaCiGate (poll the
 //   forge Actions run for HEAD) -> GiteaAutoMerge (merge the PR) ->
 //   ComposeCdDeployer (rebuild+swap booklogr-api) -> MitigationOracle (clear +
@@ -26,11 +26,14 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
+import { homedir } from "node:os";
+import fs from "node:fs";
 import {
   runIncident,
   PrometheusAlertTrigger,
-  ContextAssembler,
-  ScriptedFixAgentRunner,
+  IncidentPageRenderer,
+  ReferenceFixRunner,
+  ExternalAgentRunner,
   GiteaClient,
   GiteaCiGate,
   GiteaAutoMerge,
@@ -61,9 +64,25 @@ const PROM_URL = env.PROM_URL || "http://localhost:9090";
 const ALERT = env.ALERT || "BooklogrApiLatencyP99High";
 const SERVICE = env.SERVICE || "booklogr-api";
 const PROJECT = env.COMPOSE_PROJECT || "booklogr";
-const COMPOSE_FILE = resolve(STACK, "compose/docker-compose.yml");
+// Deploy from a NEUTRAL symlink so docker-inspect project labels don't leak the
+// harness path (mirrors scripts/lib-deploy.sh). The symlink target is invisible
+// to the agent; only the neutral path appears in com.docker.compose.project.*.
+function resolveDeployDir(stack) {
+  for (const c of [process.env.SREFORGE_DEPLOY_DIR, "/srv/booklogr", join(homedir(), "srv/booklogr")].filter(Boolean)) {
+    try {
+      fs.mkdirSync(dirname(c), { recursive: true });
+      try { fs.symlinkSync(stack, c); } catch (e) { if (e.code !== "EEXIST") throw e; }
+      if (fs.realpathSync(c) === fs.realpathSync(stack)) return c;
+    } catch { /* try next candidate */ }
+  }
+  return stack;
+}
+const COMPOSE_FILE = resolve(resolveDeployDir(STACK), "compose/docker-compose.yml");
 const WORKSPACE = resolve(STACK, "substrate/booklogr");
-const BASELINE_REF = env.BASELINE_REF || "origin/baseline";
+// Local branch, not origin/baseline: the baseline anchor is kept host-side only
+// so the agent-visible forge never carries a `baseline` branch (de-tell). The
+// cleanup's `git reset --hard <ref>` resolves it from the local workspace.
+const BASELINE_REF = env.BASELINE_REF || "baseline";
 
 if (!TOKEN) {
   console.error("FATAL: GITEA_TOKEN is not set. Run `set -a; source .env; set +a` first.");
@@ -88,23 +107,91 @@ const SUSTAINED_CLEAR_SECONDS = Number(env.SUSTAINED_CLEAR_SECONDS || 30);
 
 const client = new GiteaClient({ baseUrl: GITEA_URL, token: TOKEN, owner: OWNER, repo: REPO });
 
+// ---- runner mode (OPT-IN; default = scripted, fully backward compatible) ----
+// scripted (default): ReferenceFixRunner replays the canned solution/fix.patch.
+// external           : ExternalAgentRunner picks up a REAL agent's submission from
+//                      the de-tell'd clean workspace (.run-workspace/booklogr, the
+//                      host side of the sandbox /workspace mount) — it waits for the
+//                      submit sentinel, captures the agent's diff, and replays it onto
+//                      the forge substrate exactly as the scripted runner replays a
+//                      patch. Both flags are accepted (AGENT_MODE per design, RUNNER
+//                      per the task) so either spelling works.
+const AGENT_MODE = (env.AGENT_MODE || env.RUNNER || "scripted").toLowerCase();
+const CLEAN_WORKSPACE = resolve(STACK, ".run-workspace/booklogr");
+
+// ---- agent-facing endpoints (in-network DNS, NOT the host-published ports) ----
+// The agent runs INSIDE the deploy network (booklogr_default), so it reaches the
+// observability stack and the service by their compose service DNS names. From the
+// sandbox, `localhost` is the sandbox itself — the host PROM_URL/ALERTMANAGER_URL
+// above are the ENGINE's view (trigger + oracle probe from the host) and are not
+// reachable by the agent. Internal ports also differ from published ones (grafana
+// is 3000 inside the network, 3002 on the host), so this is a distinct view, not a
+// hostname swap. The agent picks the firing alerts up from alertmanager itself.
+const AGENT_ALERTMANAGER_URL = env.AGENT_ALERTMANAGER_URL || "http://alertmanager:9093";
+const AGENT_PROM_URL = env.AGENT_PROM_URL || "http://prometheus:9090";
+const AGENT_GRAFANA_URL = env.AGENT_GRAFANA_URL || "http://grafana:3000";
+const AGENT_API_URL = env.AGENT_API_URL || "http://booklogr-api:5000";
+// Where the source is mounted INSIDE the sandbox (agent.yml mounts the clean clone
+// at /workspace). Distinct from WORKSPACE, the host substrate the engine operates on.
+const AGENT_WORKSPACE = env.AGENT_WORKSPACE || "/workspace";
+
+// Both runners author the substrate fix commit under the project's own identity,
+// consistent with the rest of the forge history.
+const AUTHOR_NAME = "Andreas Backström";
+const AUTHOR_EMAIL = "mozzo242@gmail.com";
+
+const runner =
+  AGENT_MODE === "external"
+    ? new ExternalAgentRunner({
+        client,
+        // The agent edits the CLEAN clone; the runner replays its diff onto the
+        // substrate (config.agentContext.runWorkspace.path, unchanged below).
+        cleanWorkspacePath: CLEAN_WORKSPACE,
+        branch: `fix/${runId}`,
+        base: "main",
+        commitMessage,
+        authorName: AUTHOR_NAME,
+        authorEmail: AUTHOR_EMAIL,
+      })
+    : new ReferenceFixRunner({
+        client,
+        patchPath,
+        branch: `fix/${runId}`,
+        base: "main",
+        commitMessage,
+        authorName: AUTHOR_NAME,
+        authorEmail: AUTHOR_EMAIL,
+      });
+
 const deps = {
   trigger: new PrometheusAlertTrigger({ prometheusUrl: PROM_URL, alertName: ALERT }),
-  assembler: new ContextAssembler(),
-  runner: new ScriptedFixAgentRunner({
-    client,
-    patchPath,
-    branch: `fix/${runId}`,
-    base: "main",
-    commitMessage,
-    // Author fix commits under the project's own authorship, consistent with
-    // the rest of the forge history.
-    authorName: "Andreas Backström",
-    authorEmail: "mozzo242@gmail.com",
-  }),
+  page: new IncidentPageRenderer(),
+  runner,
   ciGate: new GiteaCiGate({ client, pollIntervalMs: 5_000, timeoutMs: 600_000 }),
   autoMerge: new GiteaAutoMerge({ client }),
-  deployer: new ComposeCdDeployer({ composeFile: COMPOSE_FILE, projectName: PROJECT, timeoutMs: 300_000 }),
+  deployer: new ComposeCdDeployer({
+    composeFile: COMPOSE_FILE,
+    projectName: PROJECT,
+    timeoutMs: 300_000,
+    // Readiness-gated rollout — OPT-IN via READINESS_GATE=on (default OFF = the
+    // historical deploy-directly-into-the-live-storm behavior, which lets the cache
+    // warm gradually under steady load and is what passed historically). When on:
+    // drain the storm off booklogr-api while the fixed build comes up COLD (so its
+    // healthcheck passes before the flood hits a cold cache), warm the cache (storm's
+    // fixed query set) once healthy, then resume the storm so the oracle still grades
+    // under STILL-ACTIVE load (D4). The gate provably fixes the deploy health race on
+    // a SLOW box, but draining-then-resuming slams the full storm onto a cold cache at
+    // once; for booklogr's per-WORKER in-process SimpleCache the front-door warm-up
+    // reaches only some gunicorn workers, so the resumed burst can stampede the upstream
+    // worse than gradual warming — so it is opt-in, not the default.
+    ...((env.READINESS_GATE || "off").toLowerCase() === "on"
+      ? {
+          quiesceCmd: { command: "docker", args: ["stop", "edge-client"] },
+          warmCmd: { command: "bash", args: [join(HERE, "warm-cache.sh")] },
+          resumeCmd: { command: "docker", args: ["start", "edge-client"] },
+        }
+      : {}),
+  }),
   oracle: new MitigationOracle({
     probe: new PrometheusAlertProbe({ prometheusUrl: PROM_URL }),
     passThreshold: PASS_THRESHOLD,
@@ -123,14 +210,29 @@ const config = {
   profile: "incident",
   expectedAlert: ALERT,
   agentContext: {
+    // Agent-facing endpoints: in-network DNS (alerting stack first, where the
+    // agent picks up the firing alerts), NOT the host localhost ports the engine
+    // probes from. The agent self-serves incident context from these.
     services: {
-      prometheus: PROM_URL,
-      alertmanager: env.ALERTMANAGER_URL || "http://localhost:9093",
-      grafana: env.GRAFANA_URL || "http://localhost:3002",
-      "booklogr-api": env.API_URL || "http://localhost:5000",
+      alertmanager: AGENT_ALERTMANAGER_URL,
+      prometheus: AGENT_PROM_URL,
+      grafana: AGENT_GRAFANA_URL,
+      "booklogr-api": AGENT_API_URL,
     },
+    // runWorkspace stays the HOST SUBSTRATE in both modes: the conductor's CI /
+    // merge / redeploy / cleanup all key off it, and that is exactly where both
+    // runners land the fix. It is engine-facing and NOT shown to the agent.
+    // (External mode's clean-workspace path is a runner-internal input.)
     runWorkspace: { path: WORKSPACE, service: SERVICE },
-    submitCommand: "sreforge submit",
+    // The agent's own view of its source: the in-sandbox mount, not the host
+    // substrate path — keeps the brief free of host paths (de-tell).
+    workspacePath: AGENT_WORKSPACE,
+    // The brief must name the EXACT command the agent's environment provides: the
+    // sandbox shim is `submit` (SUBMIT_CMD in agent.yml). The scripted runner never
+    // reads this (it ignores brief.prompt), but the conductor MATERIALIZES the brief
+    // in both modes — so keep the value neutral rather than a harness-flavored string
+    // a future runner could render verbatim into the agent's view (de-tell footgun).
+    submitCommand: "submit",
   },
   mitigation: {
     alertToClear: ALERT,
@@ -140,9 +242,13 @@ const config = {
   recordDir,
 };
 
-console.log(`[run-incident] runId=${runId} scenario=${scenarioId}`);
+console.log(`[run-incident] runId=${runId} scenario=${scenarioId} mode=${AGENT_MODE}`);
 console.log(`[run-incident] forge=${GITEA_URL} repo=${OWNER}/${REPO} alert=${ALERT}`);
-console.log(`[run-incident] patch=${patchPath}`);
+if (AGENT_MODE === "external") {
+  console.log(`[run-incident] cleanWorkspace=${CLEAN_WORKSPACE} (awaiting agent submit sentinel)`);
+} else {
+  console.log(`[run-incident] patch=${patchPath}`);
+}
 console.log(`[run-incident] workspace=${WORKSPACE} service=${SERVICE} compose=${COMPOSE_FILE}`);
 console.log(`[run-incident] passThreshold=${PASS_THRESHOLD} maxClear=${MAX_CLEAR_SECONDS}s sustained=${SUSTAINED_CLEAR_SECONDS}s`);
 

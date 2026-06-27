@@ -4,7 +4,7 @@
  * Public surface for driving one contamination-controlled incident run:
  *   trigger → context → run → deploy → verify → record → cleanup.
  *
- * This package contains NO use-case/stack/scenario logic (no todo-app). Those
+ * This package contains NO use-case/stack/scenario logic. Those
  * live under `use-cases/` and wire the engine via the interfaces re-exported
  * here.
  */
@@ -39,14 +39,19 @@ export type { TriggerSource } from "./triggers/index.js";
 export { PrometheusAlertTrigger } from "./triggers/index.js";
 export type { PrometheusAlertTriggerOptions } from "./triggers/index.js";
 
-// ---- Context --------------------------------------------------------------
-export { ContextAssembler } from "./context/index.js";
+// ---- Context (the t=0 incident page) --------------------------------------
+export { IncidentPageRenderer } from "./context/index.js";
 export type { AgentBrief } from "./context/index.js";
 
 // ---- Runner ---------------------------------------------------------------
 export type { AgentRunner } from "./runner/index.js";
-export { NoopAgentRunner, ScriptedFixAgentRunner } from "./runner/index.js";
-export type { ScriptedFixAgentRunnerOptions } from "./runner/index.js";
+export {
+  ExternalAgentRunner,
+  NoopAgentRunner,
+  ReferenceFixRunner,
+} from "./runner/index.js";
+export type { ExternalAgentRunnerOptions } from "./runner/index.js";
+export type { ReferenceFixRunnerOptions } from "./runner/index.js";
 
 // ---- Deploy ---------------------------------------------------------------
 export type { AutoMerge, CdDeployer, CiGate } from "./deploy/index.js";

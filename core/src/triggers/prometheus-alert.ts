@@ -5,7 +5,7 @@ import type { TriggerSource } from "./index.js";
 export interface PrometheusAlertTriggerOptions {
   /** Base URL of the Prometheus server, e.g. `http://localhost:9090`. */
   readonly prometheusUrl: string;
-  /** Name of the alert that opens the run, e.g. `TodoApiLatencyP99High`. */
+  /** Name of the alert that opens the run, e.g. `ApiLatencyP99High`. */
   readonly alertName: string;
 }
 

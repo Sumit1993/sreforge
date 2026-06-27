@@ -12,7 +12,7 @@ stack     = "flask-compose"            # BINDING — substrate: Flask + Gunicorn
 profile   = "incident"                 # ARCHETYPE — incident = live deploy + behavioral closed-loop oracle (NOT patch)
 title     = "Cache stampede on book search under storm load"  # BINDING — human-readable scenario title
 difficulty = "easy"                    # ARCHETYPE — easy | medium | hard — single-cause, localized single-line fix
-tags      = ["latency", "cache", "cache-stampede", "thundering-herd"]  # BINDING — fault-class tags; do NOT reuse retry-storm tags
+tags      = ["latency", "cache", "cache-stampede", "thundering-herd"]  # BINDING — fault-class tags
 
 # One-paragraph description of the scenario (human-readable, neutral framing).
 description = """
@@ -28,13 +28,13 @@ hit the cache and p99 clears under threshold while the load is still running.
 # --- expected signal -----------------------------------------------------------
 # The alert the agent is paged on and the SLO it encodes. Used by the confirm-fire gate and the oracle.
 [expected]
-alert                 = "BooklogrApiLatencyP99High"  # BINDING — alert name in the Prometheus rule set; NOT TodoApiLatencyP99High
+alert                 = "BooklogrApiLatencyP99High"  # BINDING — alert name in the Prometheus rule set
 severity              = "critical"                    # ARCHETYPE — paging severity
 p99_threshold_seconds = 0.3                           # ARCHETYPE — alert fires when p99 > 0.3s for 30s; healthy baseline well under 100ms
 
 # PromQL used by the confirm-fire gate and oracle to evaluate the alert signal.
 # Metric: flask_http_request_duration_seconds_bucket; scrape job label job="booklogr-api".
-# BINDING — do NOT substitute http_request_duration_seconds_bucket (that is the todo-app / NestJS metric).
+# BINDING — this stack exports the flask_-prefixed metric; do NOT substitute the bare http_request_duration_seconds_bucket.
 p99_promql = """
 histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[30s])))
 """
@@ -53,7 +53,6 @@ alert_fired_at               = ""    # populated at runtime by the confirm-fire 
 [paths]
 stack    = "../../stacks/flask-compose"                          # BINDING — harness-side run layer for this substrate
 compose  = "../../stacks/flask-compose/compose/docker-compose.yml"  # BINDING — in-repo compose file (not an external ops repo)
-trigger  = "trigger.md"                                          # BINDING — the neutral on-call page handed to the agent
 solution = "solution/fix.patch"                                 # BINDING — canonical reference fix (harness-internal, not agent-facing)
 oracle   = "verify/oracle.md"                                    # BINDING — v1 mitigation-oracle specification (harness-internal)
 
@@ -67,7 +66,7 @@ oracle   = "verify/oracle.md"                                    # BINDING — v
 [inject]
 # BINDING — k6 compose service invocation; run from stacks/flask-compose dir.
 # The fault EDIT itself (CACHE_TYPE flip) is applied separately by scripts/inject-regression.sh.
-command  = "docker compose -f compose/docker-compose.yml --profile load up k6"
+command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
 mode     = "storm"                    # ARCHETYPE — constant-arrival-rate storm over fixed query working set
 continuous = true                     # ARCHETYPE — driver runs for the full run lifecycle (confirm-fire + agent work + verify)
 stop_during_verification = false      # ARCHETYPE — anti-cheat (D4): load stays active while the oracle scores

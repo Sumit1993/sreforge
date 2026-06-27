@@ -1,0 +1,12 @@
+# Grafana dashboard provisioning — load the booklogr dashboards from disk.
+apiVersion: 1
+providers:
+  - name: booklogr
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

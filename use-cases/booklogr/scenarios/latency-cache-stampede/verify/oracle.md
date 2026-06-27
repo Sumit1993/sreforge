@@ -50,7 +50,7 @@ agent edits run workspace → sreforge submit → CI gate → (green) auto-merge
 ```
 
 The agent never deploys directly. The k6 storm
-(`docker compose -f compose/docker-compose.yml --profile load up k6`, from
+(`docker compose -p booklogr-edge -f compose/load.yml up -d`, from
 `stacks/flask-compose`) keeps running the **entire** time — including while the
 oracle scores. This is the **D4 anti-cheat**: the alert may clear only because
 the deployed fix works, never because load stopped.

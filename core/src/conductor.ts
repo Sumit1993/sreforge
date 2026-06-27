@@ -1,4 +1,4 @@
-import { ContextAssembler } from "./context/index.js";
+import { IncidentPageRenderer } from "./context/index.js";
 import type { AutoMerge, CdDeployer, CiGate } from "./deploy/index.js";
 import type { AgentRunner } from "./runner/index.js";
 import { NoopAgentRunner } from "./runner/index.js";
@@ -25,7 +25,7 @@ import type {
  */
 export interface ConductorDeps {
   readonly trigger: TriggerSource;
-  readonly assembler?: ContextAssembler;
+  readonly page?: IncidentPageRenderer;
   readonly runner?: AgentRunner;
   readonly ciGate: CiGate;
   readonly autoMerge: AutoMerge;
@@ -48,7 +48,7 @@ export interface IncidentResult {
  * Orchestrates one incident run end-to-end. The Conductor wires the module
  * interfaces together and owns the lifecycle ordering only:
  *
- *   poll trigger → assemble context → run agent → CI gate → merge → redeploy
+ *   poll trigger → render page → run agent → CI gate → merge → redeploy
  *   → verify → record → cleanup.
  *
  * The scenario owns fault injection and the confirm-fire gate (it ensures the
@@ -57,12 +57,12 @@ export interface IncidentResult {
  */
 export class Conductor {
   readonly #deps: ConductorDeps;
-  readonly #assembler: ContextAssembler;
+  readonly #page: IncidentPageRenderer;
   readonly #runner: AgentRunner;
 
   constructor(deps: ConductorDeps) {
     this.#deps = deps;
-    this.#assembler = deps.assembler ?? new ContextAssembler();
+    this.#page = deps.page ?? new IncidentPageRenderer();
     this.#runner = deps.runner ?? new NoopAgentRunner();
   }
 
@@ -86,9 +86,9 @@ export class Conductor {
         );
       }
 
-      // Phase: context — assemble the neutral brief for the agent.
+      // Phase: context — render the neutral incident page for the agent.
       const brief = await timed(timings, "context", async () =>
-        this.#assembler.assemble(trigger as Trigger, config.agentContext),
+        this.#page.render(trigger as Trigger, config.agentContext),
       );
 
       // Phase: run — hand the brief to the agent meta-harness.

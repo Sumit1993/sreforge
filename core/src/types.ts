@@ -4,8 +4,8 @@
  * These types are the spine of the closed-loop incident run:
  *   trigger → context → run → deploy → verify → record → cleanup.
  *
- * Nothing here may reference a concrete use-case, stack, or scenario
- * (e.g. the todo-app). The engine is domain-agnostic by construction.
+ * Nothing here may reference a concrete use-case, stack, or scenario.
+ * The engine is domain-agnostic by construction.
  */
 
 // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ export type RunPhase =
 export interface Trigger {
   /** Stable identifier of the trigger kind, e.g. `"prometheus-alert"`. */
   readonly source: string;
-  /** The firing alert's name, e.g. `"TodoApiLatencyP99High"`. */
+  /** The firing alert's name, e.g. `"ApiLatencyP99High"`. */
   readonly alertName: string;
   /** Alert severity as reported by the source, if any. */
   readonly severity?: string;
@@ -102,10 +102,22 @@ export interface RunWorkspace {
  * mentions a harness or an evaluation. Mirrors `agent_context`.
  */
 export interface AgentContext {
-  /** Reachable, documented endpoints on the deployment network. */
+  /**
+   * Reachable, documented endpoints on the deployment network. These are the
+   * AGENT's view: in-network service DNS (e.g. `http://alertmanager:9093`), not
+   * the host-published ports the engine itself probes from outside the network.
+   */
   readonly services: ServiceEndpoints;
   /** The per-run substrate clone the agent edits. */
   readonly runWorkspace: RunWorkspace;
+  /**
+   * Agent-facing path where the service source is mounted inside the sandbox.
+   * Distinct from {@link RunWorkspace.path}, which is the host-side substrate the
+   * engine operates on (CI replay / redeploy / cleanup). Kept separate so the
+   * brief shows the agent its own working directory and never leaks a host path.
+   * Defaults to `/workspace` when omitted.
+   */
+  readonly workspacePath?: string;
   /**
    * The command the agent invokes to submit its fix (fix-only in v1). The agent
    * never merges or deploys; submission hands control back to the engine.

@@ -7,8 +7,10 @@ p99 latency above the 300 ms SLO and fires `BooklogrApiLatencyP99High`; the fix
 must restore effective caching so repeated search queries no longer flood the slow
 upstream while load is still active.
 
-The agent is paged with [`trigger.md`](trigger.md), investigates the live stack,
-and submits a fix via `sreforge submit`. The harness builds + redeploys it, then
+The agent is paged with the firing alert — the engine's `ContextAssembler`
+renders the neutral incident brief from the alert plus the live endpoints — then
+investigates the live stack and submits a fix via `sreforge submit`. The harness
+builds + redeploys it, then
 the [mitigation oracle](verify/oracle.md) scores whether the alert clears and
 stays cleared **under still-active load**.
 
@@ -17,7 +19,6 @@ stays cleared **under still-active load**.
 | File                          | Purpose                                                            |
 | ----------------------------- | ------------------------------------------------------------------ |
 | `scenario.toml`               | machine-readable manifest (profile, expected alert, timing, paths, inject, verify) |
-| `trigger.md`                  | the neutral on-call page handed to the agent                       |
 | `solution/fix.patch`          | canonical reference fix (the cache-backend restore patch)          |
 | `verify/oracle.md`            | v1 mitigation-oracle spec (CompoundedOracle contract)              |
 
@@ -50,7 +51,7 @@ Individual pieces, if you want to step through the observability path by hand:
 ./up.sh
 
 # 3. start the k6 constant-arrival-rate storm (runs continuously)
-docker compose -f compose/docker-compose.yml --profile load up k6
+docker compose -p booklogr-edge -f compose/load.yml up -d
 
 # 4. wait for BooklogrApiLatencyP99High to enter the firing state
 node scripts/confirm-fire.mjs --alert BooklogrApiLatencyP99High

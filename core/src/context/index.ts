@@ -1,2 +1,2 @@
-export { ContextAssembler } from "./assembler.js";
-export type { AgentBrief } from "./assembler.js";
+export { IncidentPageRenderer } from "./incident-page.js";
+export type { AgentBrief } from "./incident-page.js";

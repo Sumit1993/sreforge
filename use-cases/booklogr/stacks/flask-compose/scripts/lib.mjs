@@ -1,6 +1,5 @@
 // Shared helpers for the booklogr flask-compose operational scripts.
-// Zero dependencies (Node 18+ global fetch). Ported from the node-compose
-// stack; only the metric name, job label, and alert names differ.
+// Zero dependencies (Node 18+ global fetch).
 
 export const PROM = process.env.PROM_URL || "http://localhost:9090";
 

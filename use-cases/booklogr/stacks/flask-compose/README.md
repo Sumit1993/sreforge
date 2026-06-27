@@ -2,8 +2,7 @@
 
 The harness-side overlay that turns the imported **booklogr** substrate into a
 lived-in, observable deployment with a local Git forge (CI/CD) and a load
-driver. Mirrors the proven `todo-app/stacks/node-compose` layout, repointed to
-booklogr's Flask/Postgres stack (D14/D15).
+driver over booklogr's Flask/Postgres stack (D14/D15).
 
 > The booklogr app itself is **not** in this tree. It's imported into the local
 > Gitea forge and checked out (gitignored) at `substrate/booklogr` as the build
@@ -15,7 +14,7 @@ booklogr's Flask/Postgres stack (D14/D15).
 ```
 compose/
   docker-compose.yml   app deployment + observability (resettable each run)
-  forge.yml            Gitea + act_runner (long-lived; holds the repo)
+  load.yml             isolated load plane (project booklogr-edge; on-demand storm)
 observability/
   prometheus.yml       scrapes booklogr-api:9090/metrics, job "booklogr-api"
   rules/booklogr-rules.yml   BooklogrApiLatencyP99High (+ error-rate, down)
@@ -26,15 +25,19 @@ instrumentation/
   README.md            what/why of the baseline metrics commit
 gitea/
   ci.yml               installed to the repo as .gitea/workflows/ci.yml (build+smoke)
-  runner-config.yaml   act_runner: run ubuntu-latest jobs on the host (docker build)
-load/                  k6 constant-arrival-rate storm (M2)
+load/                  k6 constant-arrival-rate storm (mounted into the load plane)
 scripts/
   import-substrate.sh  mirror-push upstream → Gitea, commit instrumentation + CI
-  up.sh / down.sh      bring up / tear down the app stack
+  up.sh / down.sh      bring up / tear down the app stack (+ load plane)
+  arm-incident.sh      regress + storm + confirm-fire (D10)
   confirm-fire.mjs     poll until BooklogrApiLatencyP99High fires (D10)
   verify-clear.mjs     sustained-clear oracle under still-active load (D4)
   status.mjs / lib.mjs current p99 + alert state; shared helpers
 ```
+
+> The Gitea forge is no longer in this stack: it is **shared** infra at
+> `infra/forge/` (project `sreforge-forge`), hosting one repo per use case and
+> persisting across runs.
 
 ## The metric chain (kept coherent across every file)
 
@@ -51,11 +54,11 @@ flask_http_request_duration_seconds_bucket   (prometheus-flask-exporter default)
 ```bash
 cp .env.example .env          # fill admin password etc.
 
-# 1. forge up, create admin user, generate a runner token → put it in .env
-docker compose -f compose/forge.yml up -d gitea
+# 1. forge up (shared; run from the repo root), create admin + runner token → .env
+docker compose -f infra/forge/forge.yml up -d gitea
 #    (create admin via the UI at :3000 or `gitea admin user create`)
 #    (runner token: repo/org/instance Settings → Actions → Runners)
-docker compose -f compose/forge.yml up -d act_runner
+docker compose -f infra/forge/forge.yml up -d act_runner
 
 # 2. import booklogr (full history) + baseline instrumentation + CI
 bash scripts/import-substrate.sh
