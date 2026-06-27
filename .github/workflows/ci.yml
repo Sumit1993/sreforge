@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build (and, when present, test) the engine in core/. core/ carries its own
+  # pnpm-lock.yaml and builds independently — the repo root is intentionally not a
+  # single installable workspace yet, so we install per-package here.
+  build:
+    name: build core
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      # action-setup reads the pnpm version from the root package.json
+      # `packageManager` field, so no version is pinned here (pinning both errors).
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          cache-dependency-path: core/pnpm-lock.yaml
+
+      - name: Install core deps
+        working-directory: core
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core
+        working-directory: core
+        run: pnpm build
+
+      # Runs the suite once core ships a `test` script; until then it no-ops so the
+      # check stays green. Skip-on-absent is acceptable for a young repo and is
+      # clearly logged.
+      - name: Test core (if a test script exists)
+        working-directory: core
+        run: |
+          if node -e "const p=require('./package.json');process.exit(p.scripts&&p.scripts.test?0:1)"; then
+            pnpm test
+          else
+            echo "No core test script on this ref — skipping."
+          fi
+
+  # Single stable status check to require in branch protection, independent of how
+  # the matrix above expands.
+  gate:
+    name: CI gate
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Pass
+        run: echo "All CI jobs succeeded."
