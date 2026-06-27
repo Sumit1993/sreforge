@@ -25,7 +25,7 @@ jobs:
       matrix:
         node-version: [20, 22]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # action-setup reads the pnpm version from the root package.json
       # `packageManager` field, so no version is pinned here (pinning both errors).
