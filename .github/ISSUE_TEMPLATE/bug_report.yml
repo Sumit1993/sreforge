@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in the SREForge harness behaves incorrectly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please do **not** paste real
+        secrets, tokens, or private content — issues are public.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: I brought up a use-case rig and ran an incident, and ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands or actions, in order.
+      placeholder: |
+        1. bring up the rig
+        2. ...
+        3. see error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit / release
+      description: The commit SHA (`git rev-parse --short HEAD`) or release tag you are on.
+      placeholder: 1c63445
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version (`node --version`), and container runtime (Docker / Rancher Desktop, WSL2, etc.).
+      placeholder: WSL2 (Ubuntu), Node 20.11, Rancher Desktop
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Error messages or logs. Redact anything sensitive first.
+      render: shell
+    validations:
+      required: false
