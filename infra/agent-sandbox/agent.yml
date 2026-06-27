@@ -1,13 +1,20 @@
 # =============================================================================
 # agent-sandbox — the on-box world an EXTERNAL SRE agent is placed into.
 #
-# This compose project IS THE AGENT'S ENTIRE WORLD. An external SRE agent is
-# exec'd into the single `agent-shell` container to investigate the booklogr
-# incident: it polls Alertmanager, queries the observability stack (Prometheus /
-# Grafana), reads the app, edits its per-run workspace clone, and submits.
+# USE-CASE-NEUTRAL: this file names no use-case. The deploy-plane network and the
+# app endpoint are passed in (DEPLOY_NETWORK, API_URL), so the same sandbox serves
+# any use-case (booklogr supplies them via `pnpm forge agent booklogr`).
+#
+# This compose project IS THE AGENT'S ENTIRE WORLD. The engine/operator execs an
+# external SRE agent's process INTO the already-running `agent-shell` container —
+# the container idles on `sleep infinity`, and a human/engine runs
+# `docker compose … exec agent-shell sh` from OUTSIDE to drop the agent in. The
+# agent itself never runs docker (no socket, no CLI — see below). Inside, it polls
+# Alertmanager, queries the observability stack (Prometheus / Grafana), reads the
+# app, edits its per-run workspace clone, and submits.
 #
 # ISOLATION IS BY OMISSION (not by a firewall the agent could detect):
-#   - agent-shell joins ONLY the deploy-plane app network (booklogr_default).
+#   - agent-shell joins ONLY the deploy-plane app network (${DEPLOY_NETWORK}).
 #     It is NOT on the forge network and NOT on the load network, so the
 #     harness (Gitea forge, the Actions runner, the k6 edge/load driver) is
 #     simply not routable. There is nothing to "see being blocked" — those
@@ -28,14 +35,16 @@
 # (socket-proxy + docker-proxy-filter for app-only `docker ps`) is DEFERRED and
 # documented in README.md, not built here.
 #
-# Bring up (the deploy plane `booklogr` + `booklogr_default` must already exist):
-#   WORKSPACE_DIR=/abs/path/to/run-workspace-clone \
+# Bring up (the use-case's deploy plane + its app network must already exist):
+#   DEPLOY_NETWORK=<plane>_default API_URL=http://<app>:<port> \
+#     WORKSPACE_DIR=/abs/path/to/run-workspace-clone \
 #     docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml up -d
 #   docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml exec agent-shell sh
+# (booklogr supplies these via `pnpm forge agent booklogr`.)
 # =============================================================================
 
-# Explicit, neutral project name. Distinct from the deploy plane (booklogr),
-# the forge (sreforge-forge), and the load plane (booklogr-edge).
+# Explicit, neutral project name. Distinct from the deploy plane, the forge
+# (sreforge-forge), and the load plane.
 name: sreforge-agent
 
 services:
@@ -63,12 +72,12 @@ services:
     restart: unless-stopped
 
     # ---- Network: the deploy plane ONLY ----------------------------------
-    # Joining booklogr_default (the booklogr deploy project's default network)
-    # gives the agent service-DNS reach to the app + observability tier and
-    # NOTHING else. The forge network and the load network are not joined, so
-    # sreforge-gitea / sreforge-runner / edge-client are unreachable by omission.
+    # Joining the deploy plane's app network (${DEPLOY_NETWORK}) gives the agent
+    # service-DNS reach to the app + observability tier and NOTHING else. The
+    # forge network and the load network are not joined, so sreforge-gitea /
+    # sreforge-runner / edge-client are unreachable by omission.
     networks:
-      - booklogr_default
+      - deploy_plane
 
     # ---- Workspace: per-run clone ONLY, at a neutral path ----------------
     # Read-write so the agent can edit and stage its fix. Sourced from
@@ -90,12 +99,14 @@ services:
 
     environment:
       # ---- Documented endpoints (container-routable SERVICE DNS) ---------
-      # These resolve over booklogr_default. They are the agent's whole
-      # observability + app surface — no host ports, no harness hosts.
-      PROM_URL: "http://prometheus:9090"
-      ALERTMANAGER_URL: "http://alertmanager:9093"
-      GRAFANA_URL: "http://grafana:3000"
-      API_URL: "http://booklogr-api:5000"
+      # These resolve over the deploy plane. They are the agent's whole
+      # observability + app surface — no host ports, no harness hosts. PROM /
+      # ALERTMANAGER / GRAFANA default to the stack-conventional service names;
+      # API_URL is the use-case's app, so it is REQUIRED (no default to leak).
+      PROM_URL: "${PROM_URL:-http://prometheus:9090}"
+      ALERTMANAGER_URL: "${ALERTMANAGER_URL:-http://alertmanager:9093}"
+      GRAFANA_URL: "${GRAFANA_URL:-http://grafana:3000}"
+      API_URL: "${API_URL:?set API_URL to the deploy plane's app endpoint, e.g. http://booklogr-api:5000}"
       # NOTE: there is no Loki in this stack; observability is Prometheus +
       # Alertmanager + Grafana. LOKI_URL is intentionally omitted (telling the
       # agent a log store exists when it doesn't would itself be a tell). If a
@@ -110,9 +121,10 @@ services:
       # sentinel, captures the diff, and owns the forge push / PR / CI.
       SUBMIT_CMD: "submit"
 
-# The deploy plane's default network, created by the booklogr compose project.
-# external: true — we ATTACH to it, we do not own or recreate it.
+# The deploy plane's app network, created by the use-case's compose project.
+# external: true — we ATTACH to it (by the name passed in DEPLOY_NETWORK); we do
+# not own or recreate it.
 networks:
-  booklogr_default:
+  deploy_plane:
     external: true
-    name: booklogr_default
+    name: ${DEPLOY_NETWORK:?set DEPLOY_NETWORK to the deploy plane's app network, e.g. booklogr_default}

@@ -9,26 +9,33 @@ hides that structure — this file (and the `Taskfile.yml` one level up) restore
 > into `.run-workspace/booklogr`; `scripts/` is a sibling and never enters
 > `/workspace`. So this is purely operator ergonomics — reorganise freely.
 
-## Run via Task (recommended)
+## Run via forge (recommended)
 
-The lifecycle is wired as a runnable table-of-contents in `../Taskfile.yml`
-([go-task](https://taskfile.dev)). `task` is a **pinned devDependency**
-(`@go-task/cli` in the root `package.json`), not a global install — so run
-`pnpm install` once at the repo root, then drive it via pnpm (the local binary
-isn't on PATH from this subdir):
+The lifecycle is a runnable table-of-contents in `../Taskfile.yml`
+([go-task](https://taskfile.dev)), driven through the repo's neutral dispatcher
+`pnpm forge <verb> <use-case>` — the **verb** is use-case-neutral, the
+**use-case** is a parameter. `task` is a **pinned devDependency** (`@go-task/cli`
+in the root `package.json`), not a global install — so run `pnpm install` once at
+the repo root, then:
 
 ```sh
-pnpm booklogr              # the menu, in phase order  (alias for `task --dir <this stack>`)
-pnpm booklogr setup        # once:    import substrate + author regression
-pnpm booklogr up           # session: bring up the deploy plane
-pnpm booklogr arm          # run:     reset to baseline, start storm, confirm alert fires
-pnpm booklogr agent        # run:     clean /workspace clone + bring up the sandbox
-pnpm booklogr run          # run:     drive the incident end-to-end  (RUNNER=external for the real-agent loop)
-pnpm booklogr verify       # any:     boundary + de-tell + alert-pickup probes, in PARALLEL
-pnpm booklogr down         # end:     tear down deploy + load planes
-pnpm booklogr smoke        # CI:      positive (reference fix passes) + negative (anti-cheat holds)
+pnpm forge menu     booklogr   # the phase menu (task --list)
+pnpm forge setup    booklogr   # once:    import substrate + author regression
+pnpm forge up       booklogr   # session: bring up the deploy plane
+pnpm forge arm      booklogr   # run:     reset to baseline, start storm, confirm alert fires
+pnpm forge agent    booklogr   # run:     clean /workspace clone + bring up the sandbox
+pnpm forge run      booklogr   # run:     drive the incident end-to-end  (append RUNNER=external for the real-agent loop)
+pnpm forge verify   booklogr   # any:     boundary + de-tell + alert-pickup probes, in PARALLEL
+pnpm forge down     booklogr   # end:     tear down deploy + load planes
+pnpm forge smoke    booklogr   # CI:      positive (reference fix passes) + negative (anti-cheat holds)
 
-# For task flags (dry-run / watch / list), call the binary directly:
+# Composites — one command, several phases:
+pnpm forge fresh    booklogr   # setup + up                              (first-time cold bring-up)
+pnpm forge agent-up booklogr   # arm + agent                            (ready to exec a real agent in)
+pnpm forge incident booklogr   # arm + run + verify                     (one graded run on an up stack)
+pnpm forge e2e      booklogr   # setup + up + arm + run + verify + down (cold-start -> teardown)
+
+# For raw task flags (dry-run / watch / list), call the binary directly:
 pnpm exec task --dir use-cases/booklogr/stacks/flask-compose -n run     # -n = dry-run
 ```
 
@@ -73,9 +80,12 @@ The `smoke-*.sh` scripts already source `.env` themselves, so they need no setup
 
 ## When use-cases multiply
 
-This `Taskfile.yml` is stack-local on purpose. If/when there are more use-cases, a
-root `Taskfile.yml` can pull each stack's file in with `includes:` (e.g.
-`booklogr: use-cases/booklogr/stacks/flask-compose`), so `task booklogr:run` works
-from the repo root without changing anything here. That's also the natural seam to
-add a repo-wide build/check graph (Turborepo/Nx) for the *build* layer, separate
-from this *lifecycle* layer.
+This `Taskfile.yml` is stack-local on purpose, and the neutral dispatcher already
+scales: a second use-case is `pnpm forge <verb> rssmonster` with **no new
+wiring** — `tools/usecase.mjs` resolves `<use-case>[:<stack>]` to its stack dir
+and runs the same phase verbs here. A use-case with more than one stack is
+addressed as `pnpm forge run booklogr:flask-compose`. The phase *values* that are
+booklogr-specific (alert name, service, repo) still live in this stack's scripts;
+lifting those into a per-use-case config is the natural next step when the second
+stack lands. The repo-wide *build* graph (Turborepo/Nx) is a separate seam from
+this *lifecycle* layer.

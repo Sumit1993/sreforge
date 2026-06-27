@@ -4,8 +4,8 @@ import { run } from "../deploy/process.js";
 import type { Trajectory } from "../types.js";
 import type { AgentRunner } from "./index.js";
 
-/** Configuration for a {@link ScriptedFixAgentRunner}. */
-export interface ScriptedFixAgentRunnerOptions {
+/** Configuration for a {@link ReferenceFixRunner}. */
+export interface ReferenceFixRunnerOptions {
   /** Forge client used to open the PR for the fix branch. */
   readonly client: GiteaClient;
   /**
@@ -30,7 +30,7 @@ export interface ScriptedFixAgentRunnerOptions {
   /** Commit author identity (defaults to a plausible developer). */
   readonly authorName?: string;
   readonly authorEmail?: string;
-  /** Name surfaced in the {@link Trajectory} (defaults to `"scripted-fix"`). */
+  /** Name surfaced in the {@link Trajectory} (defaults to `"reference-fix"`). */
   readonly agentName?: string;
 }
 
@@ -54,10 +54,10 @@ export interface ScriptedFixAgentRunnerOptions {
  * The reference fix itself lives in the scenario (its `solution/fix.patch`),
  * never hard-coded here — so this runner stays domain-agnostic and reusable.
  */
-export class ScriptedFixAgentRunner implements AgentRunner {
-  readonly #opts: ScriptedFixAgentRunnerOptions;
+export class ReferenceFixRunner implements AgentRunner {
+  readonly #opts: ReferenceFixRunnerOptions;
 
-  constructor(options: ScriptedFixAgentRunnerOptions) {
+  constructor(options: ReferenceFixRunnerOptions) {
     this.#opts = options;
   }
 
@@ -65,7 +65,7 @@ export class ScriptedFixAgentRunner implements AgentRunner {
     const start = Date.now();
     const cwd = brief.context.runWorkspace.path;
     const o = this.#opts;
-    const agentName = o.agentName ?? "scripted-fix";
+    const agentName = o.agentName ?? "reference-fix";
 
     // 1. Put the fix on a fresh, named branch at the current (regressed) HEAD.
     await this.#git(cwd, ["checkout", "-B", o.branch]);
@@ -108,7 +108,7 @@ export class ScriptedFixAgentRunner implements AgentRunner {
     return {
       agentName,
       transcript: [
-        `scripted-fix runner for alert ${brief.alertName}`,
+        `reference-fix runner for alert ${brief.alertName}`,
         `applied ${o.patchPath} on branch ${o.branch}`,
         `pushed to origin; ${prNote}`,
       ].join("\n"),

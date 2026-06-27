@@ -39,8 +39,8 @@ export type { TriggerSource } from "./triggers/index.js";
 export { PrometheusAlertTrigger } from "./triggers/index.js";
 export type { PrometheusAlertTriggerOptions } from "./triggers/index.js";
 
-// ---- Context --------------------------------------------------------------
-export { ContextAssembler } from "./context/index.js";
+// ---- Context (the t=0 incident page) --------------------------------------
+export { IncidentPageRenderer } from "./context/index.js";
 export type { AgentBrief } from "./context/index.js";
 
 // ---- Runner ---------------------------------------------------------------
@@ -48,10 +48,10 @@ export type { AgentRunner } from "./runner/index.js";
 export {
   ExternalAgentRunner,
   NoopAgentRunner,
-  ScriptedFixAgentRunner,
+  ReferenceFixRunner,
 } from "./runner/index.js";
 export type { ExternalAgentRunnerOptions } from "./runner/index.js";
-export type { ScriptedFixAgentRunnerOptions } from "./runner/index.js";
+export type { ReferenceFixRunnerOptions } from "./runner/index.js";
 
 // ---- Deploy ---------------------------------------------------------------
 export type { AutoMerge, CdDeployer, CiGate } from "./deploy/index.js";

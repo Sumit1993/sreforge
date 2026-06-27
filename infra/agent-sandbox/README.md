@@ -1,10 +1,14 @@
 # agent-sandbox
 
-The on-box environment a real **external** SRE agent is placed into to work the
-booklogr incident: a single `agent-shell` container where it polls Alertmanager,
-queries the observability stack (Prometheus / Grafana), reads the app, edits its
-per-run workspace clone, and runs `submit`. Defined in [`agent.yml`](./agent.yml)
-(compose project `sreforge-agent`) on the neutral image built by
+The on-box environment a real **external** SRE agent is placed into to work a
+use-case's incident (booklogr shown below). It is **use-case-neutral**: the
+deploy-plane network and app endpoint are passed in (`DEPLOY_NETWORK`, `API_URL`),
+so the same sandbox serves any use-case. The engine/operator execs the agent's
+process **into** the already-running `agent-shell` container (the agent has no
+docker access of its own); inside, it polls Alertmanager, queries the
+observability stack (Prometheus / Grafana), reads the app, edits its per-run
+workspace clone, and runs `submit`. Defined in [`agent.yml`](./agent.yml) (compose
+project `sreforge-agent`) on the neutral image built by
 [`agent-shell.Dockerfile`](./agent-shell.Dockerfile).
 
 ## Surface
@@ -20,8 +24,9 @@ The agent gets a shell, the documented HTTP endpoints, and `submit` — nothing 
 
 (This stack has no Loki, so no `LOKI_URL`.)
 
-`agent-shell` joins **only** the deploy-plane network `booklogr_default`, has **no
-docker socket and no docker CLI**, and mounts **only** the per-run workspace clone at
+`agent-shell` joins **only** the deploy-plane network passed in `DEPLOY_NETWORK`
+(booklogr's is `booklogr_default`), has **no docker socket and no docker CLI**, and
+mounts **only** the per-run workspace clone at
 `/workspace`. It runs as a **non-root** user whose uid matches the workspace owner
 (so git/file writes on the bind mount stay owner-consistent with the host engine).
 The toolset (`curl`/`git`/`jq`) and the `submit` shim are **baked into the image**, so
@@ -38,6 +43,21 @@ push / PR / CI. Select this mode with `AGENT_MODE=external` (or `RUNNER=external
 `run-incident.mjs`; the default remains the scripted runner.
 
 ## Bring it up and exec in
+
+The easy path (prepares the clone and brings up the sandbox with the right
+`DEPLOY_NETWORK` / `API_URL`):
+
+```sh
+pnpm forge agent booklogr
+```
+
+The manual path is below. The neutral `agent.yml` requires the deploy-plane
+coordinates at compose parse-time (for **every** `docker compose … agent.yml`
+command, including `exec`/`down`), so export booklogr's once first:
+
+```sh
+export DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000
+```
 
 Prereq: the booklogr deploy plane is up (so the external network `booklogr_default`
 exists):

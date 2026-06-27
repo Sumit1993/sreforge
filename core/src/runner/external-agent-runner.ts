@@ -74,7 +74,7 @@ interface SubmitSentinel {
  *   1. polls the clean workspace for the sentinel (the completion signal),
  *   2. captures the agent's diff FROM THE CLEAN CLONE (excluding the sentinel),
  *   3. replays that diff onto the FORGE substrate exactly as
- *      {@link ScriptedFixAgentRunner} replays a canned patch — checkout a fresh
+ *      {@link ReferenceFixRunner} replays a canned patch — checkout a fresh
  *      fix branch at the same regressed HEAD, `git apply`, commit under project
  *      authorship, push (fires substrate CI), open the PR,
  *   4. returns the {@link Trajectory} (submitted + the produced diff).
@@ -87,7 +87,7 @@ interface SubmitSentinel {
  * key off the substrate (`runWorkspace.path`), which is exactly where this
  * runner lands the fix.
  *
- * Only the patch SOURCE differs from {@link ScriptedFixAgentRunner} (a live
+ * Only the patch SOURCE differs from {@link ReferenceFixRunner} (a live
  * agent diff vs. a canned `fix.patch`); the engine-side steps are identical.
  */
 export class ExternalAgentRunner implements AgentRunner {
@@ -146,7 +146,7 @@ export class ExternalAgentRunner implements AgentRunner {
     // Risk mitigation: the diff must apply at the IDENTICAL regressed HEAD the
     // substrate is on. If prepare-agent-workspace.sh ever cloned from a different
     // ref, the shared base sha would be absent from the clean clone; assert it is
-    // reachable there and fail loud (mirrors scripted-fix's fail-on-bad-patch).
+    // reachable there and fail loud (mirrors reference-fix's fail-on-bad-patch).
     const baseInClean = await run(
       "git",
       ["cat-file", "-e", `${base}^{commit}`],
@@ -193,7 +193,7 @@ export class ExternalAgentRunner implements AgentRunner {
       };
     }
 
-    // (c) Replay on the FORGE substrate, mirroring ScriptedFixAgentRunner.
+    // (c) Replay on the FORGE substrate, mirroring ReferenceFixRunner.
 
     // 1. Put the fix on a fresh, named branch at the substrate's regressed HEAD.
     await this.#git(substrate, ["checkout", "-B", o.branch]);

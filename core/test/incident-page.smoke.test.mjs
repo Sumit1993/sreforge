@@ -1,4 +1,4 @@
-// Smoke test for the agent brief (ContextAssembler) — a de-tell regression guard.
+// Smoke test for the incident page (IncidentPageRenderer) — a de-tell regression guard.
 //
 // The brief is the agent's whole view at t=0, so its content is load-bearing for
 // the de-tell boundary: it must read like a real on-call page and must never leak
@@ -9,7 +9,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ContextAssembler } from "../dist/index.js";
+import { IncidentPageRenderer } from "../dist/index.js";
 
 // A trigger whose contents we assert DO NOT reach the agent: the agent picks the
 // firing alert up from the alerting stack itself, it is not spoon-fed here.
@@ -43,7 +43,7 @@ const context = {
 };
 
 test("brief never leaks the rig (de-tell properties)", () => {
-  const { prompt } = new ContextAssembler().assemble(trigger, context);
+  const { prompt } = new IncidentPageRenderer().render(trigger, context);
   const lower = prompt.toLowerCase();
 
   // 1. No host-facing endpoints — the agent is inside the deploy network.
@@ -68,7 +68,7 @@ test("brief never leaks the rig (de-tell properties)", () => {
 });
 
 test("brief gives the agent what it needs to self-serve", () => {
-  const { prompt, alertName } = new ContextAssembler().assemble(trigger, context);
+  const { prompt, alertName } = new IncidentPageRenderer().render(trigger, context);
 
   // Points at the alerting stack as the source of truth, by reachable DNS.
   assert.ok(prompt.includes("alertmanager"), "brief must point at the alerting stack");
@@ -88,7 +88,7 @@ test("brief gives the agent what it needs to self-serve", () => {
 test("workspacePath defaults to /workspace without leaking the substrate", () => {
   const { workspacePath, ...rest } = context; // omit workspacePath
   void workspacePath;
-  const { prompt } = new ContextAssembler().assemble(trigger, rest);
+  const { prompt } = new IncidentPageRenderer().render(trigger, rest);
   assert.ok(prompt.includes("/workspace"), "defaults to /workspace when omitted");
   assert.ok(!prompt.includes("/home/"), "default must not fall back to the host substrate path");
 });

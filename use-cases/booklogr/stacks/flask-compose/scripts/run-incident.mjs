@@ -5,7 +5,7 @@
 // scenario: it wires the booklogr-specific config into the domain-agnostic
 // @sreforge/core Conductor and runs:
 //
-//   trigger(Prometheus alert firing) -> assemble brief -> ScriptedFixAgentRunner
+//   trigger(Prometheus alert firing) -> assemble brief -> ReferenceFixRunner
 //   (apply solution/fix.patch, branch, push, open PR) -> GiteaCiGate (poll the
 //   forge Actions run for HEAD) -> GiteaAutoMerge (merge the PR) ->
 //   ComposeCdDeployer (rebuild+swap booklogr-api) -> MitigationOracle (clear +
@@ -31,8 +31,8 @@ import fs from "node:fs";
 import {
   runIncident,
   PrometheusAlertTrigger,
-  ContextAssembler,
-  ScriptedFixAgentRunner,
+  IncidentPageRenderer,
+  ReferenceFixRunner,
   ExternalAgentRunner,
   GiteaClient,
   GiteaCiGate,
@@ -108,7 +108,7 @@ const SUSTAINED_CLEAR_SECONDS = Number(env.SUSTAINED_CLEAR_SECONDS || 30);
 const client = new GiteaClient({ baseUrl: GITEA_URL, token: TOKEN, owner: OWNER, repo: REPO });
 
 // ---- runner mode (OPT-IN; default = scripted, fully backward compatible) ----
-// scripted (default): ScriptedFixAgentRunner replays the canned solution/fix.patch.
+// scripted (default): ReferenceFixRunner replays the canned solution/fix.patch.
 // external           : ExternalAgentRunner picks up a REAL agent's submission from
 //                      the de-tell'd clean workspace (.run-workspace/booklogr, the
 //                      host side of the sandbox /workspace mount) — it waits for the
@@ -153,7 +153,7 @@ const runner =
         authorName: AUTHOR_NAME,
         authorEmail: AUTHOR_EMAIL,
       })
-    : new ScriptedFixAgentRunner({
+    : new ReferenceFixRunner({
         client,
         patchPath,
         branch: `fix/${runId}`,
@@ -165,7 +165,7 @@ const runner =
 
 const deps = {
   trigger: new PrometheusAlertTrigger({ prometheusUrl: PROM_URL, alertName: ALERT }),
-  assembler: new ContextAssembler(),
+  page: new IncidentPageRenderer(),
   runner,
   ciGate: new GiteaCiGate({ client, pollIntervalMs: 5_000, timeoutMs: 600_000 }),
   autoMerge: new GiteaAutoMerge({ client }),

@@ -66,22 +66,36 @@ crosses 0.3s, and the `BooklogrApiLatencyP99High` alert fires. The reference fix
 
 ### Run it
 
-Requires Docker (compose) + Node 18+. From the stack directory:
+Requires Docker (compose) + Node 18+. Run `pnpm install` once at the repo root,
+then drive any use-case through the neutral dispatcher `pnpm forge <verb>
+<use-case>` — the **verb** is use-case-neutral vocabulary, the **use-case** is a
+parameter:
+
+```sh
+pnpm forge fresh    booklogr   # setup + up: import substrate, author regression, start the deploy plane
+pnpm forge incident booklogr   # arm + run + verify: one graded run with the reference fix
+pnpm forge down     booklogr   # tear down the deploy + load planes (the forge persists)
+```
+
+**Driving a real external SRE agent** (instead of the scripted reference fix):
+
+```sh
+pnpm forge fresh    booklogr            # first-time cold bring-up
+pnpm forge agent-up booklogr            # arm the incident + bring up the sealed agent sandbox
+# place the agent INTO the sandbox (it self-serves alerts; it has no docker of its own):
+DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 \
+  docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml exec agent-shell sh
+#   → agent investigates via $ALERTMANAGER_URL / $PROM_URL / $API_URL, edits /workspace, runs `submit`
+pnpm forge run      booklogr RUNNER=external   # engine: sentinel → forge push → CI → merge → redeploy → grade
+pnpm forge verify   booklogr            # boundary + de-tell + alert-pickup probes
+```
+
+Lower-level entry points (each script self-resolves and still runs standalone):
 
 ```sh
 cd use-cases/booklogr/stacks/flask-compose
 bash scripts/smoke-positive.sh   # reference fix through the full conductor loop: must PASS
 bash scripts/smoke-negative.sh   # a plausible-but-wrong fix: must NOT pass (D4 anti-cheat)
-```
-
-Or drive the pieces yourself:
-
-```sh
-bash scripts/up.sh                          # build + start the deploy plane (forge is separate, persists)
-bash scripts/arm-incident.sh                # inject regression + start the storm + confirm-fire
-node scripts/run-incident.mjs               # one conductor loop (trigger→…→verify→record→cleanup)
-node scripts/status.mjs                     # live p99 + firing alerts
-bash scripts/down.sh                        # tear down the deploy plane
 ```
 
 Endpoints once up: API `http://localhost:5000` · web `:5150` · Prometheus `:9090` ·

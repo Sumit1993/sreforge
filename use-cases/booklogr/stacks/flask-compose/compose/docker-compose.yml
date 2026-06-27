@@ -129,7 +129,11 @@ services:
     ports:
       - "3002:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-bK9xQ2mP7vR4tLw8}
+      # Local-only dashboard login. Anonymous Viewer is on (below), so this only
+      # gates admin actions on a throwaway local Grafana. Benign default (the
+      # stock Grafana one); override via GF_ADMIN_PASSWORD. Not a real secret —
+      # the previous high-entropy literal just tripped secret scanners.
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     volumes:

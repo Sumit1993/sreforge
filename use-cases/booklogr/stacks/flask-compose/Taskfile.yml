@@ -12,11 +12,12 @@
 #
 # task is a PINNED devDependency (@go-task/cli in the ROOT package.json) — not a
 # global install — so every dev/CI gets the same version (pnpm-lock.yaml). Get it
-# with `pnpm install` at the repo root. Run it via pnpm so the local binary is on
-# PATH (pnpm exec can't find it from this non-package subdir):
-#   pnpm booklogr                # the menu (this file's default task)
-#   pnpm booklogr <recipe>       # run a phase, e.g. `pnpm booklogr arm`
-#   pnpm exec task --dir use-cases/booklogr/stacks/flask-compose -n run   # flags (-n/--watch/--list)
+# with `pnpm install` at the repo root. Drive it through the neutral dispatcher
+# (`pnpm forge <verb> <use-case>`), which resolves the use-case to this stack:
+#   pnpm forge menu booklogr     # the phase menu (task --list)
+#   pnpm forge <verb> booklogr   # run a phase, e.g. `pnpm forge arm booklogr`
+#   pnpm forge incident booklogr # a composite (arm -> run -> verify)
+#   pnpm exec task --dir use-cases/booklogr/stacks/flask-compose -n run   # raw task flags (-n/--watch/--list)
 #
 # Scripts already self-resolve their own paths, so recipes are thin. The two
 # cross-boundary paths (the engine in core/, the sandbox compose in infra/) are
@@ -61,10 +62,16 @@ tasks:
   # ── agent (per run) ──────────────────────────────────────────────────────────
   agent:
     desc: "[run] make the clean /workspace clone + bring up the agent sandbox"
+    # The agent-sandbox compose is use-case-NEUTRAL; this stack supplies the
+    # booklogr deploy-plane network + app endpoint it attaches to.
+    env:
+      DEPLOY_NETWORK: '{{.DEPLOY_NETWORK | default "booklogr_default"}}'
+      API_URL: '{{.API_URL | default "http://booklogr-api:5000"}}'
     cmds:
       - |
         WS="$(bash scripts/prepare-agent-workspace.sh)"
         AGENT_UID=$(id -u) AGENT_GID=$(id -g) WORKSPACE_DIR="$WS" \
+          DEPLOY_NETWORK="$DEPLOY_NETWORK" API_URL="$API_URL" \
           docker compose -p sreforge-agent \
           -f ../../../../infra/agent-sandbox/agent.yml up -d --force-recreate
 
@@ -91,7 +98,9 @@ tasks:
         msg: "agent-shell not running — run `task agent` first"
     cmds:
       - docker cp scripts/verify-boundary.sh agent-shell:/tmp/vb.sh
-      - docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T agent-shell sh /tmp/vb.sh
+      # The neutral agent.yml requires DEPLOY_NETWORK + API_URL at compose
+      # parse-time (even for `exec`); this stack supplies booklogr's.
+      - DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T agent-shell sh /tmp/vb.sh
 
   verify:pickup:
     desc: "in-box: the agent can self-serve the firing alert (REQUIRE_FIRING=1)"
@@ -100,7 +109,7 @@ tasks:
         msg: "agent-shell not running — run `task agent` first"
     cmds:
       - docker cp scripts/verify-alert-pickup.sh agent-shell:/tmp/vap.sh
-      - docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
+      - DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
 
   verify:detell:
     desc: "host: audit deploy containers for env/label/mount/log/image-clock tells"
