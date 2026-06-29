@@ -3,7 +3,7 @@ import type { AgentContext, Trigger } from "../types.js";
 /**
  * The neutral incident PAGE handed to the agent at t=0 — a page, not a brief.
  *
- * Framing is honest and neutral (D8): it describes a real incident on a real
+ * Framing is honest and neutral (ADR-0008): it describes a real incident on a real
  * deployment and never mentions a harness, an evaluation, or a "correct" fix.
  * `prompt` is the rendered page; `alertName` is carried as engine-internal
  * metadata (the run transcript records which alert opened the run) and is

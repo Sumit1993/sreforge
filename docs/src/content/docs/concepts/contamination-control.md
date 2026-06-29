@@ -98,5 +98,3 @@ benchmarks — zero differentiation.
 
 - [Add a use-case](../../guides/add-a-use-case/) — apply these invariants when
   importing a new app.
-- [Design decisions](../../reference/decisions/) — D7, D8, D12, D13, D14 spell
-  these out.

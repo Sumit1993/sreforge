@@ -62,5 +62,3 @@ to *deploy-and-verify*.
   scoring resists cheating.
 - [Scenario format](../../reference/scenario-format/) — the on-disk shape of a
   scenario.
-- [Design decisions](../../reference/decisions/) — D1 (taxonomy) and D3 (profiles)
-  in full.

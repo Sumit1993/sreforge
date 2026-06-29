@@ -2,7 +2,7 @@
 # Import the booklogr substrate into the local Gitea forge, preserving FULL git
 # history, then commit the baseline observability instrumentation + a local CI
 # workflow. The forge repo becomes the run workspace's only `origin` — never the
-# public upstream (retrieval isolation, D13/D15). Per D16 it also provisions the
+# public upstream (retrieval isolation, ADR-0013/ADR-0015). Per ADR-0016 it also provisions the
 # use case's MAINTAINER identity (derived from the imported app) and routes all
 # git pushes + the run loop's token through it, so the shared forge admin never
 # appears on the agent-visible push/PR/merge surface.
@@ -30,7 +30,7 @@ set -a; . ./.env; set +a
 API="$GITEA_URL/api/v1"
 # Admin (GITEA_ADMIN_USER) is used ONLY for setup REST (org/repo/actions/user) via
 # api(); every git PUSH and the run workspace origin use the per-use-case
-# maintainer remote (MAINT_REMOTE), set once the maintainer is provisioned (D16).
+# maintainer remote (MAINT_REMOTE), set once the maintainer is provisioned (ADR-0016).
 MIRROR_DIR="$STACK/substrate/.mirror"
 WORK_DIR="$STACK/substrate/booklogr"
 mkdir -p "$STACK/substrate"
@@ -60,7 +60,7 @@ api -X POST "$API/orgs/$GITEA_REPO_OWNER/repos" \
 api -X PATCH "$API/repos/$GITEA_REPO_OWNER/$GITEA_REPO_NAME" \
   -d '{"has_actions":false}' >/dev/null 2>&1 || true
 
-echo "==> 2b. provision the per-use-case MAINTAINER identity (D16)"
+echo "==> 2b. provision the per-use-case MAINTAINER identity (ADR-0016)"
 # Agent-visible git activity (push/PR/merge) must look like THIS app's maintainer,
 # never the shared forge admin. Derive it from the imported app:
 #   login = upstream owner handle; name/email = the repo's real last author.
@@ -180,5 +180,5 @@ echo "    GITEA_TOKEN -> maintainer ($MAINT_LOGIN) run-ops token"
 rm -rf "$MIRROR_DIR"
 echo "==> done. Substrate imported to $GITEA_URL/$GITEA_REPO_OWNER/$GITEA_REPO_NAME"
 echo "    Build context for compose: $WORK_DIR"
-echo "    Maintainer ($MAINT_LOGIN) provisioned; GITEA_TOKEN + workspace origin route through it (D16)."
+echo "    Maintainer ($MAINT_LOGIN) provisioned; GITEA_TOKEN + workspace origin route through it (ADR-0016)."
 echo "    Ensure the runner is up: docker compose -f infra/forge/forge.yml up -d act_runner"

@@ -6,7 +6,7 @@
 # post-resume wave stampedes the cold upstream and can trip the error-rate alarm).
 #
 # The query set MUST mirror load/booklogr-storm.js — a cached service then answers
-# every storm request from cache after this one priming pass. IMPORTANT (D4): a
+# every storm request from cache after this one priming pass. IMPORTANT (ADR-0004): a
 # no-op fix (cache still disabled) gains nothing here, so warming does NOT mask a
 # bad fix — it still fails the oracle under the resumed storm.
 #

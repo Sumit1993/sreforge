@@ -92,5 +92,3 @@ no refactor; the submit payload then gains an `rca` field.
 - [Run an incident](../../guides/run-an-incident/) — drive the loop yourself.
 - [Run contract](../../reference/run-contract/) — the exact scoring inputs the
   oracle consumes.
-- [Design decisions](../../reference/decisions/) — D4 (anti-cheat), D6 (compound
-  oracle), D10 (determinism).

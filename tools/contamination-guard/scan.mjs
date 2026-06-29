@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Contamination guard — scans a SREForge *substrate* repo for tells that would
 // reveal to an agent-under-test that the app is a planted-fault evaluation rig.
-// Enforces D8 (de-tell) + D12 (physical separation) as a build gate, not a doc.
+// Enforces ADR-0008 (de-tell) + ADR-0012 (physical separation) as a build gate, not a doc.
 //
 // Usage:  node tools/contamination-guard/scan.mjs [options] <target-dir...>
 //   --strict          treat soft-tells (WARN) as failures too
@@ -131,7 +131,7 @@ function snippet(line, idx, len) {
   return `${pre}[${hit}]${post}`.trim();
 }
 
-// Git history is part of the substrate an agent can read (git log). Per D8 the
+// Git history is part of the substrate an agent can read (git log). Per ADR-0008 the
 // history must be fresh — scan author/subject/body for hard tells.
 function scanGitHistory(root, policy, findings) {
   if (!existsSync(join(root, '.git'))) return;
@@ -150,7 +150,7 @@ function scanGitHistory(root, policy, findings) {
       if (m) {
         findings.push({ tier: 'BLOCK', rule: `git-history:${r.id}`, file: '<git history>',
           line: 0, text: `${(hash || '').slice(0, 8)} — ${snippet(hay, m.index, m[0].length)}`,
-          message: 'Tell in commit history. Substrate needs a fresh git init (D8).' });
+          message: 'Tell in commit history. Substrate needs a fresh git init (ADR-0008).' });
       }
     }
   }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# verify-boundary.sh — assert the D9 agent-sandbox boundary FROM INSIDE the box.
+# verify-boundary.sh — assert the ADR-0009 agent-sandbox boundary FROM INSIDE the box.
 #
 # WHAT THIS IS
 #   The external SRE agent is exec'd into the `agent-shell` container (compose
@@ -305,7 +305,7 @@ fi
 # ===========================================================================
 hdr "VERDICT"
 if [ "$FAILS" -eq 0 ]; then
-  printf '  BOUNDARY OK — 0 failing checks. The D9 boundary holds.\n'
+  printf '  BOUNDARY OK — 0 failing checks. The ADR-0009 boundary holds.\n'
   exit 0
 else
   printf '  BOUNDARY BREACHED — %d failing check(s). See FAIL lines above.\n' "$FAILS"

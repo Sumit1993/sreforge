@@ -34,7 +34,7 @@ export interface ComposeCdDeployerOptions {
    * cold-cache service can be killed mid-warmup under load (the redeploy-under-storm
    * health race). Both default to no-op (no-storm runs / other topologies are
    * unaffected). Traffic is resumed BEFORE redeploy() returns, so the oracle still
-   * grades the fix under STILL-ACTIVE fault (D4). A resume FAILURE fails the
+   * grades the fix under STILL-ACTIVE fault (ADR-0004). A resume FAILURE fails the
    * redeploy closed — grading under no load would be a falsely-passing measurement.
    */
   readonly quiesceCmd?: DeployHookCmd;
@@ -128,7 +128,7 @@ export class ComposeCdDeployer implements CdDeployer {
     }
 
     // Resume live traffic BEFORE returning, so the oracle grades the fix under
-    // STILL-ACTIVE fault (D4). If resume fails, grading would run under NO load — a
+    // STILL-ACTIVE fault (ADR-0004). If resume fails, grading would run under NO load — a
     // trivially-passing, invalid measurement — so fail the redeploy closed.
     const resumed = await this.#resume();
     if (!resumed) {

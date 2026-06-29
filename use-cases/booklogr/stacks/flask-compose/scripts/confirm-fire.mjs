@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// confirm-fire gate (D10) for the booklogr stack.
+// confirm-fire gate (ADR-0010) for the booklogr stack.
 //
 // Polls Prometheus until the expected alert is firing, within a timeout. This
 // guarantees the agent is only ever handed a genuine, reproduced incident —

@@ -91,4 +91,3 @@ These are plain Node scripts (no install needed) used during substrate intake:
 
 - [Run an incident](../../guides/run-an-incident/) — verbs mapped to lifecycle
   phases.
-- [Design decisions](../decisions/) — D17 (the command surface).

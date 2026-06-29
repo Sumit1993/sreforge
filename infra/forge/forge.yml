@@ -5,7 +5,7 @@
 #
 # It gives us, locally and with zero github.com:
 #   - a real Git remote (the run workspace's `origin`, NOT the public upstream
-#     — retrieval isolation, D13/D15),
+#     — retrieval isolation, ADR-0013/ADR-0015),
 #   - real PR + CI/CD via Gitea Actions (each repo carries its own
 #     .gitea/workflows/ci.yml, installed by the use case's import-substrate.sh).
 #

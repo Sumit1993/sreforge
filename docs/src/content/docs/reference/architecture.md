@@ -110,4 +110,3 @@ is validated end-to-end on `booklogr`. Wiring a real autonomous agent through th
 
 - [Closed-loop verification](../../concepts/closed-loop-verification/)
 - [Run contract](../run-contract/)
-- [Design decisions](../decisions/)
