@@ -66,6 +66,14 @@ weighted combination of signals; the three *hard* signals dominate:
 | `time_to_clear` | Seconds from redeploy to clear (telemetry) | 0.10 |
 | `no_new_alerts` | No other alert transitions to firing post-fix | 0.10 |
 
+**The pass bar is a weighted score of `0.85`** — set per scenario as
+`pass_threshold` (see [`scenario.toml`](../../reference/scenario-format/)).
+Clearing the alert without *holding* it cannot reach that bar: `ci_green` +
+`alert_cleared` sum to only 0.60, so a run crosses 0.85 only by also earning
+`sustained_clear` (0.20) **and** some soft credit (`time_to_clear`,
+`no_new_alerts`) — i.e. by keeping the alert down through the sustained window
+while the storm is still running.
+
 A fix that clears the alert briefly but cannot sustain it under the storm scores
 at or below the hard-signal ceiling and fails. Fail-closed short-circuits apply:
 if CI is not green, or the service was not redeployed after the fix commit, the
