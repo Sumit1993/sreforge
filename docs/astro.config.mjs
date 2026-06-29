@@ -1,0 +1,62 @@
+// @ts-check
+import { defineConfig } from 'astro/config';
+import starlight from '@astrojs/starlight';
+
+// SREForge docs are published as a GitHub Pages *project* site, so the site is
+// served from a sub-path. `site` + `base` must match the repo name; Starlight
+// prepends `base` to every sidebar/hero link for you (in-content links are
+// written relative so they stay base-agnostic).
+// https://astro.build/config
+export default defineConfig({
+  site: 'https://sumit1993.github.io',
+  base: '/sreforge',
+  integrations: [
+    starlight({
+      title: 'SREForge',
+      description:
+        'A contamination-controlled, event-triggered evaluation harness for autonomous SWE/SRE agents.',
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/Sumit1993/sreforge' },
+      ],
+      editLink: {
+        baseUrl: 'https://github.com/Sumit1993/sreforge/edit/main/docs/',
+      },
+      lastUpdated: true,
+      sidebar: [
+        {
+          label: 'Concepts',
+          items: [
+            { label: 'Overview', link: '/concepts/overview/' },
+            { label: 'Taxonomy & profiles', link: '/concepts/taxonomy/' },
+            { label: 'Closed-loop verification', link: '/concepts/closed-loop-verification/' },
+            { label: 'Contamination control', link: '/concepts/contamination-control/' },
+            { label: 'Glossary', link: '/concepts/glossary/' },
+          ],
+        },
+        {
+          label: 'Guides',
+          items: [
+            { label: 'Quickstart', link: '/guides/quickstart/' },
+            { label: 'Run an incident', link: '/guides/run-an-incident/' },
+            { label: 'Drive an external agent', link: '/guides/drive-an-agent/' },
+            { label: 'Add a use-case', link: '/guides/add-a-use-case/' },
+          ],
+        },
+        {
+          label: 'Reference',
+          items: [
+            { label: 'CLI — pnpm forge', link: '/reference/cli/' },
+            { label: 'Architecture', link: '/reference/architecture/' },
+            { label: 'Scenario format', link: '/reference/scenario-format/' },
+            { label: 'Run contract', link: '/reference/run-contract/' },
+            { label: 'Design decisions', link: '/reference/decisions/' },
+          ],
+        },
+        {
+          label: 'Project',
+          items: [{ label: 'Contributing', link: '/contributing/' }],
+        },
+      ],
+    }),
+  ],
+});

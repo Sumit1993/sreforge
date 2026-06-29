@@ -1,0 +1,122 @@
+---
+title: Quickstart
+description: Run the booklogr latency-cache-stampede incident end-to-end with the reference fix.
+sidebar:
+  order: 1
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This walks you through running SREForge's validated v1 incident —
+`latency-cache-stampede` on the `booklogr` use-case — end-to-end, using the
+**scripted reference fix**. By the end you'll have watched the closed loop drive a
+real alert from firing to cleared.
+
+## Prerequisites
+
+- **Docker** with Compose v2 (`docker compose …`).
+- **Node 18+** and **pnpm** (the repo pins pnpm via `packageManager`; running
+  `corepack enable` selects the right version).
+- A few GB free for the deployment + observability stack containers.
+
+## Run it
+
+<Steps>
+
+1. **Clone and install** the repo-root tooling once.
+
+   ```sh
+   git clone https://github.com/Sumit1993/sreforge.git
+   cd sreforge
+   pnpm install
+   ```
+
+2. **Cold bring-up.** Import the substrate into the local forge, author the
+   regression, and start the deploy plane.
+
+   ```sh
+   pnpm forge fresh booklogr
+   ```
+
+   `fresh` is a composite verb — it expands to `setup` then `up`. See the
+   [CLI reference](../../reference/cli/) for the full verb list.
+
+3. **Run one graded incident** with the reference fix. This arms the incident,
+   runs it, and verifies behaviourally.
+
+   ```sh
+   pnpm forge incident booklogr
+   ```
+
+   `incident` expands to `arm → run → verify`. The harness injects the fault,
+   confirms the `BooklogrApiLatencyP99High` alert is firing, applies the
+   reference fix through the CI → merge → redeploy chain, and then checks the
+   alert clears **and stays cleared while the k6 storm is still running**.
+
+4. **Tear down** the deploy and load planes when you're done (the local forge
+   persists).
+
+   ```sh
+   pnpm forge down booklogr
+   ```
+
+</Steps>
+
+## What you should see
+
+Once the stack is up, these endpoints are live:
+
+| Service | URL |
+|---|---|
+| booklogr API | `http://localhost:5000` |
+| Web frontend | `http://localhost:5150` |
+| Prometheus | `http://localhost:9090` |
+| Alertmanager | `http://localhost:9093` |
+| Grafana | `http://localhost:3002` |
+| Gitea forge | `http://localhost:3000` |
+
+During the run, watch `BooklogrApiLatencyP99High` move to **firing** in
+Alertmanager after the fault is injected, then **clear** after the reference fix
+redeploys — all while load continues.
+
+## Prove the anti-cheat
+
+The lower-level smoke scripts demonstrate the behavioural oracle directly. Each
+script self-resolves and runs standalone:
+
+<Tabs>
+  <TabItem label="Correct fix (must PASS)">
+    ```sh
+    cd use-cases/booklogr/stacks/flask-compose
+    bash scripts/smoke-positive.sh
+    ```
+    The reference fix flows through the full conductor loop and the alert clears
+    under sustained load — the run **passes**.
+  </TabItem>
+  <TabItem label="Plausible-but-wrong (must NOT pass)">
+    ```sh
+    cd use-cases/booklogr/stacks/flask-compose
+    bash scripts/smoke-negative.sh
+    ```
+    A plausible-but-ineffective fix does **not** clear the alert under sustained
+    load — the run is rejected. This is the [anti-cheat](../../concepts/closed-loop-verification/)
+    in action.
+  </TabItem>
+</Tabs>
+
+## The incident, in one paragraph
+
+The search-response cache is disabled (`CACHE_TYPE = "NullCache"`) in the
+booklogr API, so every `GET /v1/books/search` misses cache and blocks a Gunicorn
+worker on a deterministically slow (1.2 s) book-metadata upstream. Under a k6
+constant-arrival-rate storm over a small query set, the four workers back up, p99
+latency crosses 0.3 s, and `BooklogrApiLatencyP99High` fires. The reference fix
+restores an effective cache, so repeated queries hit it and p99 clears **while the
+storm is still running**.
+
+## Next
+
+- [Run an incident](../run-an-incident/) — the lifecycle in detail.
+- [Drive an external agent](../drive-an-agent/) — replace the scripted fix with a
+  real autonomous agent.
+- [CLI reference](../../reference/cli/) — every `pnpm forge` verb.

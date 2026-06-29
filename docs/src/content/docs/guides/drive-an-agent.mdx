@@ -1,0 +1,104 @@
+---
+title: Drive an external agent
+description: Replace the scripted reference fix with a real autonomous SRE agent running in the sealed sandbox.
+sidebar:
+  order: 3
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+The [Quickstart](../quickstart/) drives the loop with a scripted reference fix.
+This guide replaces that with a **real external agent**, placed into a sealed
+sandbox where it discovers the incident on its own and submits a fix that the
+engine grades.
+
+## The agent model
+
+The agent is **external** and **Alertmanager-driven**. It is exec'd into a per-run
+sandbox, discovers the incident by polling Alertmanager, queries the
+observability stack (Prometheus / Grafana) and the app to investigate, then edits
+its workspace clone and runs `submit`. There is no "brief" handed down — the agent
+*pulls* the alert and drills in.
+
+:::note[The sandbox is isolated by omission]
+On a typical dev box the boundary is a **minimal sandbox** (`infra/agent-sandbox/`):
+the agent's shell is joined to the app network only, has **no docker socket**, and
+mounts **only** the per-run workspace. It cannot reach the private harness or the
+forge. `submit` is an engine handoff — a commit to a local branch plus a
+completion sentinel on the shared mount — *not* a forge push.
+:::
+
+## Run it
+
+<Steps>
+
+1. **Cold bring-up** (first time only).
+
+   ```sh
+   pnpm forge fresh booklogr
+   ```
+
+2. **Arm the incident and bring up the sandbox.** `agent-up` expands to
+   `arm → agent`.
+
+   ```sh
+   pnpm forge agent-up booklogr
+   ```
+
+3. **Place the agent into the sandbox.** The shell self-serves alerts and has no
+   docker of its own; the deploy network and API URL are passed in:
+
+   ```sh
+   DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 \
+     docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+     exec agent-shell sh
+   ```
+
+   Inside, the agent investigates via `$ALERTMANAGER_URL` / `$PROM_URL` /
+   `$API_URL`, edits `/workspace`, and runs `submit` when done.
+
+4. **Grade the run.** The engine takes over at the sentinel: it captures the
+   diff, pushes to the forge, runs CI, merges, redeploys, and verifies
+   behaviourally.
+
+   ```sh
+   pnpm forge run booklogr RUNNER=external
+   ```
+
+5. **Probe the boundary** (optional) — boundary + de-tell + alert-pickup checks.
+
+   ```sh
+   pnpm forge verify booklogr
+   ```
+
+</Steps>
+
+## What the engine does after `submit`
+
+`pnpm forge run … RUNNER=external` drives the `ExternalAgentRunner` seam:
+
+```
+sentinel handoff → diff capture → forge push / PR → CI → merge → redeploy → behavioural verify
+```
+
+The agent never deploys and never touches the forge directly — that boundary is
+what keeps the deploy *realism* (real CI, real merge, real redeploy) on the
+harness side of the wall.
+
+## Boundaries and scope
+
+- v1 surfaces a **single Prometheus alert** through Alertmanager. Multi-signal /
+  Slack triage is a later (v2) generalization.
+- The agent's tool surface is deliberately minimal: a non-root shell, documented
+  HTTP endpoints, and `submit`. No curated tool layer — universal primitives are
+  the most harness-neutral interface, and the sandbox boundary handles isolation
+  by construction.
+
+## Next
+
+- [Run contract](../../reference/run-contract/) — exactly what the agent receives
+  and what the engine scores.
+- [Architecture](../../reference/architecture/) — the `runner/` seam and the rest
+  of the engine.
+- [Design decisions](../../reference/decisions/) — D9 (tool surface) and D-open
+  (the resolved agent-context question).
