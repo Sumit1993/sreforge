@@ -105,9 +105,23 @@ Alertmanager `:9093` · Grafana `:3002` · Gitea forge `:3000`.
 
 ## Status
 
+**Current version: `0.0.1`** — the v1 milestone.
+
 v1 is validated end-to-end on the `booklogr` use case: the `core/` engine's
 **Conductor** drives the full incident loop (trigger → context → run → CI gate →
 merge → redeploy → behavioural verify → record → cleanup) against a live,
 already-firing incident. The agent seam (`AgentRunner`) is currently exercised by
 a scripted reference fix; wiring a real autonomous agent through it is the next
 milestone. See `mage/` (the knowledge-base hub) for the full plan and decisions.
+
+### Versioning
+
+The version tracks roadmap milestones, not semver releases — one minor-patch step
+per milestone:
+
+| Version | Milestone | State |
+|---|---|---|
+| `0.0.1` | **v1** — prove the incident loop on an imported real app | shipped |
+| `0.0.2` | **v2** — breadth + research depth (real-agent integration, RCA oracle, de-tell hard gates, more substrates) | in progress |
+
+The bump to `0.0.2` lands with the first v2 feature.

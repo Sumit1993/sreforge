@@ -1,6 +1,6 @@
 {
   "name": "@sreforge/docs",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "SREForge documentation site (Astro + Starlight), published to GitHub Pages.",
