@@ -21,31 +21,48 @@
 # =============================================================================
 FROM alpine:3.20
 
-# Toolset baked at BUILD time (not container start): the responder's shell kit.
-RUN apk add --no-cache curl git jq ca-certificates
+# Toolset baked at BUILD time (not container start): the responder's shell kit,
+# plus the egress-firewall tooling (iptables/ip6tables/ipset) and su-exec for the
+# root-sets-firewall-then-drops-privileges entrypoint. Baking (vs a runtime
+# `apk add`) keeps the install off the process table and avoids apk-repo egress —
+# which the firewall would now block anyway.
+RUN apk add --no-cache curl git jq ca-certificates iptables ip6tables ipset su-exec bind-tools
 
 # The submit handoff, baked onto PATH (no bind mount). Read-only by virtue of
 # being an image layer; the agent cannot tamper with it without rebuilding.
 COPY scripts/submit /usr/local/bin/submit
 RUN chmod +x /usr/local/bin/submit
 
-# Run as a NON-ROOT user — the responder is not root-in-box for routine work, and
-# matching the per-run workspace owner keeps every git/file write on the bind mount
-# owner-consistent with the host engine (root-in-container would create root-owned
-# git objects the host engine, running as the invoking user, could not then manage).
-# UID/GID are build-configurable so the image matches the host workspace owner on
-# any box (build with --build-arg UID=$(id -u) GID=$(id -g); defaults suit a uid-1000
-# dev box). A real passwd/group entry for the runtime uid keeps shell tooling
-# (whoami, prompts, git) behaving like a normal login — a uid with no passwd entry
-# is itself a small tell. `safe.directory *` is a uid-agnostic backstop. All folded
-# into one layer to keep docker-history surface minimal. agent.yml's `user:` selects
-# the runtime uid (must match this build's UID, i.e. the host owner).
+# The egress firewall + the privilege-drop entrypoint. Installed to /usr/local/sbin,
+# root-owned and chmod 700: the non-root agent cannot read the firewall logic (a
+# de-tell — the script names the deploy-plane reasoning + the allowlist mechanism)
+# and cannot run it (no caps anyway). entrypoint.sh runs as root at container
+# start, seals egress, then su-exec's down to `dev`.
+COPY scripts/entrypoint.sh scripts/init-firewall.sh /usr/local/sbin/
+RUN chmod 700 /usr/local/sbin/entrypoint.sh /usr/local/sbin/init-firewall.sh
+
+# Create the non-root `dev` user/group whose uid/gid match the host workspace
+# owner, so git/file writes on the /workspace bind mount stay owner-consistent
+# with the host engine (root-in-container would create root-owned git objects the
+# host engine, running as the invoking user, could not then manage). UID/GID are
+# build-configurable so the image matches the host workspace owner on any box
+# (build with --build-arg UID=$(id -u) GID=$(id -g); defaults suit a uid-1000 dev
+# box). A real passwd/group entry keeps shell tooling (whoami, prompts, git)
+# behaving like a normal login — a uid with no passwd entry is itself a small tell.
+# `safe.directory *` is a uid-agnostic backstop.
+#
+# We deliberately do NOT `USER dev`. The container must START as root so
+# entrypoint.sh can set the egress firewall (needs CAP_NET_ADMIN); it then
+# su-exec's down to `dev` for the long-running process, so ps shows only `dev`.
+# Consequence: the container's CONFIGURED user is root, so every `docker exec` that
+# drops the agent in MUST pass `-u $(id -u):$(id -g)` — otherwise it lands as root
+# and could flush the rules. The use-case Taskfile + README do this.
 ARG UID=1000
 ARG GID=1000
 RUN addgroup -g "${GID}" dev && adduser -D -u "${UID}" -G dev dev \
  && git config --system --add safe.directory '*'
-USER dev
 
-# Long-running so an external agent can be exec'd in at any time. (Compose does
-# not override this; see agent.yml — the `command:` was removed with the apk step.)
+# entrypoint seals egress as root, then su-exec's to `dev` and execs CMD.
+ENTRYPOINT ["/usr/local/sbin/entrypoint.sh"]
+# Long-running so an external agent can be exec'd in at any time.
 CMD ["sleep", "infinity"]

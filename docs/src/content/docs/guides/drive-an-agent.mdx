@@ -20,12 +20,16 @@ observability stack (Prometheus / Grafana) and the app to investigate, then edit
 its workspace clone and runs `submit`. There is no "brief" handed down — the agent
 *pulls* the alert and drills in.
 
-:::note[The sandbox is isolated by omission]
+:::note[The sandbox is sealed two ways]
 On a typical dev box the boundary is a **minimal sandbox** (`infra/agent-sandbox/`):
-the agent's shell is joined to the app network only, has **no docker socket**, and
-mounts **only** the per-run workspace. It cannot reach the private harness or the
-forge. `submit` is an engine handoff — a commit to a local branch plus a
-completion sentinel on the shared mount — *not* a forge push.
+the agent's shell joins the app network only, has **no docker socket**, and mounts
+**only** the per-run workspace — so the private harness and the forge are
+unreachable *by omission*. On top of that, **egress is default-deny**: a firewall
+(set by the container's root entrypoint, which then drops to a non-root user)
+blocks all outbound internet except the intra-plane services and an optional
+provider allowlist — closing the retrieval hole (no github / public upstream /
+registries / search). `submit` is an engine handoff — a commit to a local branch
+plus a completion sentinel on the shared mount — *not* a forge push.
 :::
 
 ## Run it
@@ -51,11 +55,13 @@ completion sentinel on the shared mount — *not* a forge push.
    ```sh
    DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 \
      docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
-     exec agent-shell sh
+     exec -u "$(id -u):$(id -g)" agent-shell sh
    ```
 
-   Inside, the agent investigates via `$ALERTMANAGER_URL` / `$PROM_URL` /
-   `$API_URL`, edits `/workspace`, and runs `submit` when done.
+   The `-u` is required: the container starts as root (so its entrypoint can set
+   the egress firewall) and drops to a non-root user, so an `exec` without `-u`
+   would land as root. Inside, the agent investigates via `$ALERTMANAGER_URL` /
+   `$PROM_URL` / `$API_URL`, edits `/workspace`, and runs `submit` when done.
 
 4. **Grade the run.** The engine takes over at the sentinel: it captures the
    diff, pushes to the forge, runs CI, merges, redeploys, and verifies
@@ -93,6 +99,11 @@ harness side of the wall.
   HTTP endpoints, and `submit`. No curated tool layer — universal primitives are
   the most harness-neutral interface, and the sandbox boundary handles isolation
   by construction.
+- **Egress is default-deny.** The box reaches the intra-plane services and an
+  optional provider allowlist (empty by default ⇒ zero external egress); github,
+  the public upstream, registries and search are blocked, so the agent cannot
+  retrieve the answer. A blocked reach is a logged cheat-signal. For a cloud-model
+  agent, pass its host: `pnpm forge agent booklogr EGRESS_ALLOWLIST=api.anthropic.com`.
 
 ## Next
 

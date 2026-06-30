@@ -24,13 +24,31 @@ The agent gets a shell, the documented HTTP endpoints, and `submit` — nothing 
 
 (This stack has no Loki, so no `LOKI_URL`.)
 
-`agent-shell` joins **only** the deploy-plane network passed in `DEPLOY_NETWORK`
-(booklogr's is `booklogr_default`), has **no docker socket and no docker CLI**, and
-mounts **only** the per-run workspace clone at
-`/workspace`. It runs as a **non-root** user whose uid matches the workspace owner
-(so git/file writes on the bind mount stay owner-consistent with the host engine).
-The toolset (`curl`/`git`/`jq`) and the `submit` shim are **baked into the image**, so
-there is no runtime install step and no single-file bind mount.
+`agent-shell` mounts **only** the per-run workspace clone at `/workspace`, has **no
+docker socket and no docker CLI**, and the toolset (`curl`/`git`/`jq`) and the
+`submit` shim are **baked into the image** (no runtime install, no single-file bind).
+
+**Two isolation layers:**
+
+1. **Lateral — by omission.** Only the deploy-plane network (`DEPLOY_NETWORK`,
+   booklogr's is `booklogr_default`) is joined, so the forge/load planes are simply
+   unrouted — nothing to detect.
+2. **Egress — default-deny allowlist.** The deploy-plane bridge has NAT, so without
+   a firewall the box would have open internet (a retrieval hole: github / the
+   public upstream app / registries / search). The container's **root entrypoint**
+   runs `init-firewall.sh` (iptables + ipset, legacy backend) to seal outbound to
+   the intra-plane (private) ranges + an explicit provider allowlist
+   (`EGRESS_ALLOWLIST`, **empty by default ⇒ zero external egress**), then
+   **su-exec's down to the non-root `dev` user**. The non-root agent cannot flush or
+   inspect the rules. A blocked reach is a **DROP** (silent timeout, looks like "no
+   route") and is counted on the `EGRESS_BLOCKED` chain as a cheat-signal. It fails
+   **closed** — if the firewall can't be set, the container restart-loops rather
+   than serve with open egress.
+
+> Because the container starts as **root** (so the entrypoint can program the
+> firewall), its *configured* user is root — so every `docker exec` below passes
+> **`-u "$(id -u):$(id -g)"`** to run as the non-root agent. An exec without `-u`
+> lands as root and could flush the firewall.
 
 ## submit — the engine handoff
 
@@ -78,10 +96,22 @@ AGENT_UID=$(id -u) AGENT_GID=$(id -g) WORKSPACE_DIR="$WS" \
   docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml up -d
 ```
 
-Exec into the agent's world:
+Egress is sealed at boot (empty allowlist ⇒ zero external reach). For a
+**cloud-model** agent, re-apply the firewall with the provider allowed — via a
+**root** exec so the allowlist is passed per-exec and never lands in the agent's
+container env:
 
 ```sh
-docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml exec agent-shell sh
+docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+  exec -u 0 -e EGRESS_ALLOWLIST=api.anthropic.com agent-shell /usr/local/sbin/init-firewall.sh
+```
+
+Exec into the agent's world as the **non-root** agent (the `-u` is required — see
+the boundary note above):
+
+```sh
+docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+  exec -u "$(id -u):$(id -g)" agent-shell sh
 ```
 
 ## Verify the boundary
@@ -92,7 +122,8 @@ workspace carries no forge/baseline tells):
 
 ```sh
 docker cp use-cases/booklogr/stacks/flask-compose/scripts/verify-boundary.sh agent-shell:/tmp/vb.sh
-docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml exec agent-shell sh /tmp/vb.sh
+docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+  exec -u "$(id -u):$(id -g)" agent-shell sh /tmp/vb.sh
 ```
 
 Its positive counterpart, `scripts/verify-alert-pickup.sh`, asserts the agent can
@@ -103,11 +134,41 @@ Pass `REQUIRE_FIRING=1` during an armed run to require the scenario's target ale
 ```sh
 docker cp use-cases/booklogr/stacks/flask-compose/scripts/verify-alert-pickup.sh agent-shell:/tmp/vap.sh
 docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
-  exec -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
+  exec -u "$(id -u):$(id -g)" -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
+```
+
+`scripts/verify-egress.sh` asserts the egress boundary: intra-plane services still
+answer, but external hosts (github, registries) are blocked. Pass `EXPECT_ALLOWED`
+to also confirm a cloud run's provider connects:
+
+```sh
+docker cp use-cases/booklogr/stacks/flask-compose/scripts/verify-egress.sh agent-shell:/tmp/ve.sh
+docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+  exec -u "$(id -u):$(id -g)" agent-shell sh /tmp/ve.sh
 ```
 
 Host-side, `scripts/verify-detell.sh` audits the deploy-plane containers (env /
 labels / mounts / logs / image-clock) for leakage.
+
+(All four in-box probes run concurrently via `pnpm forge verify booklogr`.)
+
+## Operator notes
+
+- **Read the cheat-signal.** Blocked egress attempts increment the `EGRESS_BLOCKED`
+  chain counter (agent-invisible — read it as **root**):
+
+  ```sh
+  docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+    exec -u 0 agent-shell iptables -nvL EGRESS_BLOCKED
+  ```
+
+- **If the container restart-loops on first bring-up**, the `ipset` kernel modules
+  may have failed to autoload in the engine VM. Preload them once per VM boot, then
+  re-run `pnpm forge agent booklogr`:
+
+  ```sh
+  rdctl shell -- sudo modprobe xt_set ip_set ip_set_hash_net   # Rancher Desktop
+  ```
 
 Tear down (the deploy plane is unaffected):
 

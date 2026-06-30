@@ -15,10 +15,10 @@ and grades it on **behavioural recovery — not on matching a reference diff**.
 The first substrate is [`Mozzo1000/booklogr`](https://github.com/Mozzo1000/booklogr);
 the engine itself is substrate-agnostic.
 
-:::note[Version `0.0.1`]
+:::note[Version `0.0.2`]
 The version tracks roadmap milestones rather than semver releases — one step per
-milestone. `0.0.1` is **v1** (the incident loop, proven end-to-end on booklogr);
-**v2** (breadth + research depth) will be `0.0.2`.
+milestone. `0.0.1` was **v1** (the incident loop, proven end-to-end on booklogr);
+`0.0.2` is **v2** (breadth + research depth), now in progress.
 :::
 
 ## What it measures

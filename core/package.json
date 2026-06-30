@@ -1,6 +1,6 @@
 {
   "name": "@sreforge/core",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "SREForge v1 engine — domain-agnostic orchestration for contamination-controlled SWE/SRE agent evaluation (trigger → context → run → deploy → verify → record → cleanup).",
   "type": "module",
