@@ -72,7 +72,7 @@ echo "==> booklogr-api is healthy"
 echo "==> Ensuring the load storm is running (edge-client)..."
 RATE="${RATE:-25}" docker compose -p booklogr-edge -f "$LOAD_FILE" up -d
 
-# 6. Confirm the alert fires (D10 gate)
+# 6. Confirm the alert fires (ADR-0010 gate)
 echo "==> Waiting for alert to fire (timeout=240s)..."
 node "$SCRIPTS/confirm-fire.mjs" --timeout=240
 

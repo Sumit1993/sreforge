@@ -30,7 +30,7 @@
 # it hands its proposed change to the orchestration engine, which is what owns
 # the forge push / PR / CI. So this shell needs (and has) NO forge access at all.
 #
-# This is the MINIMAL D9 surface for the first increment: shell + documented
+# This is the MINIMAL ADR-0009 surface for the first increment: shell + documented
 # HTTP endpoints + submit, with NO docker access. The "scoped real docker plane"
 # (socket-proxy + docker-proxy-filter for app-only `docker ps`) is DEFERRED and
 # documented in README.md, not built here.

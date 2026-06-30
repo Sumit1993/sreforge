@@ -2,12 +2,12 @@
 
 The harness-side overlay that turns the imported **booklogr** substrate into a
 lived-in, observable deployment with a local Git forge (CI/CD) and a load
-driver over booklogr's Flask/Postgres stack (D14/D15).
+driver over booklogr's Flask/Postgres stack (ADR-0014/ADR-0015).
 
 > The booklogr app itself is **not** in this tree. It's imported into the local
 > Gitea forge and checked out (gitignored) at `substrate/booklogr` as the build
 > context. The observability/load/CI overlay lives here, in the harness, never
-> inside the substrate repo (build-invariant 1; physical separation D12).
+> inside the substrate repo (build-invariant 1; physical separation ADR-0012).
 
 ## Layout
 
@@ -29,9 +29,9 @@ load/                  k6 constant-arrival-rate storm (mounted into the load pla
 scripts/
   import-substrate.sh  mirror-push upstream → Gitea, commit instrumentation + CI
   up.sh / down.sh      bring up / tear down the app stack (+ load plane)
-  arm-incident.sh      regress + storm + confirm-fire (D10)
-  confirm-fire.mjs     poll until BooklogrApiLatencyP99High fires (D10)
-  verify-clear.mjs     sustained-clear oracle under still-active load (D4)
+  arm-incident.sh      regress + storm + confirm-fire (ADR-0010)
+  confirm-fire.mjs     poll until BooklogrApiLatencyP99High fires (ADR-0010)
+  verify-clear.mjs     sustained-clear oracle under still-active load (ADR-0004)
   status.mjs / lib.mjs current p99 + alert state; shared helpers
 ```
 

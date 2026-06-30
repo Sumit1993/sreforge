@@ -97,7 +97,7 @@ Lower-level entry points (each script self-resolves and still runs standalone):
 ```sh
 cd use-cases/booklogr/stacks/flask-compose
 bash scripts/smoke-positive.sh   # reference fix through the full conductor loop: must PASS
-bash scripts/smoke-negative.sh   # a plausible-but-wrong fix: must NOT pass (D4 anti-cheat)
+bash scripts/smoke-negative.sh   # a plausible-but-wrong fix: must NOT pass (ADR-0004 anti-cheat)
 ```
 
 Endpoints once up: API `http://localhost:5000` · web `:5150` · Prometheus `:9090` ·

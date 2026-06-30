@@ -61,7 +61,7 @@ test("brief never leaks the rig (de-tell properties)", () => {
   assert.ok(!/\bsummary:/i.test(prompt), "brief must not have a Summary: line");
   assert.ok(!/\bsince:/i.test(prompt), "brief must not have a Since: line");
 
-  // 4. No harness/eval framing (D8 — honest, neutral).
+  // 4. No harness/eval framing (ADR-0008 — honest, neutral).
   for (const tell of ["sreforge", "harness", "scenario", "inject", "baseline", "answer", "evaluation", "correct fix"]) {
     assert.ok(!lower.includes(tell), `brief must not contain the tell "${tell}"`);
   }

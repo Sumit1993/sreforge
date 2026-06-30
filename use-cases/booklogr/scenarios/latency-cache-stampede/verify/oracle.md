@@ -52,7 +52,7 @@ agent edits run workspace → sreforge submit → CI gate → (green) auto-merge
 The agent never deploys directly. The k6 storm
 (`docker compose -p booklogr-edge -f compose/load.yml up -d`, from
 `stacks/flask-compose`) keeps running the **entire** time — including while the
-oracle scores. This is the **D4 anti-cheat**: the alert may clear only because
+oracle scores. This is the **ADR-0004 anti-cheat**: the alert may clear only because
 the deployed fix works, never because load stopped.
 
 A run is **mitigated** when every pass/fail signal below is satisfied.
@@ -68,7 +68,7 @@ Actions workflow `.gitea/workflows/ci.yml`, which runs two steps:
 - **Smoke:** a container smoke test (`GET /`) against the freshly built image
   exits 0 (HTTP 200).
 
-booklogr ships **no unit tests**; CI proves deployability only. The D4
+booklogr ships **no unit tests**; CI proves deployability only. The ADR-0004
 behavioral oracle is the authoritative correctness check.
 
 If `ci_green` fails, the fix is **not deployed** and the run **cannot pass**
@@ -102,7 +102,7 @@ The alert must **stay cleared for `sustained_clear_seconds`** (30 s) while the
 k6 storm is **still running**. A brief dip below threshold does not count — the
 oracle requires continuous clearance across the full window
 (`maxClearTimeSeconds = 180`, `sustainedClearSeconds = 30`). This is the core
-of the D4 anti-cheat: sustained clearance under active load can only come from
+of the ADR-0004 anti-cheat: sustained clearance under active load can only come from
 a working fix.
 
 ### (d) `time_to_clear` — recorded (soft, not pass/fail)   weight 0.10
@@ -145,7 +145,7 @@ property is what **fails**:
 - A fix that clears the alert briefly but does **not** sustain clearance under
   the active storm forfeits the 0.20 `sustained_clear` weight, so it scores at
   most **0.80** (`ci_green + alert_cleared` + soft credit) and fails. This is the
-  **D4 anti-cheat**: a surface-level mitigation that does not survive the load
+  **ADR-0004 anti-cheat**: a surface-level mitigation that does not survive the load
   cannot reach 0.85.
 - A fix that never clears at all scores at most ~0.35 (`ci_green +
   no_new_alerts`) and fails.

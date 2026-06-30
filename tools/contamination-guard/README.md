@@ -1,6 +1,6 @@
 # contamination-guard
 
-A programmatic gate that enforces **D8 (de-tell)** and **D12 (physical
+A programmatic gate that enforces **ADR-0008 (de-tell)** and **ADR-0012 (physical
 substrate/harness separation)** as a build check instead of a doc decision.
 
 The threat it defends against: an agent-under-test is handed a substrate repo

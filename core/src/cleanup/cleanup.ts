@@ -33,7 +33,7 @@ export interface ComposeCleanupOptions {
  *
  * Stopping injected load (k6) is wired in M2, where the load driver is a
  * separate compose service whose lifecycle the scenario owns. The defining
- * invariant (D4) is that the fault stimulus is never stopped DURING a run — only
+ * invariant (ADR-0004) is that the fault stimulus is never stopped DURING a run — only
  * reset between runs.
  */
 export class ComposeCleanup implements Cleanup {

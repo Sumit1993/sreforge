@@ -49,7 +49,6 @@ export default defineConfig({
             { label: 'Architecture', link: '/reference/architecture/' },
             { label: 'Scenario format', link: '/reference/scenario-format/' },
             { label: 'Run contract', link: '/reference/run-contract/' },
-            { label: 'Design decisions', link: '/reference/decisions/' },
           ],
         },
         {

@@ -69,7 +69,7 @@ oracle   = "verify/oracle.md"                                    # BINDING — v
 command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
 mode     = "storm"                    # ARCHETYPE — constant-arrival-rate storm over fixed query working set
 continuous = true                     # ARCHETYPE — driver runs for the full run lifecycle (confirm-fire + agent work + verify)
-stop_during_verification = false      # ARCHETYPE — anti-cheat (D4): load stays active while the oracle scores
+stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
 
 # --- verification (v1 mitigation oracle) ---------------------------------------
 # Multi-signal, objective, no-LLM oracle. v1 ships mitigation only; diagnosis/RCA judge is deferred to v2.
@@ -80,11 +80,11 @@ stop_during_verification = false      # ARCHETYPE — anti-cheat (D4): load stay
 [verify]
 oracle           = "mitigation"       # ARCHETYPE — oracle family; compound oracle drops in detect/diagnose later without refactor
 pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
-load_active_during_scoring = true     # ARCHETYPE — anti-cheat (D4): load stays active while the oracle scores
+load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
 
 # Signal weights (must sum to 1.0). Three HARD signals (ci_green + alert_cleared + sustained_clear = 0.80)
 # plus soft credit. A fix that clears the alert briefly but does NOT sustain under active storm scores
-# <=0.80 and fails — that is the D4 anti-cheat. Fail-closed short-circuits: CI not green, or service
+# <=0.80 and fails — that is the ADR-0004 anti-cheat. Fail-closed short-circuits: CI not green, or service
 # not redeployed after the fix commit.
 signals          = [
   "ci_green",          # BINDING — Gitea Actions ci.yml: docker build booklogr-api image + container smoke test (GET /); booklogr ships NO unit tests — CI proves deployability, not correctness

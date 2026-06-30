@@ -179,7 +179,7 @@ const deps = {
     // drain the storm off booklogr-api while the fixed build comes up COLD (so its
     // healthcheck passes before the flood hits a cold cache), warm the cache (storm's
     // fixed query set) once healthy, then resume the storm so the oracle still grades
-    // under STILL-ACTIVE load (D4). The gate provably fixes the deploy health race on
+    // under STILL-ACTIVE load (ADR-0004). The gate provably fixes the deploy health race on
     // a SLOW box, but draining-then-resuming slams the full storm onto a cold cache at
     // once; for booklogr's per-WORKER in-process SimpleCache the front-door warm-up
     // reaches only some gunicorn workers, so the resumed burst can stampede the upstream

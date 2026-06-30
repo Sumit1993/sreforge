@@ -86,7 +86,7 @@ verification.
 command    = "docker compose -p booklogr-edge -f compose/load.yml up -d"  # BINDING
 mode       = "storm"          # ARCHETYPE — constant-arrival-rate over a fixed working set
 continuous = true             # ARCHETYPE — runs for the full lifecycle
-stop_during_verification = false   # ARCHETYPE — anti-cheat (D4): load stays active while scoring
+stop_during_verification = false   # ARCHETYPE — anti-cheat: load stays active while scoring
 ```
 
 ### Verification
@@ -98,7 +98,7 @@ grades observed behaviour, **not** a diff match against the reference fix.
 [verify]
 oracle         = "mitigation"   # ARCHETYPE — compound oracle adds detect/diagnose later
 pass_threshold = 0.85           # ARCHETYPE — weighted score needed to pass
-load_active_during_scoring = true   # ARCHETYPE — anti-cheat (D4)
+load_active_during_scoring = true   # ARCHETYPE — anti-cheat
 signals = ["ci_green", "alert_cleared", "sustained_clear", "time_to_clear", "no_new_alerts"]
 
 [verify.weights]   # must sum to 1.0

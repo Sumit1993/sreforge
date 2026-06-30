@@ -34,7 +34,7 @@ command from the stack dir:
 ```bash
 # from use-cases/booklogr/stacks/flask-compose/
 bash scripts/smoke-positive.sh        # reference fix: must PASS
-bash scripts/smoke-negative.sh        # a plausible-but-wrong fix: must NOT pass (D4 anti-cheat)
+bash scripts/smoke-negative.sh        # a plausible-but-wrong fix: must NOT pass (ADR-0004 anti-cheat)
 ```
 
 `scripts/run-incident.mjs` is the conductor driver those wrap: it assumes the
