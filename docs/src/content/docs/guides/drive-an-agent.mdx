@@ -49,6 +49,25 @@ plus a completion sentinel on the shared mount — *not* a forge push.
    pnpm forge agent-up booklogr
    ```
 
+   The sandbox boots **sealed** — an empty allowlist means zero external egress,
+   which is the benchmark default. A cloud-model agent that must reach its provider
+   names the host(s) at bring-up (comma-separate for several):
+
+   ```sh
+   # opt in to the model provider (resolves its egress from the provider registry)
+   # and, optionally, the read-only MCP telemetry seam:
+   pnpm forge agent booklogr PROVIDER=anthropic MCP=on
+   # …or name egress hosts directly: EGRESS_ALLOWLIST=api.anthropic.com
+   ```
+
+   `PROVIDER=<name>` maps to the model's egress host(s) via the registry
+   (`infra/agent-sandbox/providers.json`); `PROVIDER=local` (or unset) ⇒ zero
+   external egress, the benchmark default. The allowlist is applied to the firewall
+   **here**, as a separate root step *before* the agent is exec'd in (Step 3), so it
+   never lands in the agent's environment — the agent cannot `env` it and learn it
+   is in a benchmark. IPs are resolved once at apply-time; re-run if a provider
+   rotates IPs mid-run.
+
 3. **Place the agent into the sandbox.** The shell self-serves alerts and has no
    docker of its own; the deploy network and API URL are passed in:
 
@@ -103,7 +122,34 @@ harness side of the wall.
   optional provider allowlist (empty by default ⇒ zero external egress); github,
   the public upstream, registries and search are blocked, so the agent cannot
   retrieve the answer. A blocked reach is a logged cheat-signal. For a cloud-model
-  agent, pass its host: `pnpm forge agent booklogr EGRESS_ALLOWLIST=api.anthropic.com`.
+  agent, opt in to its provider: `pnpm forge agent booklogr PROVIDER=anthropic`
+  (mapped to its egress host via `infra/agent-sandbox/providers.json`).
+
+## MCP telemetry seam (optional transport)
+
+Shell + endpoints (above) is the default transport. For an **MCP-speaking** agent,
+the use-case also provisions a **read-only Grafana MCP server** on the deploy plane
+(ADR-0018 §3) — the agent's observability-read surface as MCP tools: PromQL, the
+firing alert (via the `ALERTS` series), datasources, and dashboards. Bring it up
+standalone, or fold it into the agent bring-up with `MCP=on`:
+
+```sh
+pnpm forge mcp booklogr                                # standalone
+pnpm forge agent booklogr PROVIDER=anthropic MCP=on    # together with the sandbox
+```
+
+The agent connects to `http://grafana-mcp:8000/mcp` over the deploy network. The seam
+is **capability-bounded by construction** — it exposes only Grafana-scoped reads (no
+shell, no arbitrary-URL tool), so an MCP-only agent has no way to reach github, and
+`-disable-write` (plus Grafana's anonymous *Viewer*) keeps it read-only. Verify it
+(no model calls, so it's free to run):
+
+```sh
+pnpm exec task --dir use-cases/booklogr/stacks/flask-compose verify:mcp
+```
+
+The MCP-only *edit/submit* surface (a filesystem MCP + a submit tool) is a later
+increment; today an MCP agent still edits `/workspace` and runs `submit` via the shell.
 
 ## Next
 

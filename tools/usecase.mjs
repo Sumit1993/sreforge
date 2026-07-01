@@ -37,6 +37,7 @@ const PHASE_TASK = {
   up: "up",
   arm: "arm",
   agent: "agent",
+  mcp: "mcp", //                             optional MCP telemetry seam (read-only Grafana MCP)
   run: "run",
   verify: "verify",
   down: "down",

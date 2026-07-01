@@ -61,18 +61,31 @@ tasks:
 
   # ── agent (per run) ──────────────────────────────────────────────────────────
   agent:
-    desc: "[run] make the clean /workspace clone + bring up the agent sandbox (var: EGRESS_ALLOWLIST=host1,host2)"
+    desc: "[run] clean /workspace clone + agent sandbox (vars: PROVIDER=<name> · EGRESS_ALLOWLIST=host,… · MCP=on)"
     # The agent-sandbox compose is use-case-NEUTRAL; this stack supplies the
-    # booklogr deploy-plane network + app endpoint it attaches to.
+    # booklogr deploy-plane network + app endpoint it attaches to. Optional
+    # providers (ADR-0018 §2) are OPTED IN per run: PROVIDER=<name> resolves the
+    # model's egress allowlist from infra/agent-sandbox/providers.json; MCP=on also
+    # brings up the read-only MCP telemetry seam. No agent manifest — anything
+    # beyond what's provided is denied at the boundary at runtime.
     env:
       DEPLOY_NETWORK: '{{.DEPLOY_NETWORK | default "booklogr_default"}}'
       API_URL: '{{.API_URL | default "http://booklogr-api:5000"}}'
-      # Provider egress allowlist. EMPTY (default) ⇒ zero external egress. Set to
-      # the cloud model's host(s) for a cloud run, e.g. EGRESS_ALLOWLIST=api.anthropic.com
+      # Egress allowlist — set directly, or derived from PROVIDER below. EMPTY
+      # (default, incl. PROVIDER=local) ⇒ zero external egress.
       EGRESS_ALLOWLIST: '{{.EGRESS_ALLOWLIST | default ""}}'
+      PROVIDER: '{{.PROVIDER | default ""}}'
+      MCP: '{{.MCP | default ""}}'
     cmds:
       - |
         WS="$(bash scripts/prepare-agent-workspace.sh)"
+        # Optional model provider: PROVIDER=<name> → egress host(s) via the registry
+        # (infra/agent-sandbox/providers.json). Explicit EGRESS_ALLOWLIST wins;
+        # unknown provider fails closed; PROVIDER=local ⇒ empty ⇒ zero egress.
+        if [ -z "${EGRESS_ALLOWLIST:-}" ] && [ -n "${PROVIDER:-}" ]; then
+          EGRESS_ALLOWLIST="$(node ../../../../tools/provider-egress.mjs "$PROVIDER")" || exit 1
+          echo "agent: provider '${PROVIDER}' -> egress '${EGRESS_ALLOWLIST:-<none>}'"
+        fi
         # --build so the image picks up Dockerfile/firewall-script changes and the
         # uid build-args; the entrypoint seals egress at boot (empty allowlist).
         AGENT_UID=$(id -u) AGENT_GID=$(id -g) WORKSPACE_DIR="$WS" \
@@ -89,6 +102,30 @@ tasks:
             exec -T -u 0 -e EGRESS_ALLOWLIST="$EGRESS_ALLOWLIST" \
             agent-shell /usr/local/sbin/init-firewall.sh
         fi
+        # Optional MCP telemetry provider: MCP=on brings up the read-only seam too.
+        if [ "${MCP:-}" = "on" ]; then
+          DEPLOY_NETWORK="$DEPLOY_NETWORK" docker compose -p sreforge-mcp -f compose/mcp.yml up -d
+          echo "agent: MCP telemetry seam up (grafana-mcp:8000/mcp)"
+        fi
+
+  # ── mcp (per run; OPTIONAL MCP telemetry transport) ──────────────────────────
+  mcp:
+    desc: "[run] bring up the read-only MCP telemetry seam (Grafana MCP) on the deploy plane"
+    # ADR-0018 §3: reuse an off-the-shelf, read-only MCP server as the agent's
+    # observability-READ transport (capability-bounded — no tool to reach github).
+    # Modular overlay (own compose project); the deploy plane must already be up.
+    env:
+      DEPLOY_NETWORK: '{{.DEPLOY_NETWORK | default "booklogr_default"}}'
+    cmds:
+      - DEPLOY_NETWORK="$DEPLOY_NETWORK" docker compose -p sreforge-mcp -f compose/mcp.yml up -d
+      - 'echo "MCP seam up — agent: http://grafana-mcp:8000/mcp (deploy net) · host verify: http://127.0.0.1:8009/mcp"'
+
+  mcp:down:
+    desc: "tear down the MCP telemetry seam"
+    env:
+      DEPLOY_NETWORK: '{{.DEPLOY_NETWORK | default "booklogr_default"}}'
+    cmds:
+      - DEPLOY_NETWORK="$DEPLOY_NETWORK" docker compose -p sreforge-mcp -f compose/mcp.yml down
 
   # ── run (per run; the engine) ────────────────────────────────────────────────
   run:
@@ -143,6 +180,17 @@ tasks:
   verify:detell:
     desc: "host: audit deploy containers for env/label/mount/log/image-clock tells"
     cmds: [bash scripts/verify-detell.sh]
+
+  # Not in the `verify` aggregate: the MCP seam is an OPTIONAL transport, so its
+  # verify would fail the aggregate whenever the seam isn't up. Run it explicitly
+  # (or via `pnpm exec task --dir <stack> verify:mcp`) after `pnpm forge mcp`.
+  verify:mcp:
+    desc: "MCP seam: read-only, scoped, telemetry reachable, github-unreachable (needs `mcp` up + armed incident)"
+    preconditions:
+      - sh: docker inspect booklogr-grafana-mcp >/dev/null 2>&1
+        msg: "grafana-mcp not running — run `pnpm forge mcp booklogr` first"
+    cmds:
+      - node scripts/verify-mcp.mjs
 
   # ── diagnostics ──────────────────────────────────────────────────────────────
   status:
