@@ -197,6 +197,15 @@ tasks:
     desc: "one-shot: current p99 + which alerts are firing"
     cmds: [node scripts/status.mjs]
 
+  console:
+    desc: "operator console — CLI, or a loopback web page with SERVE=1 (PORT=7420). Harness-side, read-only."
+    env:
+      SERVE: '{{.SERVE | default ""}}'
+      PORT: '{{.PORT | default "7420"}}'
+    cmds:
+      - |
+        if [ -n "${SERVE:-}" ]; then node scripts/console-serve.mjs; else node scripts/console.mjs; fi
+
   # ── smoke (CI/e2e; sequential — each re-arms the stack) ──────────────────────
   smoke:
     desc: "run both smoke checks (positive then negative)"
