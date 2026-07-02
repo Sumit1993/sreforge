@@ -47,9 +47,14 @@ git -C "$STACK/substrate/booklogr" clean -fd
 echo "==> Quiescing load (stop edge-client) before regressed redeploy..."
 docker stop edge-client >/dev/null 2>&1 || true
 
-# 4. Redeploy the regressed api and wait healthy (max ~90s)
+# 4. Redeploy the regressed api and wait healthy (max ~90s).
+# --force-recreate: on a repeat arm the regressed build is byte-identical, so
+# compose would otherwise leave the RUNNING container in place — one still
+# saturated by the previous storm's listen-backlog (2048 queued × 1.2s ÷ 4
+# workers ≈ 10min to drain), which the 90s health gate can never outwait. A
+# fresh container = a fresh (empty) socket backlog.
 echo "==> Deploying regressed booklogr-api..."
-docker compose -p booklogr -f "$COMPOSE_FILE" up -d --build booklogr-api
+docker compose -p booklogr -f "$COMPOSE_FILE" up -d --build --force-recreate booklogr-api
 
 echo "==> Waiting for booklogr-api to become healthy (max 90s)..."
 healthy=0

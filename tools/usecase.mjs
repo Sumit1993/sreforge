@@ -38,6 +38,7 @@ const PHASE_TASK = {
   arm: "arm",
   agent: "agent",
   mcp: "mcp", //                             optional MCP telemetry seam (read-only Grafana MCP)
+  auto: "auto", //                           ③ automated incident: alert push → agent → grade (ADR-0025)
   run: "run",
   verify: "verify",
   down: "down",
@@ -75,6 +76,7 @@ function usage() {
       "  e.g.  pnpm forge up booklogr",
       "        pnpm forge run booklogr RUNNER=external id=r1",
       "        pnpm forge incident booklogr",
+      "        pnpm forge auto booklogr PROVIDER=ollama-cloud   # ③ automated cycle (ADR-0025)",
       "",
     ].join("\n"),
   );

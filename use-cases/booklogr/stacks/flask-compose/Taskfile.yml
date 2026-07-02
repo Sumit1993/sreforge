@@ -96,6 +96,19 @@ tasks:
         # root exec. Passed per-exec (-e), so the allowlist NEVER lands in the
         # agent's container env (a de-tell). No-op for the default zero-egress run.
         if [ -n "${EGRESS_ALLOWLIST:-}" ]; then
+          # Wait for the boot seal to FINISH first — the entrypoint's own
+          # init-firewall run and this re-apply would otherwise interleave (or
+          # the boot run re-seals afterwards with the empty allowlist and the
+          # provider egress is lost). Sealed ⇔ the EGRESS_BLOCKED rule (the
+          # build's last OUTPUT rule) exists.
+          for i in $(seq 1 30); do
+            if DEPLOY_NETWORK="$DEPLOY_NETWORK" API_URL="$API_URL" \
+                 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml \
+                 exec -T -u 0 agent-shell sh -c 'iptables -S OUTPUT 2>/dev/null | grep -q EGRESS_BLOCKED'
+            then break; fi
+            [ "$i" -lt 30 ] || { echo "agent: box never sealed its boot firewall" >&2; exit 1; }
+            sleep 1
+          done
           echo "agent: applying egress allowlist -> ${EGRESS_ALLOWLIST}"
           DEPLOY_NETWORK="$DEPLOY_NETWORK" API_URL="$API_URL" \
             docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml \
@@ -127,6 +140,24 @@ tasks:
     cmds:
       - DEPLOY_NETWORK="$DEPLOY_NETWORK" docker compose -p sreforge-mcp -f compose/mcp.yml down
 
+  # ── auto (per run; ③ automation, ADR-0025) ──────────────────────────────────
+  auto:
+    desc: "[run] AUTOMATED incident: sandbox+listener → arm → alert push → agent → grade (vars: PROVIDER, MCP, AGENT_CMD)"
+    # One self-triggered cycle: Alertmanager pushes the firing notification to
+    # the box (oncall:8080, through the firewall pinhole); the agent driver
+    # (AGENT_CMD, default the reference Ollama driver) takes the symptom-level
+    # payload as its kickoff; grading is the existing external-runner tail.
+    # No resident agent, no daemon — see scripts/auto-incident.mjs.
+    deps: [build-core]
+    env:
+      PROVIDER: '{{.PROVIDER | default ""}}'
+      MCP: '{{.MCP | default ""}}'
+      EGRESS_ALLOWLIST: '{{.EGRESS_ALLOWLIST | default ""}}'
+      AGENT_CMD: '{{.AGENT_CMD | default ""}}'
+      WEBHOOK_TIMEOUT_S: '{{.WEBHOOK_TIMEOUT_S | default ""}}'
+    cmds:
+      - node scripts/auto-incident.mjs
+
   # ── run (per run; the engine) ────────────────────────────────────────────────
   run:
     desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>)"
@@ -140,8 +171,8 @@ tasks:
 
   # ── verify (any time; the probes run IN PARALLEL via deps) ────────────────────
   verify:
-    desc: "boundary + de-tell + alert-pickup + egress probes, concurrently"
-    deps: [verify:boundary, verify:detell, verify:pickup, verify:egress]
+    desc: "boundary + de-tell + alert-pickup + egress + webhook probes, concurrently"
+    deps: [verify:boundary, verify:detell, verify:pickup, verify:egress, verify:webhook]
 
   # NOTE: the container's configured user is now root (the entrypoint sets the
   # firewall then drops to `dev`), so every in-box `exec` passes `-u $(id -u):$(id -g)`
@@ -180,6 +211,14 @@ tasks:
   verify:detell:
     desc: "host: audit deploy containers for env/label/mount/log/image-clock tells"
     cmds: [bash scripts/verify-detell.sh]
+
+  verify:webhook:
+    desc: "webhook trigger (ADR-0025): oncall route live, pinhole open with a listener, other inbound denied"
+    preconditions:
+      - sh: docker inspect agent-shell >/dev/null 2>&1
+        msg: "agent-shell not running — run `task agent` first"
+    cmds:
+      - node scripts/verify-webhook.mjs
 
   # Not in the `verify` aggregate: the MCP seam is an OPTIONAL transport, so its
   # verify would fail the aggregate whenever the seam isn't up. Run it explicitly

@@ -144,9 +144,17 @@ const SYSTEM = [
   "When your fix is applied, call submit. Keep working until you have submitted.",
 ].join("\n");
 
-const KICKOFF =
-  "An alert is firing for the service. Investigate from the alerting stack, find the root " +
-  "cause in the code, apply a fix in /workspace, and submit.";
+// ③ automation (ADR-0025): when launched by auto-incident.mjs, the kickoff is
+// the symptom-level Alertmanager notification the BOX received (webhook push) —
+// the same data the agent could pull from ALERTMANAGER_URL itself, so no extra
+// de-tell surface. Manual runs keep the generic kickoff.
+const KICKOFF = env.WEBHOOK_PAYLOAD
+  ? "This alert notification was just delivered to the incident host:\n" +
+    env.WEBHOOK_PAYLOAD +
+    "\nInvestigate from the alerting stack, find the root cause in the code, " +
+    "apply a fix in /workspace, and submit."
+  : "An alert is firing for the service. Investigate from the alerting stack, find the root " +
+    "cause in the code, apply a fix in /workspace, and submit.";
 
 const messages = [
   { role: "system", content: SYSTEM },
