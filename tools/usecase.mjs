@@ -37,10 +37,12 @@ const PHASE_TASK = {
   up: "up",
   arm: "arm",
   agent: "agent",
+  mcp: "mcp", //                             optional MCP telemetry seam (read-only Grafana MCP)
   run: "run",
   verify: "verify",
   down: "down",
   status: "status",
+  console: "console", //                     operator console (harness-side status + deep-links)
   smoke: "smoke",
 };
 
@@ -68,6 +70,7 @@ function usage() {
       `  phases:     ${phases}`,
       `  composites: ${composites}`,
       "  menu:       pnpm forge menu <use-case>   # list a stack's phases",
+      "  dashboard:  pnpm forge dashboard         # cross-use-case operator control plane (web, loopback)",
       "",
       "  e.g.  pnpm forge up booklogr",
       "        pnpm forge run booklogr RUNNER=external id=r1",
@@ -113,6 +116,16 @@ function runTask(stackDir, task, taskArgs) {
 
 const [verb, ref, ...rest] = process.argv.slice(2);
 if (!verb || verb === "help" || verb === "--help" || verb === "-h") usage();
+
+// `dashboard` is CROSS-use-case (the operator control plane, ADR-0024) — it takes
+// no use-case; it discovers them all. Handle before the use-case check below.
+if (verb === "dashboard") {
+  const res = spawnSync("node", [resolve(REPO_ROOT, "tools/dashboard/server.mjs")], {
+    cwd: REPO_ROOT, stdio: "inherit", env: process.env,
+  });
+  process.exit(res.status ?? 0);
+}
+
 if (!ref) die(`'${verb}' needs a use-case: pnpm forge ${verb} <use-case>`);
 
 const stackDir = resolveStack(ref);

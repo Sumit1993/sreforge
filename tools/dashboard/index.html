@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SREForge · Control</title>
+<style>
+  /* ── SREForge Control — incident-response flight deck ─────────────────────
+     Ink-navy night-ops base · cyan telemetry accent · ops-signal status trio.
+     Monospace instrument readout. Signature: the p99-vs-SLO threshold gauge —
+     a signal crossing a line and firing. Boldness spent there; rest kept quiet. */
+  :root{
+    --void:#0b0f17; --bay:#121826; --bay2:#0d1220; --inset:#080b12;
+    --rule:#1d2637; --rule2:#2a3446;
+    --ink:#e2e8f2; --mute:#8b97ad; --faint:#57627a;
+    --signal:#57d0e6;              /* cyan telemetry — interactive */
+    --nominal:#46c08a; --elevated:#e0a63c; --alarm:#ff5d52;
+    --alarmglow:rgba(255,93,82,.5);
+    --mono:"JetBrains Mono","Cascadia Code","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --ey:.12em;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--void);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.5;
+    padding-bottom:64px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  .ey{font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;color:var(--faint);font-weight:600}
+  .ref{font-size:9px;color:var(--signal);margin-left:9px;letter-spacing:.06em}
+  .doclink{font-size:11px;color:var(--signal);letter-spacing:.04em}
+  a{color:var(--signal);text-decoration:none}
+  :focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+
+  /* header — call-sign rail */
+  header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;
+    padding:13px 26px;background:linear-gradient(180deg,rgba(11,15,23,.94),rgba(11,15,23,.82));
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
+  .brand{font-family:var(--sans);font-weight:700;letter-spacing:.16em;font-size:13px;text-transform:uppercase;color:var(--mute)}
+  .brand b{color:var(--ink)} .brand .sep{color:var(--signal);margin:0 6px}
+  .rail{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .tag{font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;color:var(--nominal);
+    border:1px solid #1d4a38;background:#0c2018;border-radius:2px;padding:3px 9px}
+  .beat{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--mute)}
+  .beat i{width:6px;height:6px;border-radius:50%;background:var(--nominal);box-shadow:0 0 6px var(--nominal);animation:beat 2.4s infinite}
+  @keyframes beat{0%,100%{opacity:1}50%{opacity:.25}}
+
+  main{max-width:1000px;margin:0 auto;padding:24px 26px 0}
+
+  /* console bay */
+  .bay{position:relative;background:linear-gradient(180deg,var(--bay),var(--bay2));border:1px solid var(--rule);
+    border-radius:4px;padding:0;margin-bottom:18px;overflow:hidden}
+  .bay::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--rule2)}
+  .bay.online::before{background:var(--nominal)}
+  .bay.armed{border-color:#5a2420}
+  .bay.armed::before{background:var(--alarm);box-shadow:0 0 12px var(--alarmglow);animation:klaxon 1.6s infinite}
+  @keyframes klaxon{0%,100%{opacity:1}50%{opacity:.4}}
+  .pad{padding:15px 18px}
+
+  .bay-hd{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--rule);}
+  .cs{font-size:17px;font-weight:700;letter-spacing:.02em}
+  .cs .stk{font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;color:var(--faint);font-weight:600;margin-left:9px}
+  .stat{margin-left:auto;font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;font-weight:700;
+    display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:2px;border:1px solid var(--rule2)}
+  .stat.run{color:var(--nominal);border-color:#1d4a38;background:#0c2018}
+  .stat.idle{color:var(--faint)}
+  .stat.busy{color:var(--signal);border-color:#1c4652;background:#08222a}
+
+  /* plane LEDs */
+  .leds{display:flex;flex-wrap:wrap;gap:16px;padding:11px 18px;border-bottom:1px solid var(--rule);background:var(--inset)}
+  .led{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);display:inline-flex;align-items:center;gap:7px}
+  .led::before{content:"";width:7px;height:7px;border-radius:50%;background:#2a3446;box-shadow:none}
+  .led.up{color:var(--mute)} .led.up::before{background:var(--nominal);box-shadow:0 0 7px var(--nominal)}
+  .led.partial{color:var(--elevated)} .led.partial::before{background:var(--elevated);box-shadow:0 0 7px var(--elevated)}
+  .led.off{color:var(--faint)}
+
+  /* SIGNATURE — p99 vs SLO threshold gauge */
+  .gauge{padding:16px 18px 17px;border-bottom:1px solid var(--rule)}
+  .pnum{display:flex;align-items:baseline;gap:8px;margin:6px 0 11px}
+  .pnum .big{font-size:34px;font-weight:700;line-height:1;letter-spacing:-.01em}
+  .pnum .unit{font-size:13px;color:var(--mute)}
+  .pnum .slo{margin-left:auto;font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;color:var(--faint)}
+  .pnum.nominal .big{color:var(--nominal)} .pnum.alarm .big{color:var(--alarm);text-shadow:0 0 20px var(--alarmglow)}
+  .pnum.off .big{color:var(--faint)}
+  .track{position:relative;height:8px;background:var(--inset);border:1px solid var(--rule);border-radius:2px}
+  .fill{position:absolute;left:0;top:0;bottom:0;border-radius:1px;transition:width .5s ease}
+  .fill.nominal{background:linear-gradient(90deg,#1d4a38,var(--nominal))}
+  .fill.alarm{background:linear-gradient(90deg,var(--elevated),var(--alarm))}
+  .slo-line{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--mute);opacity:.8}
+  .slo-line::after{content:"SLO";position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+    font-size:8px;letter-spacing:.1em;color:var(--faint)}
+  .mark{position:absolute;top:50%;width:3px;height:16px;transform:translate(-50%,-50%);border-radius:1px}
+  .mark.nominal{background:var(--nominal)} .mark.alarm{background:var(--alarm);box-shadow:0 0 10px var(--alarm)}
+  .alarm-note{margin-top:12px;font-size:12px;color:#ffc7c2}
+  .alarm-note em{font-style:normal;color:#fff;background:#3a1613;border:1px solid #5a2420;border-radius:2px;padding:1px 7px}
+
+  /* controls */
+  .ctl{padding:14px 18px;border-bottom:1px solid var(--rule)}
+  .acts{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .grp{display:flex;gap:6px;align-items:center;padding-right:9px;margin-right:2px;border-right:1px solid var(--rule)}
+  .grp:last-child{border-right:none}
+  button{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    padding:7px 12px;border-radius:2px;border:1px solid var(--rule2);background:#141b28;color:var(--ink);cursor:pointer;transition:.12s}
+  button:hover:not(:disabled){border-color:var(--signal);color:#fff;background:#0e1a24}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  button.go{color:var(--nominal);border-color:#1d4a38}
+  button.go:hover:not(:disabled){border-color:var(--nominal);background:#0c2018}
+  button.warn{color:var(--alarm);border-color:#5a2420}
+  button.warn:hover:not(:disabled){border-color:var(--alarm);background:#26100e}
+  select,label.mcp{font-family:var(--mono);font-size:11px;color:var(--mute);background:var(--inset);
+    border:1px solid var(--rule2);border-radius:2px;padding:6px 8px}
+  label.mcp{display:inline-flex;align-items:center;gap:6px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;font-size:10px}
+
+  /* detail — consoles + log */
+  .det{padding:14px 18px}
+  .links{display:flex;flex-wrap:wrap;gap:7px;margin:7px 0 0}
+  .lnk{font-size:11px;color:var(--signal);border:1px solid var(--rule2);border-radius:2px;padding:5px 10px;background:var(--inset)}
+  .lnk:hover{border-color:var(--signal)}
+  .lnk.down{color:var(--faint);border-color:var(--rule);background:transparent;cursor:not-allowed;text-decoration:line-through;opacity:.55}
+  table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:7px}
+  th,td{text-align:left;padding:5px 9px;border-bottom:1px solid var(--rule)}
+  th{color:var(--faint);font-weight:600;font-size:9.5px;letter-spacing:var(--ey);text-transform:uppercase}
+  td.id{color:var(--mute)} .vp{color:var(--nominal);font-weight:700} .vf{color:var(--alarm);font-weight:700}
+
+  /* live log — instrument readout */
+  .log{display:none;margin:0 18px 16px;border:1px solid var(--rule2);border-radius:3px;overflow:hidden}
+  .log.open{display:block}
+  .logh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 11px;
+    background:var(--inset);border-bottom:1px solid var(--rule);font-size:11px}
+  .logh .cmd{color:var(--faint)}
+  .logh .x{border:none;background:transparent;color:var(--mute);font-size:15px;cursor:pointer;padding:0 4px}
+  .logh .x:hover{color:#fff}
+  .logb{background:#06090f;padding:11px 12px;font-size:11.5px;line-height:1.55;white-space:pre-wrap;
+    max-height:290px;overflow:auto;color:#c6d0e0}
+  .lbadge{font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:2px}
+  .lbadge.okb{color:var(--nominal);border:1px solid #1d4a38;background:#0c2018}
+  .lbadge.failb{color:var(--alarm);border:1px solid #5a2420;background:#26100e}
+
+  .spin{width:10px;height:10px;border-radius:50%;border:2px solid rgba(87,208,230,.25);border-top-color:var(--signal);
+    display:inline-block;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .empty{color:var(--faint);text-align:center;padding:56px;letter-spacing:.04em}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#26100e;color:#ffc7c2;
+    border:1px solid #5a2420;border-radius:3px;padding:9px 15px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">SREForge<span class="sep">/</span><b>Control</b></div>
+  <div class="rail">
+    <span class="tag">loopback · not agent-reachable</span>
+    <a class="doclink" href="https://sumit1993.github.io/sreforge/" target="_blank" rel="noreferrer">docs ↗</a>
+    <span class="beat"><i></i><span id="updated">connecting…</span></span>
+  </div>
+</header>
+<main><div id="root"><div class="empty">acquiring telemetry…</div></div></main>
+<div class="toast" id="toast"></div>
+
+<script>
+const PROVIDERS = ["local", "anthropic", "openai", "google", "ollama-cloud"];
+const SLO_MS = 300, SCALE_MS = 600; // gauge track spans 0..2×SLO; SLO line at 50%
+const seen = new Set();
+const streams = {};
+let lastTs = 0;
+
+const $ = (id) => document.getElementById(id);
+const el = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pos = (ms) => Math.max(0, Math.min(ms / SCALE_MS, 1)) * 100;
+
+function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 3200); }
+
+function ensureCard(u) {
+  const uc = u.useCase;
+  if (seen.has(uc)) return;
+  seen.add(uc);
+  const card = el(`
+    <article class="bay" id="card-${uc}">
+      <div class="pad bay-hd"><div class="cs">${esc(uc)}<span class="stk">${esc(u.stack)}</span></div><div id="chip-${uc}"></div></div>
+      <div class="leds" id="planes-${uc}"></div>
+      <div class="gauge" id="gauge-${uc}"></div>
+      <div class="ctl">
+        <div class="ey">Lifecycle <a class="ref" href="https://sumit1993.github.io/sreforge/reference/cli/" target="_blank" rel="noreferrer">cli ↗</a></div>
+        <div class="acts">
+          <div class="grp">
+            <button data-v="fresh" class="go" title="Cold start — import the substrate + bring up the deploy plane">Fresh</button>
+            <button data-v="up" title="Bring up the deploy plane (app + Prometheus / Alertmanager / Grafana)">Up</button>
+          </div>
+          <div class="grp"><button data-v="arm" title="Inject the incident and confirm the alert fires">Arm</button></div>
+          <div class="grp">
+            <select id="prov-${uc}" title="Model provider → sets the agent box's egress allowlist">${PROVIDERS.map((p) => `<option>${p}</option>`).join("")}</select>
+            <label class="mcp" title="Also bring up the read-only MCP telemetry seam"><input type="checkbox" id="mcp-${uc}"> MCP</label>
+            <button data-v="agent" class="go" title="Bring up the sealed agent sandbox for the selected provider">Agent</button>
+          </div>
+          <div class="grp">
+            <button data-v="run" class="go" title="Grade one incident end-to-end (external agent runner)">Run</button>
+            <button data-v="verify" title="Run the boundary / egress / alert-pickup / MCP probes">Verify</button>
+          </div>
+          <div class="grp"><button data-v="down" class="warn" title="Tear down the deploy + load planes">Down</button></div>
+        </div>
+      </div>
+      <div class="det" id="det-${uc}"></div>
+      <div class="log" id="log-${uc}"><div class="logh" id="logh-${uc}"></div><div class="logb" id="logb-${uc}"></div></div>
+    </article>`);
+  card.querySelectorAll("button[data-v]").forEach((b) => (b.onclick = () => invoke(uc, b.dataset.v)));
+  $("root").appendChild(card);
+}
+
+function ledsHtml(s) {
+  if (!s.planes) return `<span class="led off">docker offline</span>`;
+  return s.planes.map((p) => `<span class="led ${p.tag === "up" ? "up" : p.tag === "partial" ? "partial" : "off"}">${esc(p.name)}${p.detail ? " " + esc(p.detail) : ""}</span>`).join("");
+}
+function gaugeHtml(s) {
+  const i = s.incident || {};
+  if (!i.reachable)
+    return `<div class="ey">p99 latency</div><div class="pnum off"><span class="big">—</span><span class="slo">telemetry offline</span></div>
+      <div class="track"><div class="slo-line" style="left:50%"></div></div>`;
+  const ms = i.p99ms;
+  const firing = !!i.primaryFiring;
+  const cls = firing ? "alarm" : "nominal";
+  const p = ms == null ? 0 : pos(ms);
+  let h = `<div class="ey">p99 latency</div>
+    <div class="pnum ${cls}"><span class="big">${ms == null ? "n/a" : ms}</span><span class="unit">ms</span><span class="slo">threshold ${SLO_MS}ms</span></div>
+    <div class="track"><div class="fill ${cls}" style="width:${p}%"></div><div class="slo-line" style="left:50%"></div><div class="mark ${cls}" style="left:${p}%"></div></div>`;
+  if (firing) h += `<div class="alarm-note">▲ <b>${esc(i.primary)}</b> firing — hand the agent: <em>"${esc(i.suggest)}"</em></div>`;
+  return h;
+}
+function detHtml(s) {
+  let h = "";
+  if (s.links && s.links.length) h += `<div class="ey">consoles</div><div class="links">${s.links.map((l) => l.up
+    ? `<a class="lnk" href="${esc(l.url)}" target="_blank" rel="noreferrer">${esc(l.name)} ↗</a>`
+    : `<span class="lnk down" title="not running">${esc(l.name)}</span>`).join("")}</div>`;
+  if (s.runs && s.runs.length) h += `<div class="ey" style="margin-top:14px">recent runs</div><table><tr><th>run</th><th>verdict</th><th>score</th><th>scenario</th></tr>${s.runs.map((r) => `<tr><td class="id">${esc(r.runId)}</td><td class="${r.verdict === "passed" ? "vp" : "vf"}">${esc(r.verdict)}</td><td>${r.score != null ? Number(r.score).toFixed(2) : "—"}</td><td class="id">${esc(r.scenario || "")}</td></tr>`).join("")}</table>`;
+  return h || `<div class="ey">consoles</div><div class="led off" style="margin-top:6px">offline</div>`;
+}
+
+function updateCard(u) {
+  const uc = u.useCase, s = u.status || {};
+  const up = (s.planes || []).some((p) => p.tag === "up");
+  const firing = !!(s.incident && s.incident.reachable && s.incident.primaryFiring);
+  $("chip-" + uc).outerHTML = `<div id="chip-${uc}" class="stat ${u.busy ? "busy" : up ? "run" : "idle"}">${u.busy ? `<span class="spin"></span>${esc(u.busy.verb)}` : up ? "online" : "offline"}</div>`;
+  $("planes-" + uc).innerHTML = ledsHtml(s);
+  $("gauge-" + uc).innerHTML = gaugeHtml(s);
+  $("det-" + uc).innerHTML = detHtml(s);
+  const card = $("card-" + uc);
+  card.classList.toggle("online", up && !firing);
+  card.classList.toggle("armed", firing);
+  card.querySelectorAll("button[data-v]").forEach((b) => (b.disabled = !!u.busy));
+  $("prov-" + uc).disabled = !!u.busy;
+  $("mcp-" + uc).disabled = !!u.busy;
+}
+
+async function invoke(uc, verb) {
+  const args = [];
+  if (verb === "agent") { args.push("PROVIDER=" + $("prov-" + uc).value); if ($("mcp-" + uc).checked) args.push("MCP=on"); }
+  if (verb === "run") args.push("RUNNER=external");
+  let j;
+  try {
+    const r = await fetch("/api/invoke", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ useCase: uc, verb, args }) });
+    j = await r.json();
+    if (!r.ok) { toast(j.error || "invoke failed"); return; }
+  } catch (e) { toast("invoke failed: " + e.message); return; }
+  openLog(uc, j.id, verb, args);
+  refresh();
+}
+function openLog(uc, id, verb, args) {
+  $("log-" + uc).classList.add("open");
+  const head = $("logh-" + uc), body = $("logb-" + uc);
+  const cmd = `pnpm forge ${verb} ${uc} ${args.join(" ")}`.trim();
+  head.innerHTML = `<span><span class="spin"></span> ${esc(verb)} <span class="cmd">${esc(cmd)}</span></span><button class="x" title="close" onclick="closeLog('${uc}')">×</button>`;
+  body.textContent = "";
+  if (streams[uc]) streams[uc].close();
+  const es = new EventSource("/api/stream/" + id);
+  streams[uc] = es;
+  es.onmessage = (e) => { body.textContent += JSON.parse(e.data).line; body.scrollTop = body.scrollHeight; };
+  es.addEventListener("done", (e) => {
+    const code = JSON.parse(e.data).code;
+    head.innerHTML = `<span>${esc(verb)} <span class="lbadge ${code === 0 ? "okb" : "failb"}">exit ${code}</span></span><button class="x" title="close" onclick="closeLog('${uc}')">×</button>`;
+    es.close(); refresh();
+  });
+}
+function closeLog(uc) { $("log-" + uc).classList.remove("open"); if (streams[uc]) streams[uc].close(); }
+
+async function refresh() {
+  let st;
+  try { st = await (await fetch("/api/state")).json(); } catch { $("updated").textContent = "signal lost"; return; }
+  const present = new Set();
+  for (const u of st.useCases) { present.add(u.useCase); ensureCard(u); updateCard(u); }
+  for (const uc of [...seen]) if (!present.has(uc)) { $("card-" + uc)?.remove(); seen.delete(uc); }
+  if (!st.useCases.length) $("root").innerHTML = `<div class="empty">no use-cases under use-cases/</div>`;
+  lastTs = Date.now();
+}
+setInterval(() => { if (lastTs) { const s = Math.round((Date.now() - lastTs) / 1000); $("updated").textContent = s < 2 ? "live" : `${s}s ago`; } }, 1000);
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
