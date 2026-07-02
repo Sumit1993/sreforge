@@ -28,10 +28,10 @@
 #   docker cp use-cases/booklogr/stacks/flask-compose/scripts/verify-alert-pickup.sh \
 #     agent-shell:/tmp/verify-alert-pickup.sh
 #   docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
-#     exec agent-shell sh /tmp/verify-alert-pickup.sh
+#     exec -u "$(id -u):$(id -g)" agent-shell sh /tmp/verify-alert-pickup.sh
 #
 #   During an ARMED run (incident live), require a firing alert:
-#     ... exec -e REQUIRE_FIRING=1 agent-shell sh /tmp/verify-alert-pickup.sh
+#     ... exec -u "$(id -u):$(id -g)" -e REQUIRE_FIRING=1 agent-shell sh /tmp/verify-alert-pickup.sh
 #
 # DEPENDENCY-LIGHT
 #   curl (required) + jq (preferred; the agent-shell image ships it). Falls back

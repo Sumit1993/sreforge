@@ -13,18 +13,31 @@
 # Alertmanager, queries the observability stack (Prometheus / Grafana), reads the
 # app, edits its per-run workspace clone, and submits.
 #
-# ISOLATION IS BY OMISSION (not by a firewall the agent could detect):
-#   - agent-shell joins ONLY the deploy-plane app network (${DEPLOY_NETWORK}).
-#     It is NOT on the forge network and NOT on the load network, so the
-#     harness (Gitea forge, the Actions runner, the k6 edge/load driver) is
-#     simply not routable. There is nothing to "see being blocked" — those
-#     names don't resolve and those hosts have no route. De-tell: the agent
-#     cannot tell a staged eval rig exists because, from inside this box, it
-#     doesn't.
-#   - NO /var/run/docker.sock bind and NO docker CLI: the agent cannot enumerate
-#     containers, networks, images, or labels. The "what is running" question
-#     is answerable only through the documented HTTP endpoints below — exactly
-#     the surface a real responder is handed.
+# ISOLATION HAS TWO LAYERS:
+#
+#   (1) LATERAL — by omission (nothing to detect). agent-shell joins ONLY the
+#       deploy-plane app network (${DEPLOY_NETWORK}). It is NOT on the forge
+#       network and NOT on the load network, so the harness (Gitea forge, the
+#       Actions runner, the k6 edge/load driver) is simply not routable — those
+#       names don't resolve and those hosts have no route. The agent cannot tell a
+#       staged eval rig exists because, from inside this box, it doesn't.
+#       NO /var/run/docker.sock bind and NO docker CLI: the agent cannot enumerate
+#       containers, networks, images, or labels. "What is running" is answerable
+#       only through the documented HTTP endpoints below — the surface a real
+#       responder is handed.
+#
+#   (2) EGRESS — a default-deny allowlist (init-firewall.sh, run by the root
+#       entrypoint). The deploy-plane bridge has NAT, so WITHOUT this the agent
+#       would have open internet (a retrieval hole: github / the public upstream
+#       app / registries / search). The firewall seals outbound to everything
+#       except the intra-plane (private) ranges and an explicit provider allowlist
+#       (EMPTY by default ⇒ zero external egress). Unlike layer (1) this IS a
+#       filter the agent can feel — a blocked reach times out — but: it is DROP not
+#       REJECT, so a block looks like "no route" (the corp-firewall realism a real
+#       on-call box has), and denial is a deliberate cheat-signal counted on the
+#       EGRESS_BLOCKED chain (operator-readable via a root exec, agent-invisible).
+#       The per-run allowlist is delivered via a root `docker exec -e` (NOT a
+#       container env var), so it NEVER appears in the agent's environment.
 #
 # SUBMIT IS A HANDOFF TO THE ENGINE. The agent never pushes to the forge itself;
 # it hands its proposed change to the orchestration engine, which is what owns
@@ -59,14 +72,27 @@ services:
     build:
       context: .
       dockerfile: agent-shell.Dockerfile
+      # Bake the `dev` user at the host workspace owner's uid/gid so the agent
+      # (exec'd in with `-u $(id -u):$(id -g)`) maps to a real passwd entry and
+      # /workspace git writes stay owner-consistent. These are BUILD args, not
+      # runtime env — they never appear in the agent's environment.
+      args:
+        UID: "${AGENT_UID:-1000}"
+        GID: "${AGENT_GID:-1000}"
     image: ops-shell:1
     container_name: agent-shell
-    # Run as the host workspace owner's uid/gid (defaults to 1000, the image's
-    # `dev` user). This keeps every git/file write on the /workspace bind mount
-    # owner-consistent with the host engine and avoids git's "dubious ownership"
-    # refusal. Pass AGENT_UID/AGENT_GID = `id -u`/`id -g` when the host user is not
-    # uid 1000.
-    user: "${AGENT_UID:-1000}:${AGENT_GID:-1000}"
+    # No `user:` here — the container must START as root so the entrypoint can
+    # program the egress firewall (CAP_NET_ADMIN), then it su-exec's down to the
+    # non-root `dev` user for the idle process. The agent the operator execs in is
+    # made non-root via `-u $(id -u):$(id -g)` (the Taskfile/README do this), which
+    # also keeps /workspace git writes owner-consistent with the host engine.
+    #
+    # CAP_NET_ADMIN is the ONLY added capability — needed by the root entrypoint to
+    # program iptables/ipset. The dropped agent is non-root, so it holds no
+    # effective caps and cannot flush or inspect the rules (EPERM). The agent has
+    # no docker, so this cap is not agent-visible.
+    cap_add:
+      - NET_ADMIN
     # Idle (sleep infinity, from the image CMD) so an external agent can be exec'd
     # in at any time. No runtime install step.
     restart: unless-stopped

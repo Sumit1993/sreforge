@@ -84,12 +84,16 @@ pnpm forge down     booklogr   # tear down the deploy + load planes (the forge p
 ```sh
 pnpm forge fresh    booklogr            # first-time cold bring-up
 pnpm forge agent-up booklogr            # arm the incident + bring up the sealed agent sandbox
-# place the agent INTO the sandbox (it self-serves alerts; it has no docker of its own):
+#   Egress is DEFAULT-DENY: the box has zero external internet (closes the
+#   retrieval hole). For a cloud-model agent, allow just its provider:
+#     pnpm forge arm booklogr && pnpm forge agent booklogr EGRESS_ALLOWLIST=api.anthropic.com
+# place the agent INTO the sandbox as the NON-root agent (it self-serves alerts; no docker):
 DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 \
-  docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml exec agent-shell sh
+  docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
+  exec -u "$(id -u):$(id -g)" agent-shell sh
 #   → agent investigates via $ALERTMANAGER_URL / $PROM_URL / $API_URL, edits /workspace, runs `submit`
 pnpm forge run      booklogr RUNNER=external   # engine: sentinel → forge push → CI → merge → redeploy → grade
-pnpm forge verify   booklogr            # boundary + de-tell + alert-pickup probes
+pnpm forge verify   booklogr            # boundary + de-tell + alert-pickup + egress probes
 ```
 
 Lower-level entry points (each script self-resolves and still runs standalone):
@@ -105,9 +109,26 @@ Alertmanager `:9093` · Grafana `:3002` · Gitea forge `:3000`.
 
 ## Status
 
+**Current version: `0.0.2`** — v2 in progress (first increment: the agent-sandbox
+egress allowlist). v1 shipped as `0.0.1`.
+
 v1 is validated end-to-end on the `booklogr` use case: the `core/` engine's
 **Conductor** drives the full incident loop (trigger → context → run → CI gate →
 merge → redeploy → behavioural verify → record → cleanup) against a live,
 already-firing incident. The agent seam (`AgentRunner`) is currently exercised by
 a scripted reference fix; wiring a real autonomous agent through it is the next
 milestone. See `mage/` (the knowledge-base hub) for the full plan and decisions.
+
+### Versioning
+
+The version tracks roadmap milestones, not semver releases — one minor-patch step
+per milestone:
+
+| Version | Milestone | State |
+|---|---|---|
+| `0.0.1` | **v1** — prove the incident loop on an imported real app | shipped |
+| `0.0.2` | **v2** — breadth + research depth (real-agent integration, RCA oracle, de-tell hard gates, more substrates) | in progress |
+
+v2 is underway — the first increment is the default-deny **agent-sandbox egress
+allowlist** (closes the retrieval hole so a real external agent can be trusted in
+the box).

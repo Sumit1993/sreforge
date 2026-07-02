@@ -15,6 +15,12 @@ and grades it on **behavioural recovery — not on matching a reference diff**.
 The first substrate is [`Mozzo1000/booklogr`](https://github.com/Mozzo1000/booklogr);
 the engine itself is substrate-agnostic.
 
+:::note[Version `0.0.2`]
+The version tracks roadmap milestones rather than semver releases — one step per
+milestone. `0.0.1` was **v1** (the incident loop, proven end-to-end on booklogr);
+`0.0.2` is **v2** (breadth + research depth), now in progress.
+:::
+
 ## What it measures
 
 A sharp, contamination-free signal of how well an autonomous agent resolves

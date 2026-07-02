@@ -61,19 +61,34 @@ tasks:
 
   # ── agent (per run) ──────────────────────────────────────────────────────────
   agent:
-    desc: "[run] make the clean /workspace clone + bring up the agent sandbox"
+    desc: "[run] make the clean /workspace clone + bring up the agent sandbox (var: EGRESS_ALLOWLIST=host1,host2)"
     # The agent-sandbox compose is use-case-NEUTRAL; this stack supplies the
     # booklogr deploy-plane network + app endpoint it attaches to.
     env:
       DEPLOY_NETWORK: '{{.DEPLOY_NETWORK | default "booklogr_default"}}'
       API_URL: '{{.API_URL | default "http://booklogr-api:5000"}}'
+      # Provider egress allowlist. EMPTY (default) ⇒ zero external egress. Set to
+      # the cloud model's host(s) for a cloud run, e.g. EGRESS_ALLOWLIST=api.anthropic.com
+      EGRESS_ALLOWLIST: '{{.EGRESS_ALLOWLIST | default ""}}'
     cmds:
       - |
         WS="$(bash scripts/prepare-agent-workspace.sh)"
+        # --build so the image picks up Dockerfile/firewall-script changes and the
+        # uid build-args; the entrypoint seals egress at boot (empty allowlist).
         AGENT_UID=$(id -u) AGENT_GID=$(id -g) WORKSPACE_DIR="$WS" \
           DEPLOY_NETWORK="$DEPLOY_NETWORK" API_URL="$API_URL" \
           docker compose -p sreforge-agent \
-          -f ../../../../infra/agent-sandbox/agent.yml up -d --force-recreate
+          -f ../../../../infra/agent-sandbox/agent.yml up -d --build --force-recreate
+        # Cloud run only: re-apply the firewall WITH the provider allowlist via a
+        # root exec. Passed per-exec (-e), so the allowlist NEVER lands in the
+        # agent's container env (a de-tell). No-op for the default zero-egress run.
+        if [ -n "${EGRESS_ALLOWLIST:-}" ]; then
+          echo "agent: applying egress allowlist -> ${EGRESS_ALLOWLIST}"
+          DEPLOY_NETWORK="$DEPLOY_NETWORK" API_URL="$API_URL" \
+            docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml \
+            exec -T -u 0 -e EGRESS_ALLOWLIST="$EGRESS_ALLOWLIST" \
+            agent-shell /usr/local/sbin/init-firewall.sh
+        fi
 
   # ── run (per run; the engine) ────────────────────────────────────────────────
   run:
@@ -86,11 +101,15 @@ tasks:
     cmds:
       - node scripts/run-incident.mjs {{if .RUN_ID}}--run-id {{.RUN_ID}}{{end}}
 
-  # ── verify (any time; the three probes run IN PARALLEL via deps) ──────────────
+  # ── verify (any time; the probes run IN PARALLEL via deps) ────────────────────
   verify:
-    desc: "boundary + de-tell + alert-pickup probes, concurrently"
-    deps: [verify:boundary, verify:detell, verify:pickup]
+    desc: "boundary + de-tell + alert-pickup + egress probes, concurrently"
+    deps: [verify:boundary, verify:detell, verify:pickup, verify:egress]
 
+  # NOTE: the container's configured user is now root (the entrypoint sets the
+  # firewall then drops to `dev`), so every in-box `exec` passes `-u $(id -u):$(id -g)`
+  # to run as the NON-root agent — the faithful perspective, and what keeps git on
+  # /workspace owner-consistent.
   verify:boundary:
     desc: "in-box: endpoints reachable, harness hidden, fs/git clean"
     preconditions:
@@ -100,7 +119,7 @@ tasks:
       - docker cp scripts/verify-boundary.sh agent-shell:/tmp/vb.sh
       # The neutral agent.yml requires DEPLOY_NETWORK + API_URL at compose
       # parse-time (even for `exec`); this stack supplies booklogr's.
-      - DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T agent-shell sh /tmp/vb.sh
+      - DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T -u "$(id -u):$(id -g)" agent-shell sh /tmp/vb.sh
 
   verify:pickup:
     desc: "in-box: the agent can self-serve the firing alert (REQUIRE_FIRING=1)"
@@ -109,7 +128,17 @@ tasks:
         msg: "agent-shell not running — run `task agent` first"
     cmds:
       - docker cp scripts/verify-alert-pickup.sh agent-shell:/tmp/vap.sh
-      - DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
+      - DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T -u "$(id -u):$(id -g)" -e REQUIRE_FIRING=1 agent-shell sh /tmp/vap.sh
+
+  verify:egress:
+    desc: "in-box: egress is default-deny — intra-plane reachable, github/registries blocked"
+    preconditions:
+      - sh: docker inspect agent-shell >/dev/null 2>&1
+        msg: "agent-shell not running — run `task agent` first"
+    cmds:
+      - docker cp scripts/verify-egress.sh agent-shell:/tmp/ve.sh
+      # Run as the NON-root agent: proves the agent itself cannot reach out.
+      - DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 docker compose -p sreforge-agent -f ../../../../infra/agent-sandbox/agent.yml exec -T -u "$(id -u):$(id -g)" agent-shell sh /tmp/ve.sh
 
   verify:detell:
     desc: "host: audit deploy containers for env/label/mount/log/image-clock tells"

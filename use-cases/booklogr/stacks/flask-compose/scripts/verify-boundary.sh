@@ -23,7 +23,7 @@
 #   From the host, exec it into the already-running sandbox:
 #
 #     docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
-#       exec agent-shell sh /workspace/<path>/verify-boundary.sh
+#       exec -u "$(id -u):$(id -g)" agent-shell sh /workspace/<path>/verify-boundary.sh
 #
 #   ...if this script has been copied into the per-run /workspace. Otherwise copy
 #   it in first and run it by its in-container path:
@@ -31,9 +31,9 @@
 #     docker cp use-cases/booklogr/stacks/flask-compose/scripts/verify-boundary.sh \
 #       agent-shell:/tmp/verify-boundary.sh
 #     docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
-#       exec agent-shell sh /tmp/verify-boundary.sh
+#       exec -u "$(id -u):$(id -g)" agent-shell sh /tmp/verify-boundary.sh
 #
-#   Or, once inside the shell (`... exec agent-shell sh`):
+#   Or, once inside the shell (`... exec -u "$(id -u):$(id -g)" agent-shell sh`):
 #
 #     sh /tmp/verify-boundary.sh
 #
