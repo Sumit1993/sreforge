@@ -15,7 +15,7 @@
     "forge": "node tools/usecase.mjs"
   },
   "devDependencies": {
-    "@go-task/cli": "^3.51.1",
+    "@go-task/cli": "^3.52.0",
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "pnpm": {
