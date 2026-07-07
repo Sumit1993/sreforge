@@ -162,6 +162,11 @@ tasks:
   run:
     desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>)"
     deps: [build-core]
+    # Fail fast (~5s) if the CI runner is dead — avoids a 10-min timeout in the
+    # GiteaCiGate. Recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner
+    preconditions:
+      - sh: 'docker inspect -f "running:{{ "{{" }}.State.Running{{ "}}" }}" sreforge-runner 2>/dev/null | grep -q "running:true"'
+        msg: "sreforge-runner is not running — recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner"
     vars:
       RUN_ID: '{{.id | default ""}}'
     env:
