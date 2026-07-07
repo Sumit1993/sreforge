@@ -109,8 +109,9 @@ Alertmanager `:9093` · Grafana `:3002` · Gitea forge `:3000`.
 
 ## Status
 
-**Current version: `0.0.2`** — v2 in progress (first increment: the agent-sandbox
-egress allowlist). v1 shipped as `0.0.1`.
+**Current version: `0.0.2`** — v2 in progress (increments so far: the agent-sandbox
+egress allowlist, the MCP telemetry seam + provider run-selection, the operator
+control dashboard, and the automated alert-push trigger). v1 shipped as `0.0.1`.
 
 v1 is validated end-to-end on the `booklogr` use case: the `core/` engine's
 **Conductor** drives the full incident loop (trigger → context → run → CI gate →
@@ -129,6 +130,9 @@ per milestone:
 | `0.0.1` | **v1** — prove the incident loop on an imported real app | shipped |
 | `0.0.2` | **v2** — breadth + research depth (real-agent integration, RCA oracle, de-tell hard gates, more substrates) | in progress |
 
-v2 is underway — the first increment is the default-deny **agent-sandbox egress
+v2 is underway. Increments so far: the default-deny **agent-sandbox egress
 allowlist** (closes the retrieval hole so a real external agent can be trusted in
-the box).
+the box), the read-only **MCP telemetry seam** + provider run-selection
+(ADR-0023), the **operator control dashboard** (ADR-0024), and the **automated
+alert-push trigger** — Alertmanager pushes the firing notification to the box and
+the agent self-starts (`pnpm forge auto <use-case>`, ADR-0025).

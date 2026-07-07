@@ -38,6 +38,9 @@
 #       EGRESS_BLOCKED chain (operator-readable via a root exec, agent-invisible).
 #       The per-run allowlist is delivered via a root `docker exec -e` (NOT a
 #       container env var), so it NEVER appears in the agent's environment.
+#       INBOUND has exactly ONE pinhole (ADR-0025): TCP :8080 from the private
+#       ranges — where the use-case's Alertmanager POSTs the firing notification
+#       (the `oncall` alias below). Everything else inbound stays default-deny.
 #
 # SUBMIT IS A HANDOFF TO THE ENGINE. The agent never pushes to the forge itself;
 # it hands its proposed change to the orchestration engine, which is what owns
@@ -103,7 +106,14 @@ services:
     # forge network and the load network are not joined, so sreforge-gitea /
     # sreforge-runner / edge-client are unreachable by omission.
     networks:
-      - deploy_plane
+      deploy_plane:
+        aliases:
+          # The on-call responder's DNS name on the plane — where the use-case's
+          # Alertmanager webhook receiver posts the firing notification
+          # (ADR-0025). Neutral vocabulary: real alert routes point at an
+          # on-call endpoint. The box "registers" by LISTENING on :8080 (the
+          # one inbound firewall pinhole — see init-firewall.sh).
+          - oncall
 
     # ---- Workspace: per-run clone ONLY, at a neutral path ----------------
     # Read-write so the agent can edit and stage its fix. Sourced from

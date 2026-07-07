@@ -151,6 +151,45 @@ pnpm exec task --dir use-cases/booklogr/stacks/flask-compose verify:mcp
 The MCP-only *edit/submit* surface (a filesystem MCP + a submit tool) is a later
 increment; today an MCP agent still edits `/workspace` and runs `submit` via the shell.
 
+## Automated trigger (the alert push)
+
+The manual flow above hands the agent a prompt. The **automated cycle** removes
+that step: the use-case's Alertmanager routes firing alerts to the box itself —
+a `webhook_configs` receiver posts the notification to `http://oncall:8080/`
+(the sandbox's neutral network alias), through the **one inbound firewall
+pinhole** (TCP 8080 from the intra-plane ranges). The box "registers" by
+listening; when the alert fires, the agent starts on its own:
+
+```sh
+pnpm forge auto booklogr PROVIDER=ollama-cloud    # one self-triggered cycle
+```
+
+which sequences: sandbox up (fresh, per-incident) → in-box listener →
+`arm` (inject + confirm-fire) → Alertmanager pushes → the agent driver runs
+with the **symptom-level** payload as its kickoff → `run RUNNER=external`
+grades the submit. There is **no resident agent and no daemon** — the box is
+recreated per incident, so nothing carries memory across runs (ADR-0025).
+
+- The driver is configurable: `AGENT_CMD='node scripts/my-driver.mjs'`
+  (default: the reference Ollama driver). It receives the notification JSON in
+  `WEBHOOK_PAYLOAD` — the same data the agent could pull from
+  `$ALERTMANAGER_URL`, so the push adds no extra hint.
+- To prove the pipeline without a model (the auto path's `smoke-positive`
+  analog, zero egress): `AGENT_CMD='bash scripts/agent-reference.sh'` applies
+  the scenario's reference fix in-box and submits.
+- Reasoning runs host-side in this increment; moving the loop *into* the box
+  (a baked runtime) is a separate, deferred increment — the egress allowlist
+  already supports it.
+- Back-to-back cycles in one session are **dev-mode**: Prometheus history still
+  shows the previous incident and its recovery, which a repeat run could
+  recognize. And if the incident never resolved between runs, the re-armed
+  cycle's webhook is Alertmanager's **repeat page** for the unchanged group —
+  it arrives on the `repeat_interval` cadence (5m), not instantly. For scored
+  runs, start from a cold session (`down` → `fresh`).
+
+`pnpm forge verify booklogr` now includes the webhook probes (route live,
+pinhole open with a listener, every other inbound port still denied).
+
 ## Next
 
 - [Run contract](../../reference/run-contract/) — exactly what the agent receives

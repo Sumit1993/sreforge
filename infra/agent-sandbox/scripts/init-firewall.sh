@@ -46,6 +46,17 @@
 # =============================================================================
 set -eu
 
+# Serialize concurrent runs. Rebuilding the chains is not atomic, and two
+# interleaved runs (the boot entrypoint vs an operator's allowlist re-apply
+# exec) can flush each other's rules mid-build — the self-test then fails
+# closed and the container restart-loops, killing the exec. One run at a time;
+# last writer wins. (Env, incl. EGRESS_ALLOWLIST/WEBHOOK_PORT, survives the
+# re-exec.)
+LOCK=/run/.init-firewall.lock
+if [ "${FLOCKED:-}" != "$LOCK" ]; then
+  FLOCKED="$LOCK" exec flock "$LOCK" "$0" "$@"
+fi
+
 # Backend: prefer the legacy binary if a distro ships it, else the nft-backed one.
 IPT="$(command -v iptables-legacy 2>/dev/null || command -v iptables || true)"
 IPT6="$(command -v ip6tables-legacy 2>/dev/null || command -v ip6tables || true)"
@@ -84,6 +95,16 @@ $IPT -A OUTPUT -o lo -j ACCEPT
 # Established/related replies, both directions.
 $IPT -A INPUT  -m state --state ESTABLISHED,RELATED -j ACCEPT
 $IPT -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Webhook-trigger pinhole (ADR-0025): the use-case's Alertmanager POSTs the
+# firing notification to this box (the `oncall` alias, agent.yml) — the box
+# "registers" by listening. ONE deliberate inbound allow: TCP to the webhook
+# port from the private (intra-plane) ranges only. Everything else on INPUT
+# stays default-deny; new-outbound is untouched. WEBHOOK_PORT is an
+# entrypoint-side env (never set in the agent's container environment).
+for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+  $IPT -A INPUT -p tcp -s "$net" --dport "${WEBHOOK_PORT:-8080}" -j ACCEPT
+done
 
 # Docker embedded DNS resolver (belt-and-suspenders alongside the lo rule).
 $IPT -A OUTPUT -p udp -d 127.0.0.11 --dport 53 -j ACCEPT

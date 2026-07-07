@@ -44,6 +44,11 @@ docker socket and no docker CLI**, and the toolset (`curl`/`git`/`jq`) and the
    route") and is counted on the `EGRESS_BLOCKED` chain as a cheat-signal. It fails
    **closed** — if the firewall can't be set, the container restart-loops rather
    than serve with open egress.
+   **Inbound** has exactly **one pinhole** (ADR-0025): TCP `:8080` from the
+   private ranges — the box's `oncall` network alias is where the use-case's
+   Alertmanager posts the firing notification (the automated trigger,
+   `pnpm forge auto <use-case>`). The box "registers" by listening; every other
+   inbound port stays default-deny (`verify:webhook` probes both directions).
 
 > Because the container starts as **root** (so the entrypoint can program the
 > firewall), its *configured* user is root — so every `docker exec` below passes
