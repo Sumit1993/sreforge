@@ -86,9 +86,11 @@ services:
       BL_API_ENDPOINT: http://localhost:5000/
       BL_GOOGLE_ID: ""
       BL_DEMO_MODE: "false"
+    # In the incident harness the app being unhealthy IS the product —
+    # web must start regardless so the operator can reach the UI.
     depends_on:
       booklogr-api:
-        condition: service_healthy
+        condition: service_started
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -106,9 +108,10 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
       - --web.enable-lifecycle
+    # Telemetry must outlive an unhealthy app (the incident IS the product).
     depends_on:
       booklogr-api:
-        condition: service_healthy
+        condition: service_started
       alertmanager:
         condition: service_started
 

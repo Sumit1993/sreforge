@@ -80,7 +80,7 @@ function usage() {
       "",
     ].join("\n"),
   );
-  process.exit(2);
+  process.exit(0);
 }
 
 /** Resolve `<use-case>[:<stack>]` to its stack directory. */
@@ -104,7 +104,8 @@ function resolveStack(ref) {
   return resolve(stacksDir, stacks[0]);
 }
 
-/** Run one Taskfile task in the stack dir via the pinned go-task binary. */
+/** Run one Taskfile task in the stack dir via the pinned go-task binary.
+ *  Returns the exit code (does NOT exit the process). */
 function runTask(stackDir, task, taskArgs) {
   const local = resolve(REPO_ROOT, "node_modules", ".bin", "task");
   const bin = existsSync(local) ? local : "task";
@@ -113,7 +114,7 @@ function runTask(stackDir, task, taskArgs) {
     cwd: REPO_ROOT,
   });
   if (res.error) die(`could not run task: ${res.error.message}`);
-  if (res.status !== 0) process.exit(res.status ?? 1);
+  return res.status ?? 1;
 }
 
 const [verb, ref, ...rest] = process.argv.slice(2);
@@ -133,13 +134,20 @@ if (!ref) die(`'${verb}' needs a use-case: pnpm forge ${verb} <use-case>`);
 const stackDir = resolveStack(ref);
 
 if (verb === "menu" || verb === "list") {
-  runTask(stackDir, "--list", []);
+  const code = runTask(stackDir, "--list", []);
+  process.exit(code);
 } else if (COMPOSITES[verb]) {
+  // Stop at the first failed phase and surface which one (task 6).
   for (const phase of COMPOSITES[verb]) {
-    runTask(stackDir, PHASE_TASK[phase], phase === "run" ? rest : []);
+    const code = runTask(stackDir, PHASE_TASK[phase], phase === "run" ? rest : []);
+    if (code !== 0) {
+      process.stderr.write(`forge: composite '${verb}' stopped — phase '${phase}' failed (exit ${code})\n`);
+      process.exit(code);
+    }
   }
 } else if (PHASE_TASK[verb]) {
-  runTask(stackDir, PHASE_TASK[verb], rest);
+  const code = runTask(stackDir, PHASE_TASK[verb], rest);
+  if (code !== 0) process.exit(code);
 } else {
   die(`unknown verb '${verb}'`);
 }
