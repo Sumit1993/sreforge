@@ -26,12 +26,17 @@ FROM alpine:3.20
 # root-sets-firewall-then-drops-privileges entrypoint. Baking (vs a runtime
 # `apk add`) keeps the install off the process table and avoids apk-repo egress —
 # which the firewall would now block anyway.
-RUN apk add --no-cache curl git jq ca-certificates iptables ip6tables ipset su-exec bind-tools
+# nodejs: runtime for the in-box agent loop; node on an ops box is unremarkable
+RUN apk add --no-cache curl git jq ca-certificates iptables ip6tables ipset su-exec bind-tools nodejs
 
 # The submit handoff, baked onto PATH (no bind mount). Read-only by virtue of
 # being an image layer; the agent cannot tamper with it without rebuilding.
 COPY scripts/submit /usr/local/bin/submit
 RUN chmod +x /usr/local/bin/submit
+
+# The in-box agent loop — world-readable (the agent's own tooling, honest per
+# ADR-0008 — no hiding).
+COPY runtime/agent-loop.mjs /usr/local/lib/agent-loop.mjs
 
 # The egress firewall + the privilege-drop entrypoint. Installed to /usr/local/sbin,
 # root-owned and chmod 700: the non-root agent cannot read the firewall logic (a

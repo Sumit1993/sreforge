@@ -24,6 +24,42 @@ The agent gets a shell, the documented HTTP endpoints, and `submit` — nothing 
 
 (This stack has no Loki, so no `LOKI_URL`.)
 
+## Confinement modes
+
+Three modes position the agent's **reasoning loop** differently relative to the
+sealed `agent-shell` container. Each mode makes a different trade: what is
+**enforced**, what is **explicitly not controlled**, and where the residuals sit.
+
+| | **host-open** | **host-sandboxed** | **in-box** |
+|---|---|---|---|
+| **Reasoning runs** | Host process (Node / CLI) | Host process inside `srt` | Inside the sealed container |
+| **AGENT_CMD** | `node scripts/agent-ollama.mjs` | `bash scripts/agent-agy.sh` | `bash scripts/agent-inbox.sh` |
+| **Fs isolation** | ❌ None — can read the scenario answer key | ✅ srt deny-read (sreforge workspace) | ✅ Container mount (/workspace only) |
+| **Egress control** | ❌ None — open internet | ✅ srt domain-allowlist proxy (fail-closed) | ✅ Box iptables default-deny + per-run pinhole |
+| **Docker socket** | Full access | Residual (all-or-nothing on Linux) | ❌ Not mounted — no docker |
+| **Interactive auth** | ✅ | ✅ (agy OAuth stays on host) | ❌ Not supported |
+
+### Honest tradeoffs
+
+- **host-open**: nothing confines the reasoning process; it can read the scenario
+  answer key. Use **only** for trusted dev iteration.
+- **host-sandboxed**: `srt` enforces fs deny-read + domain-allowlist egress
+  (fail-closed). Residuals: the docker socket is all-or-nothing on Linux (only a
+  socket-proxy would scope it), only proxy-env-honoring CLIs obey the egress
+  proxy, and WSL must be in NAT networking mode (mirrored silently kills srt
+  egress). This is the **only** mode for interactive-auth CLIs (agy OAuth stays
+  on the host).
+- **in-box**: strongest structure — no docker socket, no host process to confine.
+  Box egress opens one provider pinhole; credentials enter the box per-exec and
+  **are readable by the agent**. Interactive-auth CLIs are not supported.
+- **ALL modes**: the model API itself is an uncontrollable retrieval channel —
+  server-side tools (web search / fetch) can reach the public internet regardless
+  of local firewalls. Benchmark policy: use providers/models with server-side
+  retrieval tools disabled; record provider + model per run.
+- **Egress is per-run and printed**: `PROVIDER=<name>` (registry) or explicit
+  `EGRESS_ALLOWLIST`; testers should read the `agent:`/driver banners to know
+  exactly what a run allowed.
+
 `agent-shell` mounts **only** the per-run workspace clone at `/workspace`, has **no
 docker socket and no docker CLI**, and the toolset (`curl`/`git`/`jq`) and the
 `submit` shim are **baked into the image** (no runtime install, no single-file bind).
