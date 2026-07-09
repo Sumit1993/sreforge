@@ -11,12 +11,35 @@
 // Exit 0 = alert firing (incident confirmed); exit 1 = timed out.
 
 import { PROM, P99_EXPR, PRIMARY_ALERT, getAlerts, firing, queryScalar, sleep, nowIso, parseArgs } from "./lib.mjs";
+import { execFileSync } from "node:child_process";
 
 const a = parseArgs();
 const ALERT = a.alert || PRIMARY_ALERT;
 const TIMEOUT_S = Number(a.timeout) || 240;
 const INTERVAL_S = Number(a.interval) || 3;
 const prom = a.prom || PROM;
+
+// Precheck: fail fast (~1s) if the prometheus container is not running at all,
+// instead of burning the full timeout printing "fetch failed" retries.
+const PROM_CONTAINER = a["prom-container"] || "booklogr-prometheus";
+try {
+  const state = execFileSync(
+    "docker", ["inspect", "-f", "{{.State.Running}}", PROM_CONTAINER],
+    { encoding: "utf8", timeout: 5000 },
+  ).trim();
+  if (state !== "true") {
+    process.stderr.write(
+      `[confirm-fire] FATAL: ${PROM_CONTAINER} container exists but is not running (state=${state})\n` +
+      `               Did \`pnpm forge up booklogr\` succeed?\n`,
+    );
+    process.exit(1);
+  }
+} catch (e) {
+  process.stderr.write(
+    `[confirm-fire] FATAL: ${PROM_CONTAINER} container is not running — did \`pnpm forge up booklogr\` succeed?\n`,
+  );
+  process.exit(1);
+}
 
 const started = Date.now();
 const deadline = started + TIMEOUT_S * 1000;

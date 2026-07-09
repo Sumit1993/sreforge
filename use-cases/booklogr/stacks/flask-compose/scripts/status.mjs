@@ -15,5 +15,6 @@ try {
   process.stdout.write(`firing:     ${firing.length ? firing.join(", ") : "(none)"}\n`);
 } catch (e) {
   process.stderr.write(`status: prometheus not reachable at ${prom} (${e.message})\n`);
+  process.stderr.write(`  hint: run \`pnpm forge up booklogr\`\n`);
   process.exit(1);
 }
