@@ -18,8 +18,67 @@ MODEL="${AGY_MODEL:-Claude Opus 4.6 (Thinking)}"
 U="$(id -u):$(id -g)"
 SCRATCH="$(mktemp -d /tmp/agy-incident.XXXXXX)"
 LOG="${AGY_LOG:-$SCRATCH/agy-transcript.txt}"
-SRT_SETTINGS="${SRT_SETTINGS:-$HERE/srt-driver.settings.json}"
 PAYLOAD="${WEBHOOK_PAYLOAD:-An alert is firing for the service.}"
+
+# ---- per-run srt settings: resolve PROVIDER → egress domains -----------------
+PROVIDER="${PROVIDER:-antigravity}"
+
+if [ -n "${SRT_SETTINGS:-}" ]; then
+  # Explicit SRT_SETTINGS wins — skip generation.
+  echo "agent-agy: using explicit SRT_SETTINGS=$SRT_SETTINGS"
+else
+  # Resolve egress allowlist from the provider registry, split into domains,
+  # and generate the srt settings JSON in $SCRATCH per run.
+  EGRESS_CSV="$(node "$(cd "$HERE/../../../.." && pwd)/tools/provider-egress.mjs" "$PROVIDER")" || exit 1
+
+  # Build the allowedDomains JSON array from the comma-separated list
+  DOMAINS_JSON="["
+  first=true
+  IFS=',' read -ra DOMAINS <<< "$EGRESS_CSV"
+  for d in "${DOMAINS[@]}"; do
+    [ -z "$d" ] && continue
+    if [ "$first" = true ]; then first=false; else DOMAINS_JSON+=","; fi
+    DOMAINS_JSON+="\"$d\""
+  done
+  DOMAINS_JSON+="]"
+
+  SRT_SETTINGS="$SCRATCH/srt-settings.json"
+  cat > "$SRT_SETTINGS" <<SRTEOF
+{
+  "network": {
+    "allowedDomains": $DOMAINS_JSON,
+    "deniedDomains": [],
+    "allowUnixSockets": ["/var/run/docker.sock", "/run/docker.sock"],
+    "allowAllUnixSockets": true
+  },
+  "filesystem": {
+    "denyRead": [
+      "~/sources/sreforge-workspace",
+      "~/prismalens-org",
+      "~/ai-context",
+      "~/mage-memory"
+    ],
+    "allowWrite": ["/tmp", "~/.gemini"],
+    "denyWrite": []
+  }
+}
+SRTEOF
+fi
+
+# ---- banner ------------------------------------------------------------------
+# Extract domain list for display from the generated settings
+if [ -n "${EGRESS_CSV:-}" ]; then
+  DISPLAY_DOMAINS="${EGRESS_CSV//,/ }"
+else
+  DISPLAY_DOMAINS="(from $SRT_SETTINGS)"
+fi
+
+echo "╭──────────────────────────────────────────────────────────────╮"
+echo "│  confinement: host-sandboxed                                │"
+echo "│  provider:    ${PROVIDER}"
+echo "│  srt egress allowlist: ${DISPLAY_DOMAINS}"
+echo "│  fs deny-read: sreforge workspace                           │"
+echo "╰──────────────────────────────────────────────────────────────╯"
 
 cat > "$SCRATCH/prompt.txt" <<EOF
 You are an on-call SRE engineer. An incident is affecting a service you operate.
