@@ -58,15 +58,15 @@ oracle   = "verify/oracle.md"                                    # BINDING — v
 
 # --- fault injection -----------------------------------------------------------
 # How the harness makes the incident happen. The fault is a SINGLE LINE change in api/config.py:
-#   SQLALCHEMY_ENGINE_OPTIONS = {"pool_size": 1, "max_overflow": 0}
+#   SQLALCHEMY_ENGINE_OPTIONS = {"pool_size": 1, "max_overflow": 0, "pool_timeout": 5}
 # This is an arm-deploy-recent scenario. The orchestrator resets the origin/main 
 # to a healthy baseline (baseline^), applies the fault patch (inject/fault.patch), 
 # commits it with the author identity to simulate a real recent deployment, and 
 # pushes to origin/main. This uses the `fault_delivery_arm_deploy_recent` function 
 # from `scripts/lib-fault-delivery.sh`, pulling config from `scenario.env`.
-# The load driver is k6 running two concurrent scenarios (a storm of uncached list reads 
-# mixed with light cached search traffic). CRITICAL: load runs CONTINUOUSLY and is NEVER 
-# stopped during verification.
+# The load driver is k6 running a constant-arrival-rate storm of uncached GET /v1/books
+# library-list reads (booklogr-storm-mixed.js) over the seeded library. CRITICAL: load
+# runs CONTINUOUSLY and is NEVER stopped during verification.
 [inject]
 command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
 mode     = "storm"                    # ARCHETYPE — constant-arrival-rate storm over fixed query working set

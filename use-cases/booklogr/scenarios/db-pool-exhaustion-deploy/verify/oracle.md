@@ -23,7 +23,7 @@ as an additional weighted phase **without refactoring** the mitigation signals.
 
 ## Root cause (harness-internal)
 
-DB pool exhaustion: A configuration change committed right before the incident reduced the database connection pool (`SQLALCHEMY_ENGINE_OPTIONS = {"pool_size": 1, "max_overflow": 0}`). A pool size of 1 serializes every uncached `/v1/books` list read. At the storm's read rate, this saturates the single connection. As workers block on database I/O, all 4 of Gunicorn's sync slots become starved, causing even lightweight cached search traffic (`/v1/books/search`) to queue at accept and time out, breaching the p99 threshold continuously and firing `BooklogrApiLatencyP99High`. 
+DB pool exhaustion: A configuration change committed right before the incident reduced the database connection pool (`SQLALCHEMY_ENGINE_OPTIONS = {"pool_size": 1, "max_overflow": 0, "pool_timeout": 5}`). A pool size of 1 serializes every uncached `/v1/books` list read. At the storm's read rate, this saturates the single connection. As workers block on database I/O, all 4 of Gunicorn's sync slots become starved, causing even lightweight cached search traffic (`/v1/books/search`) to queue at accept and time out, breaching the p99 threshold continuously and firing `BooklogrApiLatencyP99High`. 
 
 **The fix family:** Any change that stops the single connection from serializing reads. Acceptable fixes include reverting the pool-limiting commit, raising `pool_size`/`max_overflow` back to provide headroom above the storm's concurrent-read demand, or removing the `SQLALCHEMY_ENGINE_OPTIONS` override entirely so it falls back to defaults. The oracle grades **behavior**, not a diff match.
 
