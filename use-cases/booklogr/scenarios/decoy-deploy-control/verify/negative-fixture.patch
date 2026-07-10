@@ -1,0 +1,12 @@
+diff --git a/api/routes/settings.py b/api/routes/settings.py
+--- a/api/routes/settings.py
++++ b/api/routes/settings.py
+@@ -42,7 +42,7 @@
+             return jsonify({
+                         "error": "Bad request",
+                         "message": "send_book_events, mastodon_url and/or mastodon_access_token not given."
+-            }), 400
++            }), 40
+     else:
+         return jsonify({
+                     "error": "Not found",

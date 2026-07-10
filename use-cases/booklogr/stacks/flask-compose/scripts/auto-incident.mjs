@@ -40,6 +40,21 @@ const TASK_BIN = (() => {
   return existsSync(local) ? local : "task";
 })();
 
+// ── preflight: the CI runner must be alive or the graded run will time out.
+try {
+  const out = execFileSync(
+    "docker", ["inspect", "-f", "{{.State.Running}}", "sreforge-runner"],
+    { encoding: "utf8", timeout: 5000 },
+  ).trim();
+  if (out !== "true") throw new Error(`state=${out}`);
+} catch (e) {
+  console.error(
+    `auto: FATAL — sreforge-runner is not running (${e.message}).\n` +
+    `       Recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner`,
+  );
+  process.exit(1);
+}
+
 function task(name, extra = []) {
   console.log(`\nauto ── task ${name} ${extra.join(" ")}`.trimEnd());
   const res = spawnSync(TASK_BIN, ["--dir", STACK, name, ...extra], {
@@ -99,10 +114,29 @@ const payload = JSON.parse(payloadJson);
 const names = [...new Set((payload.alerts || []).map((a) => a?.labels?.alertname).filter(Boolean))];
 console.log(`\nauto ── 🔔 alert push received [${names.join(", ")}] → launching agent`);
 console.log(`auto ── agent: ${AGENT_CMD}`);
+
+// SECURITY: the agent must never inherit forge credentials (GITEA_TOKEN etc.).
+// Pass only the minimal env needed for the driver to function. Drivers that need
+// extra vars (e.g. OLLAMA_API_KEY) load the stack .env themselves; if a driver
+// cannot do that, add names to AGENT_ENV_ALLOWLIST (comma-separated).
+const AGENT_ENV_DEFAULT = [
+  "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "TERM",
+  "WEBHOOK_PAYLOAD", "WEBHOOK_PORT", "AGENT_UID", "AGENT_GID",
+];
+const extraNames = (env.AGENT_ENV_ALLOWLIST || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const agentEnv = {};
+for (const k of [...AGENT_ENV_DEFAULT, ...extraNames]) {
+  if (k in env) agentEnv[k] = env[k];
+}
+agentEnv.WEBHOOK_PAYLOAD = payloadJson;
+
 const agent = spawnSync("sh", ["-c", AGENT_CMD], {
   stdio: "inherit",
   cwd: STACK,
-  env: { ...env, WEBHOOK_PAYLOAD: payloadJson },
+  env: agentEnv,
 });
 if (agent.status !== 0) {
   console.error(`auto: agent driver exited ${agent.status ?? 1} without a submit — nothing to grade.`);

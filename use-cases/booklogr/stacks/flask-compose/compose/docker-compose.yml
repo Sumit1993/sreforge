@@ -62,6 +62,10 @@ services:
       # for air-gapped or CI deployments instead of the public APIs.
       DATA_PROVIDER: ${DATA_PROVIDER:-http://book-metadata:8080}
       DATA_PROVIDER_FALLBACK: ${DATA_PROVIDER_FALLBACK:-http://book-metadata:8080}
+      # Cache backend. Default preserves the app's own config.py default
+      # (SimpleCache) — only a scenario's runtime override (a compose `.env`
+      # written at arm time, never committed) changes this.
+      CACHE_TYPE: ${CACHE_TYPE:-SimpleCache}
     depends_on:
       booklogr-db:
         condition: service_healthy
@@ -86,9 +90,11 @@ services:
       BL_API_ENDPOINT: http://localhost:5000/
       BL_GOOGLE_ID: ""
       BL_DEMO_MODE: "false"
+    # In the incident harness the app being unhealthy IS the product —
+    # web must start regardless so the operator can reach the UI.
     depends_on:
       booklogr-api:
-        condition: service_healthy
+        condition: service_started
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -106,9 +112,10 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
       - --web.enable-lifecycle
+    # Telemetry must outlive an unhealthy app (the incident IS the product).
     depends_on:
       booklogr-api:
-        condition: service_healthy
+        condition: service_started
       alertmanager:
         condition: service_started
 

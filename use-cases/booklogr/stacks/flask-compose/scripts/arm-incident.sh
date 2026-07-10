@@ -37,6 +37,13 @@ done
 echo "==> Re-regressing forge: resetting origin/main from the local anchor ($BASELINE_REF)..."
 # 3. Reset the local workspace onto the regressed anchor on a clean main
 echo "==> Resetting local workspace to the anchor ($BASELINE_REF)..."
+
+# Always clear any leftover runtime-env override from a prior arm-runtime-notrace
+# scenario (mode 3) BEFORE arming THIS scenario — a decoy override must never
+# leak into another scenario's incident. Modes 1/2 always run with a clean
+# override; mode 3 re-writes it fresh below.
+ENV_OVERRIDE_FILE="$(dirname "$COMPOSE_FILE")/.env"
+rm -f "$ENV_OVERRIDE_FILE"
 case "$DELIVERY_MODE" in
   setup-baked)
     fault_delivery_setup_baked "$STACK/substrate/booklogr" "$BASELINE_REF"
@@ -51,6 +58,17 @@ case "$DELIVERY_MODE" in
     fi
     fault_delivery_arm_deploy_recent "$STACK/substrate/booklogr" "$BASELINE_REF" \
       "$REPO_ROOT/$FAULT_PATCH" "$COMMIT_MESSAGE" "$AUTHOR_NAME" "$AUTHOR_EMAIL"
+    ;;
+  arm-runtime-notrace)
+    : "${FAULT_PATCH:?scenario.env for $SCENARIO_ID must set FAULT_PATCH}"
+    : "${COMMIT_MESSAGE:?scenario.env for $SCENARIO_ID must set COMMIT_MESSAGE}"
+    : "${AUTHOR_NAME:?scenario.env for $SCENARIO_ID must set AUTHOR_NAME}"
+    : "${AUTHOR_EMAIL:?scenario.env for $SCENARIO_ID must set AUTHOR_EMAIL}"
+    : "${RUNTIME_ENV_VAR:?scenario.env for $SCENARIO_ID must set RUNTIME_ENV_VAR}"
+    : "${RUNTIME_ENV_VALUE:?scenario.env for $SCENARIO_ID must set RUNTIME_ENV_VALUE}"
+    fault_delivery_arm_runtime_notrace "$STACK/substrate/booklogr" "$BASELINE_REF" \
+      "$REPO_ROOT/$FAULT_PATCH" "$COMMIT_MESSAGE" "$AUTHOR_NAME" "$AUTHOR_EMAIL" \
+      "$ENV_OVERRIDE_FILE" "$RUNTIME_ENV_VAR" "$RUNTIME_ENV_VALUE"
     ;;
   *)
     echo "ERROR: unknown DELIVERY_MODE '$DELIVERY_MODE' for scenario '$SCENARIO_ID'" >&2
