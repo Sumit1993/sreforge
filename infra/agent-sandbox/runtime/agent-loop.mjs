@@ -13,7 +13,8 @@
 //   MAX_STEPS        default 30
 //   WEBHOOK_PAYLOAD  optional (same kickoff semantics as agent-ollama.mjs)
 //
-// Exit 0 if submitted, 2 otherwise.
+// Exit 0 if submitted, 2 if the step budget ran out, 1 on a permanent
+// provider failure — the transcript is written on every exit path.
 // =============================================================================
 import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -43,6 +44,7 @@ function localShell(command) {
       cwd: "/workspace",
       stdio: ["ignore", "pipe", "pipe"],
       maxBuffer: 64 * 1024 * 1024,
+      timeout: Number(env.AGENT_SHELL_TIMEOUT_MS || 120000),
     });
     return { exit: 0, out };
   } catch (e) {
@@ -132,6 +134,7 @@ async function chat() {
         method: "POST",
         headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model: MODEL, messages: trimmed(), tools, stream: false }),
+        signal: AbortSignal.timeout(Number(env.CHAT_TIMEOUT_MS || 120000)),
       });
       if (res.ok) return res.json();
       const body = clip(await res.text());
@@ -139,7 +142,7 @@ async function chat() {
       throw new Error(`Ollama ${res.status}: ${body}`);
     } catch (e) {
       lastErr = e;
-      const retryable = /transient|fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|network|socket/i.test(e.message);
+      const retryable = /transient|fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|network|socket|timeout|abort/i.test(e.message);
       if (attempt >= 5 || !retryable) throw lastErr;
       const wait = Math.min(3000 * attempt, 15000);
       console.error(`  (transient: ${e.message}; retry ${attempt}/4 in ${wait / 1000}s)`);
@@ -147,6 +150,15 @@ async function chat() {
     }
   }
   throw lastErr;
+}
+
+// ---- transcript (JSON to .sreforge/; the diff capture excludes .sreforge/) ---
+// Written on every exit path — including a permanent chat() failure, where the
+// history up to the failure is exactly what's needed to debug it.
+const transcriptPath = "/workspace/.sreforge/agent-transcript.json";
+function saveTranscript() {
+  mkdirSync("/workspace/.sreforge", { recursive: true });
+  writeFileSync(transcriptPath, JSON.stringify({ model: MODEL, submitted, messages }, null, 2));
 }
 
 // ---- the loop ---------------------------------------------------------------
@@ -158,6 +170,8 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
     data = await chat();
   } catch (e) {
     console.error(`step ${step}: ${e.message}`);
+    saveTranscript();
+    console.error(`agent-loop: transcript → ${transcriptPath}`);
     process.exit(1);
   }
   const msg = data.message || {};
@@ -196,11 +210,6 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
   }
 }
 
-// ---- transcript (JSON to .sreforge/; the diff capture excludes .sreforge/) ---
-const transcriptDir = "/workspace/.sreforge";
-mkdirSync(transcriptDir, { recursive: true });
-const transcriptPath = `${transcriptDir}/agent-transcript.json`;
-writeFileSync(transcriptPath, JSON.stringify({ model: MODEL, submitted, messages }, null, 2));
-
+saveTranscript();
 console.log(`\nagent-loop: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${transcriptPath}`);
 process.exit(submitted ? 0 : 2);
