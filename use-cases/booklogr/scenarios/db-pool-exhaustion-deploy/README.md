@@ -2,7 +2,7 @@
 
 An `incident`-profile scenario on the `booklogr` / `flask-compose` stack.
 
-**Incident (one line):** A deploy-time configuration change reduces the database connection pool size, exhausting DB connections under moderate uncached read load and starving workers until p99 latency breaches the 300 ms SLO and fires `BooklogrApiLatencyP99High`. The fix must restore DB connection pool headroom.
+**Incident (one line):** A deploy-time configuration change reduces the database connection pool size and switches gunicorn to threaded workers, exhausting DB connections under moderate uncached read load and starving workers until p99 latency breaches the 300 ms SLO and fires `BooklogrApiLatencyP99High`. The fix must restore DB connection pool headroom.
 
 The agent is paged with the firing alert — the engine's `ContextAssembler`
 renders the neutral incident brief from the alert plus the live endpoints — then

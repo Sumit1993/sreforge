@@ -57,9 +57,14 @@ solution = "solution/fix.patch"                                 # BINDING — ca
 oracle   = "verify/oracle.md"                                    # BINDING — v1 mitigation-oracle specification (harness-internal)
 
 # --- fault injection -----------------------------------------------------------
-# How the harness makes the incident happen. The fault is a SINGLE LINE change in api/config.py:
+# How the harness makes the incident happen. The fault is a two-file change: api/config.py
 #   SQLALCHEMY_ENGINE_OPTIONS = {"pool_size": 1, "max_overflow": 0, "pool_timeout": 5}
-# This is an arm-deploy-recent scenario. The orchestrator resets the origin/main 
+# plus gunicorn.conf.py switching workers from the implicit sync class to threaded
+# (worker_class = "gthread", threads = 8). The threading change is load-bearing: gunicorn's
+# default sync workers each process one request at a time, so a shrunk pool is never actually
+# contended without it (a single-process pool_size=1 exactly matches the max 1-concurrent-request
+# ceiling a sync worker already has).
+# This is an arm-deploy-recent scenario. The orchestrator resets the origin/main
 # to a healthy baseline (baseline^), applies the fault patch (inject/fault.patch), 
 # commits it with the author identity to simulate a real recent deployment, and 
 # pushes to origin/main. This uses the `fault_delivery_arm_deploy_recent` function 
@@ -76,8 +81,9 @@ stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): loa
 # --- verification (v1 mitigation oracle) ---------------------------------------
 # Multi-signal, objective, no-LLM oracle. v1 ships mitigation only; diagnosis/RCA judge is deferred to v2.
 # Full contract and measurement details in verify/oracle.md.
-# Acceptable fix families: Revert the pool-limiting commit; raise pool_size/max_overflow back to headroom 
-# above the storm's concurrent-read demand; or remove the SQLALCHEMY_ENGINE_OPTIONS override entirely.
+# Acceptable fix families: Revert the pool-limiting commit; raise pool_size/max_overflow back to headroom
+# above the storm's concurrent-read demand; remove the SQLALCHEMY_ENGINE_OPTIONS override entirely; or
+# revert the gunicorn worker_class/threads change back to sync workers.
 # The oracle grades observed behavior, NOT a diff match against solution/fix.patch.
 [verify]
 oracle           = "mitigation"       # ARCHETYPE — oracle family; compound oracle drops in detect/diagnose later without refactor
