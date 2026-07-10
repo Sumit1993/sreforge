@@ -90,11 +90,11 @@ if (!TOKEN) {
 }
 
 const runId = arg("run-id", `run-${Date.now()}`);
-const scenarioId = arg("scenario-id", "latency-cache-stampede");
+const scenarioId = arg("scenario-id", env.SCENARIO_ID || "latency-cache-stampede");
 const patchPath = resolve(
-  arg("patch", join(REPO_ROOT, "use-cases/booklogr/scenarios/latency-cache-stampede/solution/fix.patch")),
+  arg("patch", env.FIX_PATCH || join(REPO_ROOT, `use-cases/booklogr/scenarios/${scenarioId}/solution/fix.patch`)),
 );
-const commitMessage = arg("message", "Restore response cache for book search");
+const commitMessage = arg("message", env.FIX_MESSAGE || "Restore response cache for book search");
 const recordDir = resolve(arg("record-dir", join(STACK, "runs")));
 
 // Pass threshold 0.85 separates a valid sustained clear (>=0.90) from a fix that

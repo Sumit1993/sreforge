@@ -9,6 +9,11 @@ SCRIPTS="$HERE"
 # 2. Load env
 set -a; . "$STACK/.env"; set +a
 
+SCENARIO_ID="${SCENARIO_ID:-latency-cache-stampede}"
+export SCENARIO_ID
+. "$SCRIPTS/lib-scenario.sh"
+source_scenario_env "$SCENARIO_ID"
+
 # 3. Arm: put the stack into a confirmed-firing incident state
 bash "$SCRIPTS/arm-incident.sh"
 

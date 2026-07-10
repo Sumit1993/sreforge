@@ -4,7 +4,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # = $SCRIPTS
 STACK="$(dirname "$HERE")"                              # = stacks/flask-compose
 SCRIPTS="$HERE"
+REPO_ROOT="$(cd "$STACK/../../../.." && pwd)"
 . "$HERE/lib-deploy.sh"   # neutral DEPLOY_DIR + COMPOSE_FILE/LOAD_FILE (de-tell)
+. "$HERE/lib-scenario.sh"
+. "$HERE/lib-fault-delivery.sh"
+
+SCENARIO_ID="${SCENARIO_ID:-latency-cache-stampede}"
+source_scenario_env "$SCENARIO_ID"
 
 # 1. Guard: substrate must be imported
 echo "==> Checking substrate workspace..."
@@ -25,18 +31,32 @@ for lb in $(git -C "$WORK" for-each-ref --format='%(refname:short)' 'refs/heads/
 done
 
 # 2. Re-regress the forge default branch (reset main to the immutable regressed
-#    baseline). The baseline anchor is a LOCAL branch — never published to origin
+#    anchor). The scenario's anchor is a LOCAL branch — never published to origin
 #    (see import-substrate.sh) — so we push it straight onto origin/main; the
-#    agent-visible forge never shows a tell-tale `baseline` branch.
-echo "==> Re-regressing forge: resetting origin/main from the local baseline anchor..."
-git -C "$STACK/substrate/booklogr" fetch origin --prune --quiet
-git -C "$STACK/substrate/booklogr" push -f origin baseline:main
-
-# 3. Reset the local workspace onto the regressed baseline on a clean main
-echo "==> Resetting local workspace to the baseline anchor..."
-git -C "$STACK/substrate/booklogr" checkout -B main baseline
-git -C "$STACK/substrate/booklogr" reset --hard baseline
-git -C "$STACK/substrate/booklogr" clean -fd
+#    agent-visible forge never shows a tell-tale anchor branch.
+echo "==> Re-regressing forge: resetting origin/main from the local anchor ($BASELINE_REF)..."
+# 3. Reset the local workspace onto the regressed anchor on a clean main
+echo "==> Resetting local workspace to the anchor ($BASELINE_REF)..."
+case "$DELIVERY_MODE" in
+  setup-baked)
+    fault_delivery_setup_baked "$STACK/substrate/booklogr" "$BASELINE_REF"
+    ;;
+  arm-deploy-recent)
+    : "${FAULT_PATCH:?scenario.env for $SCENARIO_ID must set FAULT_PATCH}"
+    : "${COMMIT_MESSAGE:?scenario.env for $SCENARIO_ID must set COMMIT_MESSAGE}"
+    : "${AUTHOR_NAME:?scenario.env for $SCENARIO_ID must set AUTHOR_NAME}"
+    : "${AUTHOR_EMAIL:?scenario.env for $SCENARIO_ID must set AUTHOR_EMAIL}"
+    if [ -n "${SEED_COUNT:-}" ]; then
+      bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
+    fi
+    fault_delivery_arm_deploy_recent "$STACK/substrate/booklogr" "$BASELINE_REF" \
+      "$REPO_ROOT/$FAULT_PATCH" "$COMMIT_MESSAGE" "$AUTHOR_NAME" "$AUTHOR_EMAIL"
+    ;;
+  *)
+    echo "ERROR: unknown DELIVERY_MODE '$DELIVERY_MODE' for scenario '$SCENARIO_ID'" >&2
+    exit 1
+    ;;
+esac
 
 # 3b. Quiesce any in-flight load BEFORE bringing up the regressed baseline.
 # Deploying a NullCache build straight into an active storm saturates all four
@@ -75,11 +95,11 @@ echo "==> booklogr-api is healthy"
 
 # 5. Ensure the storm is running (on-demand load profile)
 echo "==> Ensuring the load storm is running (edge-client)..."
-RATE="${RATE:-25}" docker compose -p booklogr-edge -f "$LOAD_FILE" up -d
+docker compose -p booklogr-edge -f "$LOAD_FILE" up -d --force-recreate
 
 # 6. Confirm the alert fires (ADR-0010 gate)
 echo "==> Waiting for alert to fire (timeout=240s)..."
-node "$SCRIPTS/confirm-fire.mjs" --timeout=240
+node "$SCRIPTS/confirm-fire.mjs" --timeout=240 --alert="${ALERT}"
 
 # 7. Done
 echo "==> armed: incident is live (alert firing under active load)"
