@@ -2,9 +2,11 @@
 //
 // A constant-arrival-rate (open-model) stream of traffic against the UNCACHED
 // GET /v1/books library-list route. This exposes DB connection pool
-// starvation: when the pool is undersized, workers block serializing DB
-// reads, and since gunicorn runs sync workers, blocked workers starve ALL
-// traffic (even cached routes) at accept.
+// starvation: the healthy baseline runs gunicorn sync workers (1 request per
+// process, so the pool is never contended), while the faulted deploy switches
+// to threaded (gthread) workers whose 8 threads share one undersized
+// (pool_size=1) per-process pool — requests queue on the pool and slow ALL
+// traffic the worker serves (even cached routes).
 //
 // An earlier version of this script also mixed in a light ambient stream of
 // cached GET /v1/books/search requests "for realism". That was REMOVED after

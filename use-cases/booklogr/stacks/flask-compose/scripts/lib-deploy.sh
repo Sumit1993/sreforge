@@ -25,3 +25,9 @@ _resolve_deploy_dir() {
 DEPLOY_DIR="$(_resolve_deploy_dir)"
 COMPOSE_FILE="$DEPLOY_DIR/compose/docker-compose.yml"
 LOAD_FILE="$DEPLOY_DIR/compose/load.yml"
+
+# CACHE_TYPE must reach the app ONLY via the arm-time compose/.env override:
+# compose gives a shell export precedence over .env when interpolating
+# ${CACHE_TYPE:-SimpleCache}, so a stray host export would silently shadow
+# (or fake) a scenario's runtime override on every host-side deploy.
+unset CACHE_TYPE

@@ -170,7 +170,7 @@ test:
    e.g.:
    ```bash
    node scripts/run-incident.mjs --patch \
-     use-cases/booklogr/scenarios/decoy-deploy-control/verify/negative-fixture.patch \
+     ../../scenarios/decoy-deploy-control/verify/negative-fixture.patch \
      --message "Revert HTTP status fix" --scenario-id decoy-deploy-control
    ```
 3. **Required outcome:** `alert_cleared` is never observed (the revert does not

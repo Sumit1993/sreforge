@@ -40,10 +40,23 @@ fi
 git -C "$WORK" rev-parse --verify --quiet "$ANCHOR_BASE_REF" >/dev/null \
   || { echo "ERROR: anchor base '$ANCHOR_BASE_REF' not found — run inject-regression.sh (and import-substrate.sh) first" >&2; exit 1; }
 
+# The scratch checkout below would carry any local edits into the backdated
+# commits (and lose them on restore) — refuse to run on a dirty substrate.
+[ -z "$(git -C "$WORK" status --porcelain)" ] \
+  || { echo "ERROR: substrate worktree at $WORK must be clean" >&2; exit 1; }
+
 # Build on a throwaway local branch off the healthy anchor base, then fold the
-# result into BASELINE_REF and restore whatever HEAD pointed at before.
+# result into BASELINE_REF and restore whatever HEAD pointed at before —
+# via an EXIT trap, so a failure mid-authoring (set -e) restores it too.
 ORIG_REF="$(git -C "$WORK" symbolic-ref --short -q HEAD || git -C "$WORK" rev-parse HEAD)"
 SCRATCH="decoy-prep-scratch"
+restore() {
+  status=$?
+  git -C "$WORK" checkout --quiet "$ORIG_REF" || true
+  git -C "$WORK" branch -D "$SCRATCH" >/dev/null 2>&1 || true
+  exit "$status"
+}
+trap restore EXIT
 git -C "$WORK" branch -f "$SCRATCH" "$ANCHOR_BASE_REF"
 git -C "$WORK" checkout --quiet "$SCRATCH"
 
@@ -55,7 +68,7 @@ export GIT_AUTHOR_DATE="2026-06-15 09:12:31 +0200" GIT_COMMITTER_DATE="2026-06-1
 sed -i 's/    CACHE_TYPE = "SimpleCache"/    CACHE_TYPE = os.environ.get("CACHE_TYPE", "SimpleCache")/' "$CFG"
 grep -q 'CACHE_TYPE = os.environ.get("CACHE_TYPE", "SimpleCache")' "$CFG" || { echo "sed anchor not found (config.py)"; exit 1; }
 touch -r "$WORK/api/models.py" "$CFG"
-git -C "$WORK" add -A
+git -C "$WORK" add -- "$CFG"
 git -C "$WORK" commit -m "Read cache backend from environment" >/dev/null
 
 # --- commit 2: app.py -> boot log line ---------------------------------------
@@ -67,11 +80,9 @@ awk -v line="$LOGLINE" '
 ' "$APP" > "$APP.tmp" && mv "$APP.tmp" "$APP"
 grep -q 'booklogr-api boot: cache backend=' "$APP" || { echo "boot-log insert failed (app.py)"; exit 1; }
 touch -r "$WORK/api/models.py" "$APP"
-git -C "$WORK" add -A
+git -C "$WORK" add -- "$APP"
 git -C "$WORK" commit -m "Log effective cache backend at boot" >/dev/null
 
-# --- anchor BASELINE_REF at the result, discard the scratch branch -----------
+# --- anchor BASELINE_REF at the result (restore/cleanup runs in the trap) ----
 git -C "$WORK" branch -f "$BASELINE_REF" "$SCRATCH"
-git -C "$WORK" checkout --quiet "$ORIG_REF"
-git -C "$WORK" branch -D "$SCRATCH" >/dev/null
 echo "prepared scenario '$SCENARIO_ID': local anchor '$BASELINE_REF' -> $(git -C "$WORK" rev-parse "$BASELINE_REF") (host-side only; never pushed to origin)"

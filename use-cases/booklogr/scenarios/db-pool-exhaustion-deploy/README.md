@@ -37,7 +37,7 @@ command from the stack dir:
 
 ```bash
 SCENARIO_ID=db-pool-exhaustion-deploy pnpm forge arm booklogr
-pnpm forge run booklogr SCENARIO_ID=db-pool-exhaustion-deploy
+SCENARIO_ID=db-pool-exhaustion-deploy pnpm forge run booklogr
 ```
 
 ## Inspect the running stack
