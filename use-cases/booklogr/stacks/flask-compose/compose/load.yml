@@ -17,11 +17,12 @@ services:
   edge-client:
     image: grafana/k6:latest
     container_name: edge-client
-    command: ["run", "/scripts/booklogr-storm.js"]
+    command: ["run", "/scripts/${STORM_SCRIPT:-booklogr-storm.js}"]
     environment:
       # Hit the published API ingress on the host, like any external client.
       API_URL: ${API_URL:-http://host.docker.internal:5000}
       RATE: ${RATE:-25}
+      RATE_SEARCH: ${RATE_SEARCH:-2}
     extra_hosts:
       # Make host.docker.internal resolvable on Linux / WSL2 + Rancher Desktop.
       - "host.docker.internal:host-gateway"
