@@ -1,0 +1,125 @@
+# scenario.toml — machine-readable manifest for the decoy-deploy-control scenario.
+#
+# Taxonomy: engine (core) · use-case (booklogr) · stack (flask-compose) · scenario (decoy-deploy-control).
+# This is an `incident`-profile scenario: the fault is injected against a LIVE deployment and
+# verification is a behavioral closed loop (the alert must clear under still-active load), as opposed
+# to the `patch` profile (static diff scored against a fixed test set).
+
+# --- identity ------------------------------------------------------------------
+id        = "decoy-deploy-control"     # BINDING — unique scenario id; matches the folder name
+use_case  = "booklogr"                 # BINDING — product domain this scenario exercises
+stack     = "flask-compose"            # BINDING — substrate: Flask + Gunicorn + Prometheus/Alertmanager/Grafana on Docker Compose
+profile   = "incident"                 # ARCHETYPE — incident = live deploy + behavioral closed-loop oracle (NOT patch)
+title     = "Cache outage masked by an unrelated recent deploy"  # BINDING — human-readable scenario title
+difficulty = "hard"                    # ARCHETYPE — easy | medium | hard — the recent commit on main is a plausible-looking red herring; the actual cause has zero forge trace
+tags      = ["latency", "cache", "deploy-correlation", "runtime-config-drift"]  # BINDING — fault-class tags
+
+# One-paragraph description of the scenario (human-readable, neutral framing).
+description = """
+p99 request latency on book search breaches the 300ms SLO and fires BooklogrApiLatencyP99High.
+There IS a real recent deploy on main, but it only fixes an unrelated HTTP status code bug in the
+settings endpoint and is physically incapable of affecting search latency. The actual cause is that
+the deployed cache backend has drifted to NullCache at the runtime/infra layer, outside application
+source control — every search request now misses the cache and pays the book-metadata upstream's full
+1.1-1.3s latency. An agent that anchors on "what changed recently in git" and reverts the innocent
+deploy will NOT clear the incident: the fix must restore the cache backend itself. The scenario is a
+control for deploy-correlation reasoning: recency of a commit does not by itself establish causation.
+"""
+
+# --- expected signal -----------------------------------------------------------
+# The alert the agent is paged on and the SLO it encodes. Used by the confirm-fire gate and the oracle.
+[expected]
+alert                 = "BooklogrApiLatencyP99High"  # BINDING — alert name in the Prometheus rule set
+severity              = "critical"                    # ARCHETYPE — paging severity
+p99_threshold_seconds = 0.3                           # ARCHETYPE — alert fires when p99 > 0.3s for 30s; healthy baseline well under 100ms
+
+# PromQL used by the confirm-fire gate and oracle to evaluate the alert signal.
+# Metric: flask_http_request_duration_seconds_bucket; scrape job label job="booklogr-api".
+# BINDING — this stack exports the flask_-prefixed metric; do NOT substitute the bare http_request_duration_seconds_bucket.
+p99_promql = """
+histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[30s])))
+"""
+
+# --- determinism / timing knobs ------------------------------------------------
+# Harness timing contract. The confirm-fire gate proves the fault is live BEFORE the agent starts;
+# the oracle requires the alert to stay cleared for sustained_clear_seconds under still-active load.
+[determinism]
+confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for BooklogrApiLatencyP99High to enter firing state under storm load
+sustained_clear_seconds      = 30    # ARCHETYPE — alert must remain cleared this long (load still active) to score as mitigated
+alert_fired_at               = ""    # populated at runtime by the confirm-fire gate (RFC3339 timestamp of first firing)
+
+# --- paths (relative to this scenario directory) -------------------------------
+# All paths are relative to use-cases/booklogr/scenarios/decoy-deploy-control/.
+# The booklogr compose lives IN-REPO at stacks/flask-compose/compose — not an external sibling repo.
+[paths]
+stack    = "../../stacks/flask-compose"                          # BINDING — harness-side run layer for this substrate
+compose  = "../../stacks/flask-compose/compose/docker-compose.yml"  # BINDING — in-repo compose file (not an external ops repo)
+solution = "solution/fix.patch"                                 # BINDING — canonical reference fix (harness-internal, not agent-facing)
+oracle   = "verify/oracle.md"                                    # BINDING — v1 mitigation-oracle specification (harness-internal)
+
+# --- fault injection -----------------------------------------------------------
+# How the harness makes the incident happen. TWO things are deployed at arm time (mode 3,
+# fault_delivery_arm_runtime_notrace in scripts/lib-fault-delivery.sh):
+#   1. A REAL recent commit on main (inject/fault.patch — the settings.py status-code fix),
+#      pushed under the maintainer identity with a real current timestamp, exactly like an
+#      ordinary innocuous deploy. This commit CANNOT cause the incident.
+#   2. The real fault, applied with ZERO forge trace: a compose-level `.env` override
+#      (CACHE_TYPE=NullCache) written into the deploy directory, picked up by the shared
+#      force-recreate step. Nothing is committed or pushed for this half.
+# The scenario's own base anchor (scenario/decoy-deploy-control, prepared once by
+# scripts/prepare-decoy-base.sh) already carries two BACKDATED "old code" commits: the app's
+# CACHE_TYPE read from os.environ (12-factor idiom) and a boot log line that prints the
+# effective cache backend — the diagnosis breadcrumb for this scenario.
+# The load driver is k6 in constant-arrival-rate mode (booklogr-storm.js), hitting
+# GET /v1/books/search over a fixed 8-query working set at 25 req/s — identical dynamics to
+# latency-cache-stampede (same cached route, same upstream latency), because the underlying
+# mechanism here is also "the cache is off": CRITICAL: load runs CONTINUOUSLY and is NEVER
+# stopped during verification.
+[inject]
+command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
+mode     = "storm"                    # ARCHETYPE — constant-arrival-rate storm over fixed query working set
+continuous = true                     # ARCHETYPE — driver runs for the full run lifecycle (confirm-fire + agent work + verify)
+stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
+
+# --- verification (v1 mitigation oracle) ---------------------------------------
+# Multi-signal, objective, no-LLM oracle. v1 ships mitigation only; diagnosis/RCA judge is deferred to v2.
+# Full contract and measurement details in verify/oracle.md, including the MANDATORY negative test
+# (reverting the innocent recent commit must NOT clear the alert — see verify/negative-fixture.patch).
+# Acceptable fix families: pin the cache backend in application config so it ignores the runtime
+# env override (solution/fix.patch), or any equivalent change that stops CACHE_TYPE=NullCache from
+# reaching the effective config. Reverting the innocent settings.py commit does NOT count — it does
+# not touch the cache backend at all. The oracle grades observed behavior, NOT a diff match.
+[verify]
+oracle           = "mitigation"       # ARCHETYPE — oracle family; compound oracle drops in detect/diagnose later without refactor
+pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
+load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
+
+# Signal weights (must sum to 1.0). Three HARD signals (ci_green + alert_cleared + sustained_clear = 0.80)
+# plus soft credit. A fix that clears the alert briefly but does NOT sustain under active storm scores
+# <=0.80 and fails — that is the ADR-0004 anti-cheat. Fail-closed short-circuits: CI not green, or service
+# not redeployed after the fix commit.
+signals          = [
+  "ci_green",          # BINDING — Gitea Actions ci.yml: docker build booklogr-api image + container smoke test (GET /); booklogr ships NO unit tests — CI proves deployability, not correctness
+  "alert_cleared",     # ARCHETYPE — BooklogrApiLatencyP99High absent from the Prometheus firing set after redeploy
+  "sustained_clear",   # ARCHETYPE — stays cleared for sustained_clear_seconds while k6 storm load is still running
+  "time_to_clear",     # ARCHETYPE — seconds from redeploy to clear (recorded for telemetry, not a hard pass/fail gate)
+  "no_new_alerts",     # ARCHETYPE — no other alert (BooklogrApiHighErrorRate, BooklogrApiDown) transitions to firing post-fix
+]
+
+# Signal weights used by the compound oracle (must match verify/oracle.md).
+[verify.weights]
+ci_green          = 0.25   # ARCHETYPE
+alert_cleared     = 0.35   # ARCHETYPE
+sustained_clear   = 0.20   # ARCHETYPE
+time_to_clear     = 0.10   # ARCHETYPE
+no_new_alerts     = 0.10   # ARCHETYPE
+
+# --- endpoints (harness-internal reference, not agent-facing) ------------------
+# Prometheus-flask-exporter aggregated (multiprocess) metrics on a DEDICATED port booklogr-api:9090,
+# NOT on /metrics at :5000.
+[endpoints]
+prometheus   = "http://localhost:9090"   # BINDING — Prometheus UI / query API
+alertmanager = "http://localhost:9093"   # BINDING — Alertmanager UI
+grafana      = "http://localhost:3002"   # BINDING — Grafana dashboards
+api          = "http://localhost:5000"   # BINDING — booklogr Flask API (book endpoints; single-user, no auth required)
+web          = "http://localhost:5150"   # BINDING — booklogr web frontend
