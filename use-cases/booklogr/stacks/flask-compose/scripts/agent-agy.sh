@@ -29,7 +29,7 @@ if [ -n "${SRT_SETTINGS:-}" ]; then
 else
   # Resolve egress allowlist from the provider registry, split into domains,
   # and generate the srt settings JSON in $SCRATCH per run.
-  EGRESS_CSV="$(node "$(cd "$HERE/../../../.." && pwd)/tools/provider-egress.mjs" "$PROVIDER")" || exit 1
+  EGRESS_CSV="$(node "$(cd "$HERE/../../../../.." && pwd)/tools/provider-egress.mjs" "$PROVIDER")" || exit 1
 
   # Build the allowedDomains JSON array from the comma-separated list
   DOMAINS_JSON="["

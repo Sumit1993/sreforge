@@ -41,7 +41,7 @@ echo "╰───────────────────────�
 docker exec \
   -u "$(id -u):$(id -g)" \
   -w /workspace \
-  -e OLLAMA_API_KEY="$OLLAMA_API_KEY" \
+  -e OLLAMA_API_KEY \
   -e OLLAMA_MODEL="${OLLAMA_MODEL:-}" \
   -e OLLAMA_HOST="${OLLAMA_HOST:-}" \
   -e MAX_STEPS="${MAX_STEPS:-}" \
