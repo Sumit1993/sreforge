@@ -62,6 +62,10 @@ services:
       # for air-gapped or CI deployments instead of the public APIs.
       DATA_PROVIDER: ${DATA_PROVIDER:-http://book-metadata:8080}
       DATA_PROVIDER_FALLBACK: ${DATA_PROVIDER_FALLBACK:-http://book-metadata:8080}
+      # Cache backend. Default preserves the app's own config.py default
+      # (SimpleCache) — only a scenario's runtime override (a compose `.env`
+      # written at arm time, never committed) changes this.
+      CACHE_TYPE: ${CACHE_TYPE:-SimpleCache}
     depends_on:
       booklogr-db:
         condition: service_healthy

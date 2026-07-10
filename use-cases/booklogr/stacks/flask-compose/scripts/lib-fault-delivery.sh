@@ -40,8 +40,23 @@ fault_delivery_arm_deploy_recent() {
   git -C "$work" push -f origin HEAD:main
 }
 
-# fault_delivery_arm_runtime_notrace — NOT YET IMPLEMENTED (a later scenario needs
-# it: deploy an innocent recent commit via fault_delivery_arm_deploy_recent, then
-# apply the real fault as compose-level runtime env state with zero forge trace,
-# force-recreate). No caller wires this yet — leave as a documented comment only,
-# do not write a function body / do not guess the signature further than this.
+# fault_delivery_arm_runtime_notrace <work-dir> <anchor-ref> <patch-file> <commit-message> <author-name> <author-email> <env-override-file> <runtime-var> <runtime-value>
+#   Mode 3: at arm time, deploy an INNOCENT recent commit via
+#   fault_delivery_arm_deploy_recent (same real-timestamp, maintainer-authored,
+#   re-arm-safe path scenarios in mode 2 use) — this commit is physically
+#   incapable of causing the incident. Then apply the REAL fault as compose-level
+#   runtime env state with ZERO forge trace: write a single VAR=VALUE line to
+#   <env-override-file> (a compose `.env` the deploy plane resolves on every
+#   invocation — see scripts/lib-deploy.sh). Nothing is committed or pushed for
+#   the real fault; the substrate git history stays indistinguishable from a
+#   genuine innocuous deploy. The caller (arm-incident.sh) is responsible for
+#   the force-recreate that picks the override up, and for clearing any leftover
+#   override from a PRIOR arm-runtime-notrace scenario before arming a different
+#   one (a decoy override must never leak into another scenario's incident).
+fault_delivery_arm_runtime_notrace() {
+  local work="$1" anchor_ref="$2" patch_file="$3" msg="$4" author_name="$5" author_email="$6"
+  local env_file="$7" runtime_var="$8" runtime_value="$9"
+  fault_delivery_arm_deploy_recent "$work" "$anchor_ref" "$patch_file" "$msg" "$author_name" "$author_email"
+  mkdir -p "$(dirname "$env_file")"
+  printf '%s=%s\n' "$runtime_var" "$runtime_value" > "$env_file"
+}
