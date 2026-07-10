@@ -51,7 +51,7 @@ export GIT_AUTHOR_NAME="Andreas Backström" GIT_AUTHOR_EMAIL="mozzo242@gmail.com
 export GIT_COMMITTER_NAME="Andreas Backström" GIT_COMMITTER_EMAIL="mozzo242@gmail.com"
 
 # --- commit 1: config.py -> 12-factor CACHE_TYPE -----------------------------
-export GIT_AUTHOR_DATE="2026-05-14 09:12:31 +0200" GIT_COMMITTER_DATE="2026-05-14 09:12:31 +0200"
+export GIT_AUTHOR_DATE="2026-06-15 09:12:31 +0200" GIT_COMMITTER_DATE="2026-06-15 09:12:31 +0200"
 sed -i 's/    CACHE_TYPE = "SimpleCache"/    CACHE_TYPE = os.environ.get("CACHE_TYPE", "SimpleCache")/' "$CFG"
 grep -q 'CACHE_TYPE = os.environ.get("CACHE_TYPE", "SimpleCache")' "$CFG" || { echo "sed anchor not found (config.py)"; exit 1; }
 touch -r "$WORK/api/models.py" "$CFG"
@@ -59,7 +59,7 @@ git -C "$WORK" add -A
 git -C "$WORK" commit -m "Read cache backend from environment" >/dev/null
 
 # --- commit 2: app.py -> boot log line ---------------------------------------
-export GIT_AUTHOR_DATE="2026-05-19 16:47:03 +0200" GIT_COMMITTER_DATE="2026-05-19 16:47:03 +0200"
+export GIT_AUTHOR_DATE="2026-06-20 16:47:03 +0200" GIT_COMMITTER_DATE="2026-06-20 16:47:03 +0200"
 LOGLINE='print("booklogr-api boot: cache backend=" + str(app.config.get("CACHE_TYPE")))'
 awk -v line="$LOGLINE" '
   { print }
