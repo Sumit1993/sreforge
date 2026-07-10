@@ -175,7 +175,10 @@ tasks:
       RUNNER: '{{.RUNNER | default "scripted"}}'
       SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds:
-      - node scripts/run-incident.mjs {{if .RUN_ID}}--run-id {{.RUN_ID}}{{end}}
+      - |
+        . scripts/lib-scenario.sh
+        source_scenario_env "$SCENARIO_ID"
+        node scripts/run-incident.mjs {{if .RUN_ID}}--run-id {{.RUN_ID}}{{end}}
 
   # ── verify (any time; the probes run IN PARALLEL via deps) ────────────────────
   verify:
