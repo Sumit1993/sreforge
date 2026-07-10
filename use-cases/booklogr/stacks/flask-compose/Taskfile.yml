@@ -57,6 +57,8 @@ tasks:
   # ── arm (per run) ────────────────────────────────────────────────────────────
   arm:
     desc: "[run] reset to the regressed baseline, start the storm, confirm the alert fires"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds: [bash scripts/arm-incident.sh]
 
   # ── agent (per run) ──────────────────────────────────────────────────────────
@@ -171,8 +173,12 @@ tasks:
       RUN_ID: '{{.id | default ""}}'
     env:
       RUNNER: '{{.RUNNER | default "scripted"}}'
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds:
-      - node scripts/run-incident.mjs {{if .RUN_ID}}--run-id {{.RUN_ID}}{{end}}
+      - |
+        . scripts/lib-scenario.sh
+        source_scenario_env "$SCENARIO_ID"
+        node scripts/run-incident.mjs {{if .RUN_ID}}--run-id {{.RUN_ID}}{{end}}
 
   # ── verify (any time; the probes run IN PARALLEL via deps) ────────────────────
   verify:
