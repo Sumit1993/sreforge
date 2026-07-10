@@ -24,17 +24,16 @@
 // false-positive source. The scenario's fault-triggering mechanism (uncached
 // library reads exhausting a pool_size=1 connection) does not need it.
 //
-// RATE is deliberately higher than a naive "8-10 req/s" target (empirically
-// tuned): at low rates the inter-arrival gap is close to any query cost that's
-// still safely under the 300ms healthy ceiling, so k6's constant-arrival-rate
-// executor mostly serves iterations from a single VU (no real overlapping
-// demand ever reaches the DB) and pool_size=1 is never actually contended.
-// Matching latency-cache-stampede's own storm rate (25 req/s) reliably forces
-// genuine concurrent demand under the fault while keeping single-query cost
-// (the book-count dial, tuned in scenario.env's SEED_COUNT) low enough that
-// the healthy baseline (pool_size=5, 4 gunicorn workers) stays well under
-// threshold. In single-user mode booklogr's book endpoints need no auth. Tune
-// via env: RATE (req/s), DURATION, PRE_VUS, MAX_VUS, API_URL.
+// Contention relies on a COMBINATION of the fault's switch to gthread workers
+// (threads=8) and a deliberately higher RATE than a naive "8-10 req/s". Under
+// baseline sync workers, concurrency caps at 1 request/process, so pool_size=1
+// never contends regardless of arrival rate. The fault's threaded workers
+// allow overlapping demand to share a single DB connection, and matching
+// latency-cache-stampede's rate (25 req/s) reliably forces that overlap while
+// keeping single-query cost (the book-count dial, tuned in scenario.env's
+// SEED_COUNT) low enough that the healthy baseline (pool_size=5, 4 sync workers)
+// stays well under threshold. In single-user mode booklogr's book endpoints
+// need no auth. Tune via env: RATE (req/s), DURATION, PRE_VUS, MAX_VUS, API_URL.
 import http from "k6/http";
 import exec from "k6/execution";
 

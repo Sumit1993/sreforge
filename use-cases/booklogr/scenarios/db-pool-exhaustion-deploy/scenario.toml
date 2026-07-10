@@ -16,13 +16,13 @@ tags      = ["latency", "database", "connection-pool", "deploy-correlation"]  # 
 
 # One-paragraph description of the scenario (human-readable, neutral framing).
 description = """
-A recent deploy-time configuration change reduces the SQLAlchemy database connection pool to a single connection.
-The uncached `/v1/books` library list route hits Postgres on every request. Under moderate library-read load, the 
-single connection becomes a bottleneck, serializing all uncached reads. As workers block on database I/O, all Gunicorn 
-sync workers become starved, causing even cached endpoints like `/v1/books/search` to queue and time out. This drives 
-p99 request latency above the 300ms SLO and triggers the BooklogrApiLatencyP99High alert. 
-The fix must restore a sufficient database connection pool size so that database reads can proceed concurrently and 
-Gunicorn workers do not back up.
+A recent deploy-time configuration change reduces the SQLAlchemy database connection pool to a single connection and
+switches the Gunicorn worker model to threaded (gthread, threads=8). The uncached `/v1/books` library list route hits
+Postgres on every request. Under moderate library-read load, concurrent request threads within a worker process pile up
+on that process's single database connection, serializing all uncached reads. As threads block on database I/O, the
+workers become starved, causing even cached endpoints like `/v1/books/search` to queue and time out. This drives p99
+request latency above the 300ms SLO and triggers the BooklogrApiLatencyP99High alert. The fix must restore a sufficient
+database connection pool size so that database reads can proceed concurrently and Gunicorn workers do not back up.
 """
 
 # --- expected signal -----------------------------------------------------------
