@@ -61,7 +61,7 @@ The docs site is an Astro + Starlight project under `docs/`:
 ```bash
 cd docs
 pnpm install
-pnpm dev          # local preview at http://localhost:4321/sreforge
+pnpm dev          # local preview at http://localhost:4321/
 pnpm build        # production build into docs/dist/
 ```
 
