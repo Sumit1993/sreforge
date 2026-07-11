@@ -2,14 +2,10 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-// SREForge docs are published as a GitHub Pages *project* site, so the site is
-// served from a sub-path. `site` + `base` must match the repo name; Starlight
-// prepends `base` to every sidebar/hero link for you (in-content links are
-// written relative so they stay base-agnostic).
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://sumit1993.github.io',
-  base: '/sreforge',
+  site: 'https://sreforge.sfun.cloud',
+  base: '/',
   integrations: [
     starlight({
       title: 'SREForge',
