@@ -119,16 +119,38 @@ console.log(`auto ── agent: ${AGENT_CMD}`);
 // Pass only the minimal env needed for the driver to function. Drivers that need
 // extra vars (e.g. OLLAMA_API_KEY) load the stack .env themselves; if a driver
 // cannot do that, add names to AGENT_ENV_ALLOWLIST (comma-separated).
+// Tuning knobs (AGENT_WINDOW, AGENT_OUT_MAX, …) MUST be listed here (or in
+// AGENT_ENV_ALLOWLIST) or they are silently dropped before reaching the box.
 const AGENT_ENV_DEFAULT = [
   "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "TERM",
   "WEBHOOK_PAYLOAD", "WEBHOOK_PORT", "AGENT_UID", "AGENT_GID",
+  "AGENT_WINDOW", "AGENT_OUT_MAX",
 ];
 const extraNames = (env.AGENT_ENV_ALLOWLIST || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+const allowedNames = new Set([...AGENT_ENV_DEFAULT, ...extraNames]);
+
+// Host-side control-plane vars: consumed here / in run-incident.mjs to steer the
+// run, never meant to reach the box. Excluded from the drop-warning so it only
+// flags genuine tuning knobs an operator meant to forward.
+const AGENT_CONTROL_PLANE = new Set([
+  "AGENT_CMD", "AGENT_ENV_ALLOWLIST", "AGENT_MODE", "AGENT_WORKSPACE", "AGENT_LOG",
+  "AGENT_PROM_URL", "AGENT_API_URL", "AGENT_GRAFANA_URL", "AGENT_ALERTMANAGER_URL",
+]);
+
+// Warn (don't silently drop) if an AGENT_* tuning knob is set but not allowlisted.
+for (const k of Object.keys(env)) {
+  if (k.startsWith("AGENT_") && !allowedNames.has(k) && !AGENT_CONTROL_PLANE.has(k)) {
+    console.error(
+      `auto: WARN — ${k} is set but not in AGENT_ENV_ALLOWLIST — it will NOT reach the agent box.`,
+    );
+  }
+}
+
 const agentEnv = {};
-for (const k of [...AGENT_ENV_DEFAULT, ...extraNames]) {
+for (const k of allowedNames) {
   if (k in env) agentEnv[k] = env[k];
 }
 agentEnv.WEBHOOK_PAYLOAD = payloadJson;

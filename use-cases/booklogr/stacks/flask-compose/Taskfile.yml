@@ -174,6 +174,11 @@ tasks:
     env:
       RUNNER: '{{.RUNNER | default "scripted"}}'
       SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
+      # lib-scenario.sh needs STACK to resolve scenarios/<id>/scenario.env.
+      # Every other caller derives it from BASH_SOURCE before sourcing the
+      # lib, but go-task's sh (mvdan/sh) gives this inline cmd no
+      # BASH_SOURCE — so set it explicitly from go-task's own special var.
+      STACK: '{{.TASKFILE_DIR}}'
     cmds:
       - |
         . scripts/lib-scenario.sh
