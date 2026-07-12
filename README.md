@@ -6,7 +6,7 @@ agent a neutral on-call page, and grades the agent on whether its **deployed
 fix actually resolves the incident** — verified behaviourally, under the
 still-active fault. You cannot bluff a behavioural oracle.
 
-📖 **Documentation:** <https://sumit1993.github.io/sreforge/>
+📖 **Documentation:** <https://sreforge.sfun.cloud/>
 
 ## Why it's different
 
