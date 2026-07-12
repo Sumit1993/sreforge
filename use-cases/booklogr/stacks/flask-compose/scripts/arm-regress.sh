@@ -59,6 +59,8 @@ echo "==> Resetting local workspace to the anchor ($BASELINE_REF)..."
 # override; mode 3 re-writes it fresh below.
 ENV_OVERRIDE_FILE="$(dirname "$COMPOSE_FILE")/.env"
 rm -f "$ENV_OVERRIDE_FILE"
+: "${DELIVERY_MODE:?scenario.env for $SCENARIO_ID must set DELIVERY_MODE}"
+: "${BASELINE_REF:?scenario.env for $SCENARIO_ID must set BASELINE_REF}"
 case "$DELIVERY_MODE" in
   setup-baked)
     fault_delivery_setup_baked "$STACK/substrate/booklogr" "$BASELINE_REF"

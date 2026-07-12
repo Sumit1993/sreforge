@@ -25,6 +25,7 @@ echo "==> Ensuring the load storm is running (edge-client)..."
 docker compose -p booklogr-edge -f "$LOAD_FILE" up -d --force-recreate
 
 # 6. Confirm the alert fires (ADR-0010 gate)
+: "${ALERT:?scenario.env for $SCENARIO_ID must set ALERT}"
 echo "==> Waiting for alert to fire (timeout=240s)..."
 node "$SCRIPTS/confirm-fire.mjs" --timeout=240 --alert="${ALERT}"
 
