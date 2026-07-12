@@ -22,8 +22,17 @@ import { writeFileSync, mkdirSync } from "node:fs";
 const env = process.env;
 
 const OLLAMA_HOST = (env.OLLAMA_HOST || "https://ollama.com").replace(/\/+$/, "");
-const MODEL = env.OLLAMA_MODEL || "qwen3-coder:480b-cloud";
+const DEFAULT_MODEL = "qwen3-coder:480b-cloud";
+// DECISION: an OLLAMA_MODEL pin from the env (stack .env, forwarded by the
+// host driver) still wins over this default — operators rely on it — but the
+// override must never be silent, so warn when it diverges (see below).
+const MODEL = env.OLLAMA_MODEL || DEFAULT_MODEL;
 const KEY = env.OLLAMA_API_KEY;
+if (env.OLLAMA_MODEL && env.OLLAMA_MODEL !== DEFAULT_MODEL) {
+  console.error(
+    `WARNING: OLLAMA_MODEL env pin "${env.OLLAMA_MODEL}" overrides the driver default "${DEFAULT_MODEL}" — the pin wins, but confirm this is intentional.`
+  );
+}
 const MAX_STEPS = Number(env.MAX_STEPS || 30);
 // Request-size knobs, env-tunable: some provider tiers 500 on large chat
 // payloads (observed on Ollama Cloud ~steps 10-12 as the window fills), so a
