@@ -36,7 +36,12 @@ export function schemaFor(kind, manifestVersion) {
 export function validateManifest(manifest) {
   if (!manifest || typeof manifest !== "object") return ["manifest is not an object"];
   if (!manifest.kind) return ['manifest missing "kind"'];
-  const schema = schemaFor(manifest.kind, manifest.manifest_version);
+  let schema;
+  try {
+    schema = schemaFor(manifest.kind, manifest.manifest_version);
+  } catch (e) {
+    return [e.message]; // preserve the documented array-return contract
+  }
   return validate(schema, manifest);
 }
 

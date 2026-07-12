@@ -34,6 +34,11 @@ test("a manifest missing a required field is rejected", () => {
   assert.ok(errs.some((e) => /records/.test(e)), `expected a 'records' error, got: ${errs}`);
 });
 
+test("validateManifest returns an error array (never throws) for an unknown kind", () => {
+  const errs = validateManifest({ kind: "bogus-kind", manifest_version: "1.0.0" });
+  assert.ok(Array.isArray(errs) && errs.some((e) => /unknown manifest kind/.test(e)));
+});
+
 test("wrong tier const is rejected", () => {
   const m = load("examples/scenario-certification.example.json");
   m.tier = "self-certified";

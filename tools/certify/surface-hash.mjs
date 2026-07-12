@@ -110,10 +110,10 @@ export function collectOwnFiles({ useCase, stack, scenario, ownAdditions = [] })
   const files = listFiles(scenarioDir, (rel) => rel === manifestRel);
 
   const scenarioEnv = resolve(sd, "scenarios", scenario, "scenario.env");
-  files.push(scenarioEnv);
+  files.push(...listFiles(scenarioEnv)); // fail loud (consistent with every other path) if absent
 
   // The storm script shapes the fault's load dynamics — scenario-owned per §2.
-  const storm = existsSync(scenarioEnv) && readEnvVar(scenarioEnv, "STORM_SCRIPT");
+  const storm = readEnvVar(scenarioEnv, "STORM_SCRIPT");
   if (storm) files.push(...listFiles(resolveWithin(sd, join("load", storm), "STORM_SCRIPT")));
 
   for (const p of ownAdditions) files.push(...listFiles(resolveWithin(sd, p, "own_additions")));
