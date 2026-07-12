@@ -12,7 +12,10 @@
     "guard:strict": "node tools/contamination-guard/scan.mjs --strict",
     "detell": "node tools/detell-judge/judge.mjs",
     "detell:grade": "node tools/detell-judge/judge.mjs --grade",
-    "forge": "node tools/usecase.mjs"
+    "forge": "node tools/usecase.mjs",
+    "certify:hash": "node tools/certify/surface-hash.mjs",
+    "certify:validate": "node tools/certify/validate-manifest.mjs",
+    "test:certify": "node --test tools/certify/test/*.test.mjs"
   },
   "devDependencies": {
     "@go-task/cli": "^3.51.1",
