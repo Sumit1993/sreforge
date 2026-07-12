@@ -61,6 +61,22 @@ tasks:
       SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds: [bash scripts/arm-incident.sh]
 
+  # arm-regress / arm-fire: the two halves of `arm`, exposed so auto-incident.mjs
+  # can interleave the /workspace clone + box + listener between them (#22).
+  # regress = substrate/forge regressed + app healthy, load quiesced (NOT firing);
+  # fire = re-apply load + confirm the alert fires. Manual runs use `arm` (both).
+  arm-regress:
+    desc: "[run] arm phase 1: regress + bring the app up healthy, load quiesced (not firing)"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
+    cmds: [bash scripts/arm-regress.sh]
+
+  arm-fire:
+    desc: "[run] arm phase 2: re-apply load + confirm the alert fires (assumes arm-regress ran)"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
+    cmds: [bash scripts/arm-fire.sh]
+
   # ── agent (per run) ──────────────────────────────────────────────────────────
   agent:
     desc: "[run] clean /workspace clone + agent sandbox (vars: PROVIDER=<name> · EGRESS_ALLOWLIST=host,… · MCP=on)"

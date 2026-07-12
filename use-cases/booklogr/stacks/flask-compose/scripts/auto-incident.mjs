@@ -5,14 +5,17 @@
 // daemon — the use-case's Alertmanager POSTs the firing notification to the
 // (per-incident) box, and everything here is verb sequencing:
 //
-//   1. sandbox up      task agent            (PROVIDER / MCP opt-ins pass through)
-//   2. listener up     webhook-wait.mjs      (BEFORE arm — the box "registers")
-//   3. arm             task arm              (inject + confirm-fire → AM pushes)
-//   4. agent           $AGENT_CMD            (kickoff = the symptom-level payload,
+//   1. arm regress     task arm-regress      (regress substrate/forge → app
+//                                             healthy, load quiesced; BEFORE the
+//                                             clone so its base-sha matches, #22)
+//   2. sandbox up      task agent            (clone at armed head; PROVIDER/MCP opt-ins)
+//   3. listener up     webhook-wait.mjs      (BEFORE fire — the box "registers")
+//   4. arm fire        task arm-fire         (re-load + confirm-fire → AM pushes)
+//   5. agent           $AGENT_CMD            (kickoff = the symptom-level payload,
 //                                             via WEBHOOK_PAYLOAD; reasoning
 //                                             host-side — reasoning-in-box is a
 //                                             separate deferred increment)
-//   5. grade           task run RUNNER=external  (blocks on the submit sentinel)
+//   6. grade           task run RUNNER=external  (blocks on the submit sentinel)
 //
 // AGENT_CMD is a CONFIGURABLE command (harness-agnostic, ADR-0001) run with
 // cwd = this stack; default = the reference Ollama driver. The engine is
@@ -72,10 +75,17 @@ const optIns = ["PROVIDER", "MCP", "EGRESS_ALLOWLIST"]
   .filter((k) => env[k])
   .map((k) => `${k}=${env[k]}`);
 
-// ── 1 · sandbox up (fresh clone + force-recreate: per-incident by construction)
+// ── 1 · arm PHASE 1 (regress) BEFORE the clone. The /workspace clone below reads
+// the LOCAL substrate at its current HEAD, and modes 2/3 apply the fault DURING
+// arm — so regressing first makes the clone's base-sha match the armed head
+// (else the external-agent-runner base-sha assert fails). Fire is deferred to
+// PHASE 2 (after the listener is up) so the Alertmanager push is caught.
+task("arm-regress");
+
+// ── 2 · sandbox up (fresh clone + force-recreate: per-incident by construction)
 task("agent", optIns);
 
-// ── 2 · listener up BEFORE arm — the box must be reachable when AM notifies.
+// ── 3 · listener up BEFORE the alert fires — the box must be reachable when AM notifies.
 console.log("\nauto ── webhook listener (in-box, :" + WEBHOOK_PORT + ")");
 const listener = spawn("node", [resolve(HERE, "webhook-wait.mjs")], {
   stdio: ["ignore", "pipe", "inherit"],
@@ -101,10 +111,11 @@ for (let i = 0; i < 20 && !bound; i++) {
 }
 if (!bound) console.error("auto: WARN — could not confirm the listener bound; continuing.");
 
-// ── 3 · arm: inject + confirm-fire. Alertmanager pushes ~group_wait after fire.
-task("arm");
+// ── 4 · arm PHASE 2 (fire): re-apply load + confirm-fire. Alertmanager pushes
+// ~group_wait after fire — the listener (now up) catches it.
+task("arm-fire");
 
-// ── 4 · the push: block on the notification, then hand it to the agent driver.
+// ── 5 · the push: block on the notification, then hand it to the agent driver.
 const listenerExit = await listenerDone;
 if (listenerExit !== 0 || !payloadJson) {
   console.error(`auto: no webhook notification (listener exit ${listenerExit}) — aborting before the agent.`);
@@ -165,6 +176,6 @@ if (agent.status !== 0) {
   process.exit(agent.status ?? 1);
 }
 
-// ── 5 · grade (the external runner picks the submit sentinel up immediately).
+// ── 6 · grade (the external runner picks the submit sentinel up immediately).
 task("run", ["RUNNER=external"]);
 console.log("\nauto ── cycle complete (armed → pushed → agent → graded).");
