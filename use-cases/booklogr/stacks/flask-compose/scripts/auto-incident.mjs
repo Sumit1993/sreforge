@@ -26,7 +26,7 @@
 // incident — a repeat-scenario tell); official scoring uses a cold session.
 // =============================================================================
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,6 +34,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const STACK = resolve(HERE, "..");
 const REPO_ROOT = resolve(STACK, "../../../..");
 const env = process.env;
+
+let runId = env.RUN_ID;
+const runIdIdx = process.argv.indexOf("--run-id");
+if (runIdIdx !== -1 && process.argv.length > runIdIdx + 1) {
+  runId = process.argv[runIdIdx + 1];
+}
+if (!runId) {
+  runId = `run-${Date.now()}`;
+}
 
 const AGENT_CMD = env.AGENT_CMD || "node scripts/agent-ollama.mjs";
 const WEBHOOK_PORT = Number(env.WEBHOOK_PORT || 8080);
@@ -135,7 +144,7 @@ console.log(`auto ── agent: ${AGENT_CMD}`);
 const AGENT_ENV_DEFAULT = [
   "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "TERM",
   "WEBHOOK_PAYLOAD", "WEBHOOK_PORT", "AGENT_UID", "AGENT_GID",
-  "AGENT_WINDOW", "AGENT_OUT_MAX",
+  "AGENT_WINDOW", "AGENT_OUT_MAX", "RUN_ID",
 ];
 const extraNames = (env.AGENT_ENV_ALLOWLIST || "")
   .split(",")
@@ -165,6 +174,15 @@ for (const k of allowedNames) {
   if (k in env) agentEnv[k] = env[k];
 }
 agentEnv.WEBHOOK_PAYLOAD = payloadJson;
+agentEnv.RUN_ID = runId;
+
+// Clear any handoff left by a previous cycle: a stale transcript picked up by
+// this run would be filed as this run's evidence (the run-id check in the
+// recorder is the second line of defence).
+const transcriptPath = resolve(STACK, ".run-workspace", "agent-transcript.json");
+if (existsSync(transcriptPath)) {
+  rmSync(transcriptPath);
+}
 
 const agent = spawnSync("sh", ["-c", AGENT_CMD], {
   stdio: "inherit",
@@ -177,5 +195,7 @@ if (agent.status !== 0) {
 }
 
 // ── 6 · grade (the external runner picks the submit sentinel up immediately).
-task("run", ["RUNNER=external"]);
+// `id=` is the run recipe's documented var (Taskfile: RUN_ID: '{{.id}}') — do
+// not pass RUN_ID= here, it is not the recipe's interface.
+task("run", ["RUNNER=external", `id=${runId}`]);
 console.log("\nauto ── cycle complete (armed → pushed → agent → graded).");
