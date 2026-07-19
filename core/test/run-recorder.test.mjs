@@ -1,0 +1,141 @@
+// FileRunRecorder transcript-ingestion tests (#31).
+//
+// The agent transcript arrives out-of-band: a harness drops a raw handoff file
+// at a fixed path and the recorder files it under the run. A fixed path with no
+// correlation check would silently file a PREVIOUS run's transcript as this
+// run's evidence, so the run_id must match or the handoff is rejected.
+//
+// The load-bearing property here is the last test: a transcript problem must
+// never cost us the graded record. The verdict is outcome-based (ADR-0004) and
+// does not depend on the transcript, so losing record.json over a bad handoff
+// would be strictly worse than having no transcript at all.
+//
+//   npm test   # (builds first, then runs this)
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { FileRunRecorder } from "../dist/index.js";
+
+const RUN_ID = "test-run-1";
+
+/** Minimal RunRecord — only the fields the recorder itself reads. */
+function makeRecord(runId = RUN_ID) {
+  return {
+    runId,
+    scenarioId: "latency-cache-stampede",
+    profile: "incident",
+    trigger: {
+      source: "prometheus-alert",
+      alertName: "BooklogrApiLatencyP99High",
+      labels: {},
+      annotations: {},
+      firedAt: "2026-07-19T10:00:00Z",
+    },
+    trajectory: {
+      agentName: "external",
+      transcript: "runner event log, not the agent transcript",
+      diff: "--- a\n+++ b\n",
+      submitted: true,
+      durationMs: 1000,
+    },
+    diff: "--- a\n+++ b\n",
+    ci: null,
+    deploy: null,
+    score: { oracleId: "mitigation", score: 1, passed: true, signals: [] },
+    verdict: "passed",
+    timings: {},
+    startedAt: "2026-07-19T10:00:00Z",
+    finishedAt: "2026-07-19T10:05:00Z",
+  };
+}
+
+function makeHandoff(dir, runId) {
+  const p = join(dir, "agent-transcript.json");
+  writeFileSync(
+    p,
+    JSON.stringify({
+      schema_version: "agent-transcript.v1",
+      run_id: runId,
+      harness: "agy",
+      session: "cold",
+      captured_at: "2026-07-19T10:04:00Z",
+      raw_text: "agent output goes here",
+    }),
+  );
+  return p;
+}
+
+function tmp() {
+  return mkdtempSync(join(tmpdir(), "sreforge-recorder-"));
+}
+
+test("ingests the handoff when the run id matches", async () => {
+  const base = tmp();
+  const handoff = makeHandoff(tmp(), RUN_ID);
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+  }).record(makeRecord());
+
+  const ingested = join(runDir, "agent-transcript.json");
+  assert.ok(existsSync(ingested), "agent-transcript.json should be written");
+  assert.equal(
+    JSON.parse(readFileSync(ingested, "utf8")).raw_text,
+    "agent output goes here",
+  );
+  assert.ok(!existsSync(join(runDir, "transcript-error.txt")));
+});
+
+test("refuses the handoff when the run id does not match", async () => {
+  const base = tmp();
+  const handoff = makeHandoff(tmp(), "some-other-run");
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+  }).record(makeRecord());
+
+  assert.ok(
+    !existsSync(join(runDir, "agent-transcript.json")),
+    "a mismatched transcript must NOT be filed as this run's evidence",
+  );
+  const err = readFileSync(join(runDir, "transcript-error.txt"), "utf8");
+  assert.match(err, /some-other-run/);
+  assert.match(err, new RegExp(RUN_ID));
+});
+
+test("is a no-op when no handoff exists", async () => {
+  const base = tmp();
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: join(tmp(), "does-not-exist.json"),
+  }).record(makeRecord());
+
+  assert.ok(!existsSync(join(runDir, "agent-transcript.json")));
+  assert.ok(!existsSync(join(runDir, "transcript-error.txt")));
+  assert.ok(existsSync(join(runDir, "record.json")), "record.json is still written");
+});
+
+test("a malformed handoff never costs us the graded record", async () => {
+  const base = tmp();
+  const dir = tmp();
+  const handoff = join(dir, "agent-transcript.json");
+  writeFileSync(handoff, "{ this is not json");
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+  }).record(makeRecord());
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.verdict, "passed", "the verdict must survive a bad transcript");
+  assert.ok(existsSync(join(runDir, "diff.patch")));
+  assert.ok(existsSync(join(runDir, "transcript.txt")));
+  assert.ok(!existsSync(join(runDir, "agent-transcript.json")));
+});

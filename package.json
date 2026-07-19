@@ -15,7 +15,8 @@
     "forge": "node tools/usecase.mjs",
     "certify:hash": "node tools/certify/surface-hash.mjs",
     "certify:validate": "node tools/certify/validate-manifest.mjs",
-    "test:certify": "node --test tools/certify/test/*.test.mjs"
+    "test:certify": "node --test tools/certify/test/*.test.mjs",
+    "test:transcript": "node --test tools/transcript/test/*.test.mjs"
   },
   "devDependencies": {
     "@go-task/cli": "^3.51.1",

@@ -252,6 +252,33 @@ mkdirSync(logDir, { recursive: true });
 const logPath = resolve(logDir, "agent-ollama-transcript.json");
 writeFileSync(logPath, JSON.stringify({ model: MODEL, submitted, messages }, null, 2));
 
+// Ollama loop starts a fresh chat context for every invocation, so it defaults to cold.
+const session = env.AGENT_SESSION || "cold";
+const provider = env.PROVIDER || "ollama";
+const runId = env.RUN_ID || "run-unknown";
+
+// Best-effort: the transcript is a debugging artifact, never the graded evidence
+// (the verdict is outcome-based, ADR-0004). execFileSync throws on a non-zero
+// exit, which would crash the driver AFTER the agent had already submitted — so
+// a handoff failure must never propagate.
+const handoffScript = resolve(HERE, "../../../../../tools/transcript/write-handoff.mjs");
+const handoffOut = resolve(logDir, "agent-transcript.json");
+try {
+  execFileSync("node", [
+    handoffScript,
+    "--out", handoffOut,
+    "--run-id", runId,
+    "--harness", "ollama",
+    "--session", session,
+    "--model", MODEL,
+    "--provider", provider,
+    "--submitted", String(submitted),
+    "--raw-json-file", logPath
+  ]);
+} catch (err) {
+  console.warn(`agent-ollama: WARNING — transcript handoff failed (continuing; the run is still gradeable): ${err.message}`);
+}
+
 console.log(`\nagent-ollama: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${logPath}`);
 if (submitted) {
   console.log("Now grade it:  pnpm forge run booklogr RUNNER=external");
