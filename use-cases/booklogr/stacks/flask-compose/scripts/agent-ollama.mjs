@@ -252,6 +252,25 @@ mkdirSync(logDir, { recursive: true });
 const logPath = resolve(logDir, "agent-ollama-transcript.json");
 writeFileSync(logPath, JSON.stringify({ model: MODEL, submitted, messages }, null, 2));
 
+// Ollama loop starts a fresh chat context for every invocation, so it defaults to cold.
+const session = env.AGENT_SESSION || "cold";
+const provider = env.PROVIDER || "ollama";
+const runId = env.RUN_ID || "run-unknown";
+
+const handoffScript = resolve(HERE, "../../../../../tools/transcript/write-handoff.mjs");
+const handoffOut = resolve(logDir, "agent-transcript.json");
+execFileSync("node", [
+  handoffScript,
+  "--out", handoffOut,
+  "--run-id", runId,
+  "--harness", "ollama",
+  "--session", session,
+  "--model", MODEL,
+  "--provider", provider,
+  "--submitted", String(submitted),
+  "--raw-json-file", logPath
+]);
+
 console.log(`\nagent-ollama: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${logPath}`);
 if (submitted) {
   console.log("Now grade it:  pnpm forge run booklogr RUNNER=external");

@@ -89,7 +89,7 @@ if (!TOKEN) {
   process.exit(2);
 }
 
-const runId = arg("run-id", `run-${Date.now()}`);
+const runId = arg("run-id", env.RUN_ID || `run-${Date.now()}`);
 const scenarioId = arg("scenario-id", env.SCENARIO_ID || "latency-cache-stampede");
 const patchPath = resolve(
   arg("patch", env.FIX_PATCH || join(REPO_ROOT, `use-cases/booklogr/scenarios/${scenarioId}/solution/fix.patch`)),
@@ -196,7 +196,10 @@ const deps = {
     probe: new PrometheusAlertProbe({ prometheusUrl: PROM_URL }),
     passThreshold: PASS_THRESHOLD,
   }),
-  recorder: new FileRunRecorder({ baseDir: recordDir }),
+  recorder: new FileRunRecorder({
+    baseDir: recordDir,
+    transcriptHandoffPath: resolve(STACK, ".run-workspace", "agent-transcript.json"),
+  }),
   cleanup: new ComposeCleanup({
     composeFile: COMPOSE_FILE,
     projectName: PROJECT,

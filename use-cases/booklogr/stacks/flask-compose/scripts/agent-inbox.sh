@@ -55,6 +55,38 @@ docker exec \
 
 # Sentinel check (same as agent-agy.sh)
 if docker exec agent-shell sh -c 'test -f /workspace/.sreforge/submit.json'; then
+  SUBMITTED=true
+else
+  SUBMITTED=false
+fi
+
+# The loop starts fresh each time, so this is always cold by default.
+SESSION="${AGENT_SESSION:-cold}"
+
+JSON_TMP="$SCRATCH/raw.json"
+if docker exec agent-shell cat /workspace/.sreforge/agent-transcript.json > "$JSON_TMP" 2>/dev/null; then
+  node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
+    --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" \
+    --run-id "${RUN_ID:-run-unknown}" \
+    --harness "agent-loop" \
+    --session "$SESSION" \
+    --model "$MODEL" \
+    --provider "$PROVIDER" \
+    --submitted "$SUBMITTED" \
+    --raw-json-file "$JSON_TMP"
+else
+  node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
+    --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" \
+    --run-id "${RUN_ID:-run-unknown}" \
+    --harness "agent-loop" \
+    --session "$SESSION" \
+    --model "$MODEL" \
+    --provider "$PROVIDER" \
+    --submitted "$SUBMITTED" \
+    --raw-text-file "$AGENT_LOG"
+fi
+
+if [ "$SUBMITTED" = true ]; then
   echo "agent-inbox: submit sentinel present — ready to grade. transcript: $AGENT_LOG"
   exit 0
 fi
