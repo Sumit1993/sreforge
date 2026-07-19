@@ -118,6 +118,10 @@ fi
 # agy is invoked without --continue/--conversation, so this is a fresh conversation context every time.
 SESSION="${AGENT_SESSION:-cold}"
 
+# Best-effort: the transcript is a debugging artifact, never the graded evidence
+# (the verdict is outcome-based, ADR-0004). This script is `set -u` only, so a
+# failure would not abort today — the guard keeps the invariant explicit and
+# survives anyone adding `-e` later.
 node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
   --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" \
   --run-id "${RUN_ID:-run-unknown}" \
@@ -126,7 +130,8 @@ node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
   --model "$MODEL" \
   --provider "$PROVIDER" \
   --submitted "$SUBMITTED" \
-  --raw-text-file "$LOG"
+  --raw-text-file "$LOG" \
+  || echo "agent-agy: WARNING — transcript handoff failed (continuing; the run is still gradeable)" >&2
 
 if [ "$SUBMITTED" = true ]; then
   echo "agent-agy: submit sentinel present — ready to grade. transcript: $LOG"

@@ -63,27 +63,28 @@ fi
 # The loop starts fresh each time, so this is always cold by default.
 SESSION="${AGENT_SESSION:-cold}"
 
+# Best-effort: the transcript is a debugging artifact, never the graded evidence
+# (the verdict is outcome-based, ADR-0004). Under `set -e` an unguarded failure
+# here would abort before the sentinel check below and throw away a successful
+# agent run — so every path is `|| warn`.
+write_handoff() {
+  node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
+    --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" \
+    --run-id "${RUN_ID:-run-unknown}" \
+    --harness "agent-loop" \
+    --session "$SESSION" \
+    --model "$MODEL" \
+    --provider "$PROVIDER" \
+    --submitted "$SUBMITTED" \
+    "$@" \
+    || echo "agent-inbox: WARNING — transcript handoff failed (continuing; the run is still gradeable)" >&2
+}
+
 JSON_TMP="$SCRATCH/raw.json"
 if docker exec agent-shell cat /workspace/.sreforge/agent-transcript.json > "$JSON_TMP" 2>/dev/null; then
-  node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
-    --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" \
-    --run-id "${RUN_ID:-run-unknown}" \
-    --harness "agent-loop" \
-    --session "$SESSION" \
-    --model "$MODEL" \
-    --provider "$PROVIDER" \
-    --submitted "$SUBMITTED" \
-    --raw-json-file "$JSON_TMP"
+  write_handoff --raw-json-file "$JSON_TMP"
 else
-  node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
-    --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" \
-    --run-id "${RUN_ID:-run-unknown}" \
-    --harness "agent-loop" \
-    --session "$SESSION" \
-    --model "$MODEL" \
-    --provider "$PROVIDER" \
-    --submitted "$SUBMITTED" \
-    --raw-text-file "$AGENT_LOG"
+  write_handoff --raw-text-file "$AGENT_LOG"
 fi
 
 if [ "$SUBMITTED" = true ]; then
