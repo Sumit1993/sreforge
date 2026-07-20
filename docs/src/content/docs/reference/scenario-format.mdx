@@ -120,6 +120,16 @@ substitute a real backend (e.g. Redis), or add equivalent per-query memoization 
 anything that stops repeated queries from hitting the slow upstream.
 :::
 
+:::note[`verify/oracle.md` is the RCA judge's ground truth]
+The `## Root cause (harness-internal)` section of `verify/oracle.md` is the
+authored root-cause truth the standalone [RCA judge](../../concepts/closed-loop-verification/)
+(`tools/rca-judge/`) grades an agent's written RCA against — it extracts exactly
+that section and nothing else. It is **harness-internal**: like all of
+`verify/oracle.md`, nothing from it may reach any agent-reachable surface
+(`$WORKSPACE`, agent mounts). The RCA-judge score is reported beside the verdict,
+never inside it (it is not a `[verify.weights]` signal).
+:::
+
 ### Endpoints (harness-internal reference)
 
 ```toml

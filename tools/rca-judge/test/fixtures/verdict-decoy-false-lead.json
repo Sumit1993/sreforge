@@ -1,0 +1,6 @@
+{
+  "root_cause_correct": false,
+  "evidence_grounded": false,
+  "false_leads": true,
+  "rationale": "The RCA blames the innocent settings.py commit, which the ground truth rules out."
+}
