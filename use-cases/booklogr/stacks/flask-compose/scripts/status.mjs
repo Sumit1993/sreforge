@@ -1,20 +1,114 @@
-#!/usr/bin/env node
-// One-shot status of the booklogr closed loop: current p99 and firing alerts.
-//   node scripts/status.mjs [--prom=URL]
-import { PROM, P99_EXPR, PRIMARY_ALERT, getAlerts, firingNames, queryScalar, parseArgs } from "./lib.mjs";
+import { execFile as _execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import {
+	classifyRunnerError,
+	getStartError,
+	isRunning,
+} from "../../../../../tools/doctor/lib.mjs";
+import {
+	DEPLOY_SERVICES,
+	firingNames,
+	getAlerts,
+	P99_EXPR,
+	PRIMARY_ALERT,
+	PROM,
+	parseArgs,
+	queryScalar,
+} from "./lib.mjs";
+
+const execFile = promisify(_execFile);
+const HERE = dirname(fileURLToPath(import.meta.url));
+const STACK = resolve(HERE, "..");
+
+const svcResults = await Promise.all(
+	DEPLOY_SERVICES.map(async (svc) => {
+		try {
+			const { stdout } = await execFile(
+				"docker",
+				[
+					"inspect",
+					"-f",
+					"{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
+					svc,
+				],
+				{ encoding: "utf8", timeout: 5000 },
+			);
+			const out = stdout.trim();
+			if (out === "running healthy" || out === "running none") {
+				return { svc, ok: true };
+			}
+			return { svc, ok: false, state: out };
+		} catch {
+			return { svc, ok: false, state: "missing" };
+		}
+	}),
+);
+
+const deployHealthy = svcResults.filter((r) => r.ok).length;
+const offenders = svcResults
+	.filter((r) => !r.ok)
+	.map((r) => `${r.svc}: ${r.state}`);
+
+const giteaOk = isRunning("sreforge-gitea");
+const runnerOk = isRunning("sreforge-runner");
+let runnerHint = "";
+if (!runnerOk) {
+	const err = getStartError("sreforge-runner");
+	if (classifyRunnerError(err) === "stale-shim") runnerHint = " (stale shim)";
+}
+
+const agentWorkspace = existsSync(resolve(STACK, ".run-workspace", "booklogr"));
+
+let exitCode = 0;
+if (!giteaOk || !runnerOk || deployHealthy !== DEPLOY_SERVICES.length) {
+	exitCode = 1;
+}
+
+process.stdout.write(`[forge plane]  gitea: ${giteaOk ? "running" : "DOWN"}\n`);
+process.stdout.write(
+	`[forge plane]  runner: ${runnerOk ? "running" : "DOWN"}${runnerHint}`,
+);
+if (!giteaOk || !runnerOk) {
+	process.stdout.write(`  hint: pnpm forge forge-up`);
+}
+process.stdout.write("\n");
+
+let deployStr = `${deployHealthy}/${DEPLOY_SERVICES.length} healthy`;
+if (offenders.length > 0) {
+	deployStr += ` (${offenders.join(", ")})`;
+}
+process.stdout.write(`[deploy plane] services: ${deployStr}\n`);
+
+process.stdout.write(
+	`[agent rig]    workspace: ${agentWorkspace ? "present" : "missing"}\n`,
+);
 
 const a = parseArgs();
 const prom = a.prom || PROM;
 
 try {
-  const [alerts, p99] = await Promise.all([getAlerts(prom), queryScalar(P99_EXPR, prom)]);
-  const firing = firingNames(alerts);
-  process.stdout.write(`prometheus: ${prom}\n`);
-  process.stdout.write(`p99 (30s):  ${p99 == null ? "n/a" : `${(p99 * 1000).toFixed(0)}ms`}\n`);
-  process.stdout.write(`primary:    ${PRIMARY_ALERT} -> ${firing.includes(PRIMARY_ALERT) ? "FIRING" : "clear"}\n`);
-  process.stdout.write(`firing:     ${firing.length ? firing.join(", ") : "(none)"}\n`);
+	const [alerts, p99] = await Promise.race([
+		Promise.all([getAlerts(prom), queryScalar(P99_EXPR, prom)]),
+		new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 3000)),
+	]);
+	const firing = firingNames(alerts);
+	process.stdout.write(
+		`[alerting]     p99 (30s):  ${p99 == null ? "n/a" : `${(p99 * 1000).toFixed(0)}ms`}\n`,
+	);
+	process.stdout.write(
+		`[alerting]     primary:    ${PRIMARY_ALERT} -> ${firing.includes(PRIMARY_ALERT) ? "FIRING" : "clear"}\n`,
+	);
+	process.stdout.write(
+		`[alerting]     firing:     ${firing.length ? firing.join(", ") : "(none)"}\n`,
+	);
 } catch (e) {
-  process.stderr.write(`status: prometheus not reachable at ${prom} (${e.message})\n`);
-  process.stderr.write(`  hint: run \`pnpm forge up booklogr\`\n`);
-  process.exit(1);
+	process.stdout.write(
+		`[alerting]     prometheus: unreachable (${e.message})\n`,
+	);
+	exitCode = 1;
 }
+
+process.exit(exitCode);
