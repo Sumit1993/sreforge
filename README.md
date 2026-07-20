@@ -93,7 +93,7 @@ pnpm forge agent-up booklogr            # arm the incident + bring up the sealed
 DEPLOY_NETWORK=booklogr_default API_URL=http://booklogr-api:5000 \
   docker compose -p sreforge-agent -f infra/agent-sandbox/agent.yml \
   exec -u "$(id -u):$(id -g)" agent-shell sh
-#   → agent investigates via $ALERTMANAGER_URL / $PROM_URL / $API_URL, edits /workspace, runs `submit --rca postmortem.md "summary"`
+#   → agent investigates via $ALERTMANAGER_URL / $PROM_URL / $API_URL, edits /workspace, calls `submit` (a postmortem attachment is standard practice, but the `--rca` flag is optional)
 pnpm forge run      booklogr RUNNER=external   # engine: sentinel → forge push → CI → merge → redeploy → grade
 pnpm forge verify   booklogr            # boundary + de-tell + alert-pickup + egress probes
 ```

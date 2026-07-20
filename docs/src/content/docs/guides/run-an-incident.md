@@ -22,7 +22,7 @@ poll trigger → assemble context → run agent → CI gate → auto-merge
 |---|---|
 | **trigger** | The scenario has already injected the fault and confirmed the target alert is firing. The conductor polls the trigger source for the normalized `Trigger`. |
 | **context** | Assemble a neutral, honest brief from the trigger plus the `AgentContext` (service endpoints, run-workspace path/service, the submit command). No mention of a harness. |
-| **run** | Hand the brief to the agent. It investigates, edits the run workspace in place, and calls `submit`. It never merges or deploys. |
+| **run** | Hand the brief to the agent. It investigates, edits the run workspace in place, and calls `submit` (a postmortem attachment is standard practice, but the `--rca` flag is optional). It never merges or deploys. |
 | **CI gate** | Build + the substrate's existing tests against the run workspace. Red → no deploy, the alert persists, the run is rejected (CI output becomes feedback). |
 | **auto-merge → CD redeploy** | On green, commit the fix to the run workspace and rebuild + swap the affected service's container. |
 | **verify** | With the fault stimulus still active, the mitigation oracle scores multi-signal: CI green + the alert clears + stays cleared for the sustained window + time-to-clear + no new alerts. |

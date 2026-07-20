@@ -100,7 +100,7 @@ engine captures the diff and owns the forge push / PR / CI. The sandbox has no
 forge access.
 
 ### Run record
-The canonical snake_case `run-record.v1` artifact emitted per run, containing identity, the agent's trajectory, diff, CI/CD results, scores, and timings.
+The canonical artifact emitted per run (the on-disk record is snake_case `run-record.v1`; the in-memory TypeScript `RunRecord` type is camelCase), containing identity, the agent's trajectory, diff, CI/CD results, scores, and timings.
 
 ### Pruned record
 A copy of the run record stripped of the raw agent transcript (to keep its size manageable) but retaining identity and scores, committed to the scenario's `records/` directory.
