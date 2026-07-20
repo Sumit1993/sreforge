@@ -45,7 +45,7 @@ export function diffEnvKeys(exampleText, envText) {
 			.split("\n")
 			.map((l) => l.trim())
 			.filter((l) => l && !l.startsWith("#"))
-			.map((l) => l.split("=")[0]);
+			.map((l) => l.split("=")[0].trim());
 
 	const exKeys = getKeys(exampleText);
 	const envKeys = new Set(getKeys(envText));
@@ -175,7 +175,16 @@ export function defineChecks(config) {
 			id: "bootstrap-env",
 			plane: "host",
 			run: async () => {
-				const exText = readFileSync(exampleEnvPath, "utf8");
+				let exText;
+				try {
+					exText = readFileSync(exampleEnvPath, "utf8");
+				} catch (_e) {
+					return {
+						status: "fail",
+						detail: `.env.example missing or unreadable at ${exampleEnvPath}`,
+						hint: "create a .env.example file with expected variables to check against",
+					};
+				}
 				if (!existsSync(envPath)) {
 					const missing = diffEnvKeys(exText, "");
 					return {

@@ -27,10 +27,16 @@ for (const line of envContent.split("\n")) {
 	if (m) env[m[1]] = m[2].trim();
 }
 
+const parsedGiteaUrl = new URL(env.GITEA_URL || "http://127.0.0.1:3000");
+
 const config = {
-	giteaLocalhostUrl: "http://localhost:3000",
+	giteaLocalhostUrl: (() => {
+		const u = new URL(parsedGiteaUrl);
+		u.hostname = "localhost";
+		return u.href;
+	})(),
 	gitea127Url: (() => {
-		const u = new URL(env.GITEA_URL || "http://127.0.0.1:3000");
+		const u = new URL(parsedGiteaUrl);
 		u.hostname = "127.0.0.1";
 		return u.href;
 	})(),

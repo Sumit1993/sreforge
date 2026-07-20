@@ -5,6 +5,7 @@ import {
 	classifyHijack,
 	classifyRunnerError,
 	classifyWincred,
+	defineChecks,
 	diffEnvKeys,
 	resolveRepoRoot,
 	runAllChecks,
@@ -89,6 +90,7 @@ test("diffEnvKeys", () => {
 	assert.deepEqual(diffEnvKeys("FOO=1\nBAR=2", "FOO=1"), ["BAR"]);
 	assert.deepEqual(diffEnvKeys("FOO=1", "FOO=1\nBAZ=3"), []);
 	assert.deepEqual(diffEnvKeys("FOO=1\nBAR=2", ""), ["FOO", "BAR"]);
+	assert.deepEqual(diffEnvKeys("FOO = 1\nBAR=2", "FOO=1\nBAR = 2"), []);
 });
 
 test("summarize", () => {
@@ -111,6 +113,17 @@ test("summarize", () => {
 	assert.equal(exitCode, 1);
 	assert.equal(lines.length, 2);
 	assert.equal(lines[0], "FAIL core/check1 — bad");
+});
+
+test("bootstrap-env check missing example env", async () => {
+	const checks = defineChecks({
+		exampleEnvPath: "/does/not/exist/.env.example",
+		envPath: "/does/not/exist/.env",
+	});
+	const check = checks.find((c) => c.id === "bootstrap-env");
+	const res = await check.run();
+	assert.equal(res.status, "fail");
+	assert.match(res.detail, /\.env\.example missing or unreadable/);
 });
 
 test("runAllChecks", async () => {
@@ -158,7 +171,7 @@ test("compose drift: DEPLOY_SERVICES matches docker-compose.yml container names"
 	const composeText = readFileSync(composePath, "utf8");
 
 	const parsedServices = [];
-	for (const line of composeText.split('\n')) {
+	for (const line of composeText.split("\n")) {
 		const match = line.match(/^\s*container_name:\s*([^\s]+)/);
 		if (match) {
 			parsedServices.push(match[1]);
