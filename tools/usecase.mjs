@@ -43,6 +43,7 @@ const PHASE_TASK = {
   verify: "verify",
   down: "down",
   status: "status",
+  doctor: "doctor", //                       thorough preflight for misconfiguration
   console: "console", //                     operator console (harness-side status + deep-links)
   smoke: "smoke",
 };
@@ -72,10 +73,13 @@ function usage() {
       `  composites: ${composites}`,
       "  menu:       pnpm forge menu <use-case>   # list a stack's phases",
       "  dashboard:  pnpm forge dashboard         # cross-use-case operator control plane (web, loopback)",
+      "  forge-up:   pnpm forge forge-up          # start forge plane (gitea/runner)",
+      "  forge-down: pnpm forge forge-down        # stop forge plane",
       "",
       "  e.g.  pnpm forge up booklogr",
       "        pnpm forge run booklogr RUNNER=external id=r1",
       "        pnpm forge incident booklogr",
+      "        pnpm forge doctor booklogr",
       "        pnpm forge auto booklogr PROVIDER=ollama-cloud   # ③ automated cycle (ADR-0025)",
       "",
     ].join("\n"),
@@ -124,6 +128,13 @@ if (!verb || verb === "help" || verb === "--help" || verb === "-h") usage();
 // no use-case; it discovers them all. Handle before the use-case check below.
 if (verb === "dashboard") {
   const res = spawnSync("node", [resolve(REPO_ROOT, "tools/dashboard/server.mjs")], {
+    cwd: REPO_ROOT, stdio: "inherit", env: process.env,
+  });
+  process.exit(res.status ?? 0);
+}
+if (verb === "forge-up" || verb === "forge-down") {
+  const op = verb === "forge-up" ? "up" : "down";
+  const res = spawnSync("node", [resolve(REPO_ROOT, "tools/forge-plane/forge-plane.mjs"), op], {
     cwd: REPO_ROOT, stdio: "inherit", env: process.env,
   });
   process.exit(res.status ?? 0);

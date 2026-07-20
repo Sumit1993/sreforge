@@ -62,7 +62,7 @@ try {
 } catch (e) {
   console.error(
     `auto: FATAL — sreforge-runner is not running (${e.message}).\n` +
-    `       Recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner`,
+    `       Recovery: pnpm forge forge-up (docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner)`,
   );
   process.exit(1);
 }
