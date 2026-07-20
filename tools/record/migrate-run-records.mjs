@@ -74,6 +74,7 @@ async function main() {
 
     if (!data.runId) {
       console.warn(`[warn] ${dir.name} missing runId, skipping.`);
+      skipped++;
       continue;
     }
 
