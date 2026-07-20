@@ -24,6 +24,13 @@ body:
       description: Other approaches you have tried or thought about.
     validations:
       required: false
+  - type: textarea
+    id: docs-impact
+    attributes:
+      label: Docs impact
+      description: Which documentation surfaces will this change touch when shipped (cli.md verb table, run-contract.md, guides, READMEs, --help/usage strings, Taskfile descs)? "none" must be justified.
+    validations:
+      required: true
   - type: checkboxes
     id: scope
     attributes:

@@ -43,6 +43,13 @@ body:
     validations:
       required: true
   - type: textarea
+    id: docs-impact
+    attributes:
+      label: Docs impact
+      description: Which documentation surfaces will this change touch when shipped (cli.md verb table, run-contract.md, guides, READMEs, --help/usage strings, Taskfile descs)? "none" must be justified.
+    validations:
+      required: false
+  - type: textarea
     id: logs
     attributes:
       label: Relevant output

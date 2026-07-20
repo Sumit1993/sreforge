@@ -1,0 +1,26 @@
+reviews:
+  profile: chill
+  path_instructions:
+    # 1. Docs-drift rule
+    - path:
+        - "tools/**"
+        - "use-cases/**/scripts/**"
+        - "use-cases/**/Taskfile.yml"
+        - "infra/**"
+        - "core/src/**"
+      instructions: "If this PR changes a CLI verb, flag, env var, task name, file layout, prompt surface, or operator workflow but does not touch docs/ or a README, flag it as a documentation gap and name the specific stale surface (docs/src/content/docs/reference/cli.md verb table, run-contract.md, drive-an-agent.mdx, or the nearest README)."
+    # 2. Never-fatal capture
+    - path:
+        - "core/src/record/**"
+        - "use-cases/**/scripts/agent-*.{sh,mjs}"
+        - "infra/agent-sandbox/**"
+      instructions: "Artifact capture (transcript, RCA) is best-effort by invariant (ADR-0027 §9): a capture failure must never abort submission, the sentinel write, or record.json. Flag any change that makes capture fatal — and do NOT propose making it fatal."
+    # 3. Use-case-agnostic libs
+    - path:
+        - "tools/doctor/lib.mjs"
+        - "tools/certify/lib/**"
+      instructions: "This library must stay use-case-agnostic (ADR-0001/0017): flag any hardcoded use-case value (e.g. booklogr names, stack paths) — they belong in the stack scripts' config."
+    # 4. Neutral agent-visible text
+    - path:
+        - "use-cases/**/scenarios/**"
+      instructions: "Agent-visible text must read as ordinary operations content — flag eval/harness/grading/oracle/benchmark language (ADR-0008)."
