@@ -96,6 +96,8 @@ const patchPath = resolve(
 );
 const commitMessage = arg("message", env.FIX_MESSAGE || "Restore response cache for book search");
 const recordDir = resolve(arg("record-dir", join(STACK, "runs")));
+const prunedRecordDir = arg("pruned-record-dir", resolve(REPO_ROOT, `use-cases/booklogr/scenarios/${scenarioId}/records`));
+const fullStoreDir = arg("full-store-dir", undefined);
 
 // Pass threshold 0.85 separates a valid sustained clear (>=0.90) from a fix that
 // clears briefly but does not survive the active storm (<=0.80) — the three hard
@@ -199,6 +201,8 @@ const deps = {
   recorder: new FileRunRecorder({
     baseDir: recordDir,
     transcriptHandoffPath: resolve(STACK, ".run-workspace", "agent-transcript.json"),
+    prunedRecordDir,
+    fullRecordStoreDir: fullStoreDir,
   }),
   cleanup: new ComposeCleanup({
     composeFile: COMPOSE_FILE,

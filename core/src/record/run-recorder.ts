@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 
 import type { RunRecord } from "../types.js";
 import type { RunRecorder } from "./index.js";
+import { toDiskRecord, serializeDiskRecord, pruneDiskRecord } from "./serialize.js";
 
 /** Configuration for a {@link FileRunRecorder}. */
 export interface FileRunRecorderOptions {
@@ -11,6 +12,8 @@ export interface FileRunRecorderOptions {
   readonly baseDir: string;
   /** Optional path to the raw transcript handoff from the agent harness. */
   readonly transcriptHandoffPath?: string;
+  readonly prunedRecordDir?: string;
+  readonly fullRecordStoreDir?: string;
 }
 
 /**
@@ -26,22 +29,22 @@ export interface FileRunRecorderOptions {
 export class FileRunRecorder implements RunRecorder {
   readonly #baseDir: string;
   readonly #handoffPath?: string;
+  readonly #prunedRecordDir?: string;
+  readonly #fullRecordStoreDir?: string;
 
   constructor(options: FileRunRecorderOptions) {
     this.#baseDir = options.baseDir;
     this.#handoffPath = options.transcriptHandoffPath;
+    this.#prunedRecordDir = options.prunedRecordDir;
+    this.#fullRecordStoreDir = options.fullRecordStoreDir;
   }
 
   async record(record: RunRecord): Promise<string> {
     const runDir = join(this.#baseDir, record.runId);
     await mkdir(runDir, { recursive: true });
 
+    let agentTranscript: unknown = undefined;
     const writes = [
-      writeFile(
-        join(runDir, "record.json"),
-        `${JSON.stringify(record, null, 2)}\n`,
-        "utf8",
-      ),
       writeFile(join(runDir, "diff.patch"), record.diff, "utf8"),
       writeFile(
         join(runDir, "transcript.txt"),
@@ -55,6 +58,7 @@ export class FileRunRecorder implements RunRecorder {
         const content = await readFile(this.#handoffPath, "utf8");
         const handoff = JSON.parse(content);
         if (handoff.run_id === record.runId) {
+          agentTranscript = handoff;
           writes.push(writeFile(join(runDir, "agent-transcript.json"), content, "utf8"));
         } else {
           const err = `Transcript mismatch: handoff file run_id '${handoff.run_id}' != record runId '${record.runId}'`;
@@ -63,6 +67,39 @@ export class FileRunRecorder implements RunRecorder {
         }
       } catch (err: unknown) {
         console.warn(`WARNING: Failed to read or parse transcript handoff at ${this.#handoffPath}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    const full = toDiskRecord(record, agentTranscript);
+    writes.push(
+      writeFile(
+        join(runDir, "record.json"),
+        serializeDiskRecord(full),
+        "utf8"
+      )
+    );
+
+    if (this.#prunedRecordDir || this.#fullRecordStoreDir) {
+      const pruned = pruneDiskRecord(full);
+      if (this.#prunedRecordDir) {
+        await mkdir(this.#prunedRecordDir, { recursive: true });
+        writes.push(
+          writeFile(
+            join(this.#prunedRecordDir, `${record.runId}.json`),
+            serializeDiskRecord(pruned),
+            "utf8"
+          )
+        );
+      }
+      if (this.#fullRecordStoreDir && pruned.full_record_sha256) {
+        await mkdir(this.#fullRecordStoreDir, { recursive: true });
+        writes.push(
+          writeFile(
+            join(this.#fullRecordStoreDir, `${pruned.full_record_sha256}.json`),
+            serializeDiskRecord(full),
+            "utf8"
+          )
+        );
       }
     }
 

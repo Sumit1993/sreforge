@@ -10,3 +10,20 @@ export interface RunRecorder {
 
 export { FileRunRecorder } from "./run-recorder.js";
 export type { FileRunRecorderOptions } from "./run-recorder.js";
+export {
+  RECORD_VERSION,
+  RECORD_KIND,
+  toDiskRecord,
+  fromDiskRecord,
+  serializeDiskRecord,
+  pruneDiskRecord,
+} from "./serialize.js";
+export type {
+  DiskRunRecord,
+  DiskTrigger,
+  DiskTrajectory,
+  DiskCiResult,
+  DiskDeployResult,
+  DiskOracleSignal,
+  DiskOracleScore,
+} from "./serialize.js";

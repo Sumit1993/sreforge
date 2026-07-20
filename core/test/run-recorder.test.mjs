@@ -89,6 +89,12 @@ test("ingests the handoff when the run id matches", async () => {
     "agent output goes here",
   );
   assert.ok(!existsSync(join(runDir, "transcript-error.txt")));
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.record_version, "1.0.0");
+  assert.equal(written.kind, "run-record");
+  assert.equal(written.run_id, RUN_ID);
+  assert.equal(written.agent_transcript.raw_text, "agent output goes here");
 });
 
 test("refuses the handoff when the run id does not match", async () => {
@@ -135,7 +141,37 @@ test("a malformed handoff never costs us the graded record", async () => {
 
   const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
   assert.equal(written.verdict, "passed", "the verdict must survive a bad transcript");
+  assert.equal(written.agent_transcript, undefined);
   assert.ok(existsSync(join(runDir, "diff.patch")));
   assert.ok(existsSync(join(runDir, "transcript.txt")));
   assert.ok(!existsSync(join(runDir, "agent-transcript.json")));
+});
+
+test("writes pruned and full records when configured", async () => {
+  const base = tmp();
+  const prunedDir = tmp();
+  const fullDir = tmp();
+  
+  const handoff = makeHandoff(tmp(), RUN_ID);
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+    prunedRecordDir: prunedDir,
+    fullRecordStoreDir: fullDir,
+  }).record(makeRecord());
+
+  const fullBytes = readFileSync(join(runDir, "record.json"));
+  
+  const prunedPath = join(prunedDir, `${RUN_ID}.json`);
+  assert.ok(existsSync(prunedPath), "pruned record must be written");
+  const pruned = JSON.parse(readFileSync(prunedPath, "utf8"));
+  assert.equal(pruned.trajectory.transcript, undefined);
+  assert.equal(pruned.agent_transcript, undefined);
+  assert.ok(pruned.full_record_sha256, "pruned record must have sha256");
+
+  const fullPath = join(fullDir, `${pruned.full_record_sha256}.json`);
+  assert.ok(existsSync(fullPath), "full record must be written at content-addressed path");
+  const storedFullBytes = readFileSync(fullPath);
+  assert.equal(storedFullBytes.toString("utf8"), fullBytes.toString("utf8"), "full record must match exactly");
 });

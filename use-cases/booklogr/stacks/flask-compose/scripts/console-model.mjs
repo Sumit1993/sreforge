@@ -82,10 +82,10 @@ function recentRuns(limit = 6) {
     try { mtime = statSync(rec).mtimeMs; } catch { /* ignore */ }
     rows.push({
       mtime,
-      runId: r.runId || d.split("/").pop(),
+      runId: r.run_id ?? r.runId ?? d.split("/").pop(),
       verdict: r.verdict ?? "?",
       score: typeof r.score === "number" ? r.score : r.score?.score, // score is the oracle obj
-      scenario: r.scenarioId || r.scenario || "",
+      scenario: r.scenario_id ?? r.scenarioId ?? r.scenario ?? "",
     });
   }
   return rows.sort((a, b) => b.mtime - a.mtime).slice(0, limit);
