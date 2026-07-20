@@ -108,3 +108,38 @@ test("invalid-JSON fallback to raw_text", () => {
   assert.equal(out.raw_text, "{ bad json");
   assert.equal(out.raw_json, undefined);
 });
+
+test("--kind rca works", () => {
+  const d = mkdtempSync(join(tmpdir(), "sreforge-test-"));
+  const txtPath = join(d, "raw.txt");
+  const outPath = join(d, "out.json");
+  writeFileSync(txtPath, "rca prose here", "utf8");
+
+  const result = runScript([
+    "--kind", "rca",
+    "--out", outPath,
+    "--run-id", "run-4",
+    "--harness", "agy",
+    "--session", "cold",
+    "--raw-text-file", txtPath
+  ]);
+  assert.equal(result.status, 0);
+
+  const out = JSON.parse(readFileSync(outPath, "utf8"));
+  assert.equal(out.run_id, "run-4");
+  assert.equal(out.raw_text, "rca prose here");
+  assert.equal(out.schema_version, "agent-rca.v1");
+});
+
+test("invalid kind exits 1", () => {
+  const result = runScript([
+    "--kind", "bad",
+    "--out", "/tmp/out.json",
+    "--run-id", "123",
+    "--harness", "agy",
+    "--session", "cold",
+    "--raw-text-file", "/dev/null"
+  ]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Invalid kind value/);
+});

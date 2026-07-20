@@ -43,6 +43,12 @@ set -eu
 # channel to the engine. Default to /workspace (the mount), overridable for
 # tests via WORKSPACE.
 WORKSPACE="${WORKSPACE:-/workspace}"
+
+RCA_PATH=""
+if [ "${1:-}" = "--rca" ] && [ $# -ge 2 ]; then
+  RCA_PATH="$2"
+  shift 2
+fi
 NOTE="${1:-}"
 
 if [ ! -d "$WORKSPACE/.git" ]; then
@@ -90,6 +96,14 @@ NOTE_ESCAPED="$(escape_json "$NOTE")"
 SENTINEL_DIR="$WORKSPACE/.sreforge"
 SENTINEL="$SENTINEL_DIR/submit.json"
 mkdir -p "$SENTINEL_DIR"
+
+if [ -n "$RCA_PATH" ]; then
+  if [ -s "$RCA_PATH" ]; then
+    cp "$RCA_PATH" "$SENTINEL_DIR/rca.txt" || echo "submit: warning: could not copy RCA from $RCA_PATH" >&2
+  else
+    echo "submit: warning: --rca $RCA_PATH is missing or empty" >&2
+  fi
+fi
 
 TMP="$SENTINEL_DIR/.submit.json.tmp.$$"
 printf '{"submittedAt":"%s","headSha":"%s","note":"%s"}\n' \

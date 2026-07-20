@@ -12,6 +12,7 @@ export interface FileRunRecorderOptions {
   readonly baseDir: string;
   /** Optional path to the raw transcript handoff from the agent harness. */
   readonly transcriptHandoffPath?: string;
+  readonly rcaHandoffPath?: string;
   readonly prunedRecordDir?: string;
   readonly fullRecordStoreDir?: string;
 }
@@ -29,12 +30,14 @@ export interface FileRunRecorderOptions {
 export class FileRunRecorder implements RunRecorder {
   readonly #baseDir: string;
   readonly #handoffPath?: string;
+  readonly #rcaHandoffPath?: string;
   readonly #prunedRecordDir?: string;
   readonly #fullRecordStoreDir?: string;
 
   constructor(options: FileRunRecorderOptions) {
     this.#baseDir = options.baseDir;
     this.#handoffPath = options.transcriptHandoffPath;
+    this.#rcaHandoffPath = options.rcaHandoffPath;
     this.#prunedRecordDir = options.prunedRecordDir;
     this.#fullRecordStoreDir = options.fullRecordStoreDir;
   }
@@ -67,6 +70,25 @@ export class FileRunRecorder implements RunRecorder {
         }
       } catch (err: unknown) {
         console.warn(`WARNING: Failed to read or parse transcript handoff at ${this.#handoffPath}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    if (this.#rcaHandoffPath && existsSync(this.#rcaHandoffPath)) {
+      try {
+        const content = await readFile(this.#rcaHandoffPath, "utf8");
+        const handoff = JSON.parse(content);
+        if (handoff.run_id === record.runId) {
+          writes.push(writeFile(join(runDir, "rca.json"), content, "utf8"));
+          if (handoff.raw_text !== undefined) {
+            writes.push(writeFile(join(runDir, "rca.txt"), String(handoff.raw_text), "utf8"));
+          }
+        } else {
+          const err = `RCA mismatch: handoff file run_id '${handoff.run_id}' != record runId '${record.runId}'`;
+          console.error(`ERROR: ${err}`);
+          writes.push(writeFile(join(runDir, "rca-error.txt"), err + "\n", "utf8"));
+        }
+      } catch (err: unknown) {
+        console.warn(`WARNING: Failed to read or parse RCA handoff at ${this.#rcaHandoffPath}:`, err instanceof Error ? err.message : err);
       }
     }
 

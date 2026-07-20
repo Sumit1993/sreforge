@@ -125,7 +125,10 @@ const tools = [
         "Call this exactly once, when your fix is applied.",
       parameters: {
         type: "object",
-        properties: { note: { type: "string", description: "One-line summary of the fix." } },
+        properties: { 
+          note: { type: "string", description: "One-line summary of the fix." },
+          "rca-file": { type: "string", description: "Path to the postmortem file." }
+        },
       },
     },
   },
@@ -141,7 +144,8 @@ const SYSTEM = [
   "explains the signals, and fix it in place.",
   "Investigate efficiently: prefer targeted commands (grep -rn, reading specific files, git log)",
   "over dumping large directory trees; keep each command's output focused.",
-  "When your fix is applied, call submit. Keep working until you have submitted.",
+  "When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"",
+  "Keep working until you have submitted.",
 ].join("\n");
 
 // ③ automation (ADR-0025): when launched by auto-incident.mjs, the kickoff is
@@ -152,9 +156,9 @@ const KICKOFF = env.WEBHOOK_PAYLOAD
   ? "This alert notification was just delivered to the incident host:\n" +
     env.WEBHOOK_PAYLOAD +
     "\nInvestigate from the alerting stack, find the root cause in the code, " +
-    "apply a fix in /workspace, and submit."
+    "apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\""
   : "An alert is firing for the service. Investigate from the alerting stack, find the root " +
-    "cause in the code, apply a fix in /workspace, and submit.";
+    "cause in the code, apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"";
 
 const messages = [
   { role: "system", content: SYSTEM },
@@ -235,8 +239,13 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
       messages.push({ role: "tool", tool_name: "run_shell", content: clip(`(exit ${r.exit})\n${r.out}`) });
     } else if (name === "submit") {
       const note = String(args.note || "fix").replace(/[^\w .,:;/-]/g, " ").slice(0, 200);
-      console.log(`[${step}] ✅ submit: ${note}`);
-      const r = inBox(`submit "${note}"`);
+      let rcaFlag = "";
+      if (args["rca-file"]) {
+        const rcaFile = String(args["rca-file"]).replace(/["$]/g, "");
+        rcaFlag = `--rca "${rcaFile}" `;
+      }
+      console.log(`[${step}] ✅ submit: ${note}${rcaFlag ? ` (rca: ${args["rca-file"]})` : ""}`);
+      const r = inBox(`submit ${rcaFlag}"${note}"`);
       console.log(r.out.trimEnd());
       messages.push({ role: "tool", tool_name: "submit", content: clip(`(exit ${r.exit})\n${r.out}`) });
       submitted = r.exit === 0;
@@ -277,6 +286,29 @@ try {
   ]);
 } catch (err) {
   console.warn(`agent-ollama: WARNING — transcript handoff failed (continuing; the run is still gradeable): ${err.message}`);
+}
+
+try {
+  if (inBox("test -f /workspace/.sreforge/rca.txt").exit === 0) {
+    const rcaOut = resolve(logDir, "agent-rca.json");
+    const rcaTmp = resolve(logDir, "rca.txt");
+    const catRes = inBox("cat /workspace/.sreforge/rca.txt");
+    writeFileSync(rcaTmp, catRes.out, "utf8");
+    execFileSync("node", [
+      handoffScript,
+      "--kind", "rca",
+      "--out", rcaOut,
+      "--run-id", runId,
+      "--harness", "ollama",
+      "--session", session,
+      "--model", MODEL,
+      "--provider", provider,
+      "--submitted", String(submitted),
+      "--raw-text-file", rcaTmp
+    ]);
+  }
+} catch (err) {
+  console.warn(`agent-ollama: WARNING — rca handoff failed (continuing; the run is still gradeable): ${err.message}`);
 }
 
 console.log(`\nagent-ollama: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${logPath}`);
