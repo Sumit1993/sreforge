@@ -167,7 +167,13 @@ test("writes pruned and full records when configured", async () => {
   assert.ok(existsSync(prunedPath), "pruned record must be written");
   const pruned = JSON.parse(readFileSync(prunedPath, "utf8"));
   assert.equal(pruned.trajectory.transcript, undefined);
-  assert.equal(pruned.agent_transcript, undefined);
+  assert.deepEqual(pruned.agent_transcript, {
+    schema_version: "agent-transcript.v1",
+    run_id: RUN_ID,
+    harness: "agy",
+    session: "cold",
+    captured_at: "2026-07-19T10:04:00Z",
+  });
   assert.ok(pruned.full_record_sha256, "pruned record must have sha256");
 
   const fullPath = join(fullDir, `${pruned.full_record_sha256}.json`);

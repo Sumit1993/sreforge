@@ -220,7 +220,19 @@ export function pruneDiskRecord(full: DiskRunRecord): DiskRunRecord {
   const sha = createHash("sha256").update(bytes).digest("hex");
   
   const pruned: DiskRunRecord = { ...full };
-  delete pruned.agent_transcript;
+  if (full.agent_transcript && typeof full.agent_transcript === "object" && !Array.isArray(full.agent_transcript)) {
+    const at = full.agent_transcript as Record<string, unknown>;
+    const keys = ["schema_version", "run_id", "harness", "session", "captured_at", "model", "provider", "submitted"];
+    const header: Record<string, unknown> = {};
+    for (const k of keys) {
+      if (k in at) {
+        header[k] = at[k];
+      }
+    }
+    pruned.agent_transcript = header;
+  } else {
+    delete pruned.agent_transcript;
+  }
   pruned.trajectory = { ...full.trajectory };
   delete pruned.trajectory.transcript;
   pruned.full_record_sha256 = sha;

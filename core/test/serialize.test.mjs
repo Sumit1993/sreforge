@@ -69,18 +69,37 @@ test("serialize round-trip", () => {
 });
 
 test("pruneDiskRecord", () => {
-  const full = toDiskRecord(dummyRecord, { t: 1 });
+  const full = toDiskRecord(dummyRecord, {
+    schema_version: "1.0",
+    run_id: "run-123",
+    harness: "cli",
+    model: "test-model",
+    raw_text: "some raw output",
+    raw_json: { foo: "bar" },
+    other_stuff: 123
+  });
   const bytes = serializeDiskRecord(full);
   const expectedSha = createHash("sha256").update(bytes).digest("hex");
 
   const pruned = pruneDiskRecord(full);
   assert.equal(pruned.trajectory.transcript, undefined);
-  assert.equal(pruned.agent_transcript, undefined);
+  assert.deepEqual(pruned.agent_transcript, {
+    schema_version: "1.0",
+    run_id: "run-123",
+    harness: "cli",
+    model: "test-model"
+  });
   assert.equal(pruned.full_record_sha256, expectedSha);
   
   // ensure original isn't mutated
   assert.equal(full.trajectory.transcript, "hello");
-  assert.deepEqual(full.agent_transcript, { t: 1 });
+  assert.equal(full.agent_transcript.raw_text, "some raw output");
+});
+
+test("pruneDiskRecord with missing agent_transcript", () => {
+  const full = toDiskRecord(dummyRecord);
+  const pruned = pruneDiskRecord(full);
+  assert.equal(pruned.agent_transcript, undefined);
 });
 
 test("serialize round-trip with absent optionals", () => {
