@@ -118,7 +118,7 @@ Each run produces an artifact set in **`runs/<runId>/`**:
 - `rca.json` / `rca.txt`: The agent's root cause analysis, if provided.
 
 The engine also captures the record into persistent storage via a split (ADR-0026):
-- **Pruned record**: The `record.json` stripped of `agent_transcript` (but keeping identity and scores) is committed to `use-cases/<uc>/scenarios/<id>/records/<runId>.json`.
+- **Pruned record**: The `record.json` stripped of `trajectory.transcript` and the raw payload (`raw_text`/`raw_json`) of `agent_transcript`, but retaining `agent_transcript`'s identity header (`harness`, `model`, `provider`, `session`, `run_id`, `captured_at`) plus a `full_record_sha256` reference, is committed to `use-cases/<uc>/scenarios/<id>/records/<runId>.json`.
 - **Full record**: The complete run state is archived in a content-addressed private store seam.
 
 The `run-record.v1` schema fields include:
