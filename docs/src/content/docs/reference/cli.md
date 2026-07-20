@@ -33,11 +33,20 @@ Each phase verb maps to a task in the stack's `Taskfile.yml`:
 | `up` | Bring up the deployment + observability stack |
 | `arm` | Inject the fault and confirm the target alert fires |
 | `agent` | Bring up the sealed agent sandbox |
+| `mcp` | Start the optional read-only Grafana MCP telemetry seam |
+| `auto` | Automated incident cycle: alert push → agent → grade (ADR-0025) |
 | `run` | Drive a graded run (scripted, or `RUNNER=external`) |
 | `verify` | Behavioural verification + boundary / de-tell probes |
 | `down` | Tear down the deploy + load planes |
 | `status` | Report current stack state |
+| `console` | Harness-side operator console (status + deep-links) |
 | `smoke` | Quick positive/negative smoke checks |
+
+## Cross-use-case verbs
+
+| Verb | Purpose |
+|---|---|
+| `dashboard` | Spawns the cross-use-case operator control plane (`tools/dashboard`, ADR-0024) |
 
 ## Composite verbs
 
@@ -86,6 +95,11 @@ These are plain Node scripts (no install needed) used during substrate intake:
 | `pnpm guard:strict` | The strict variant |
 | `pnpm detell` | De-tell judge: score a target for "is this a rig?" tells |
 | `pnpm detell:grade` | The grading variant |
+| `pnpm certify:hash` | Computes the ADR-0026 `own_hash` and `shared_hash` for a scenario |
+| `pnpm certify:validate` | Validates acceptance manifests against their versioned schema |
+| `pnpm test:*` | Runs suite-specific tests (e.g., `test:certify`, `test:core`) |
+| `node tools/record/migrate-run-records.mjs` | Migrates older run records to the canonical snake_case `run-record.v1` schema |
+| `node tools/transcript/write-handoff.mjs` | Driver contract script to hand off agent transcript/RCA to the engine |
 
 ## See also
 

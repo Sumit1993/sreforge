@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// migrate-run-records.mjs — Migrates older camelCase run records to the
+// canonical snake_case run-record.v1 schema.
 import { parseArgs } from "node:util";
 import { readdir, readFile, writeFile, rename } from "node:fs/promises";
 import { join, dirname } from "node:path";

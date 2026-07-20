@@ -49,22 +49,24 @@ use-cases/
       observability/                   # prometheus.yml, alertmanager.yml, rules/
       load/booklogr-storm.js           # k6 constant-arrival-rate storm
       scripts/                         # up · down · arm-incident · confirm-fire · run-incident
-    scenarios/latency-cache-stampede/  # the authored incident (scenario.toml, solution, oracle)
+    scenarios/
+      latency-cache-stampede/          # the authored incident (scenario.toml, solution, oracle)
+      db-pool-exhaustion-deploy/       # second scenario
+      decoy-deploy-control/            # third scenario
 mage/                                  # pointer to the external knowledge-base hub
 ```
 
 The durable design knowledge lives in an external **mage** hub
 (`sreforge-memory`); this repo's `AGENTS.md` explains how to navigate it.
 
-## v1 — the `latency-cache-stampede` incident (validated end-to-end)
+## Scenarios and selection
 
-A disabled search-response cache (`CACHE_TYPE=NullCache`) in the booklogr API
-means every `GET /v1/books/search` misses cache and blocks a Gunicorn worker on
-a deterministically slow (1.2s) book-metadata upstream. Under a k6 constant-
-arrival-rate storm over a small query set, the four workers back up, p99 latency
-crosses 0.3s, and the `BooklogrApiLatencyP99High` alert fires. The reference fix
-(restore an effective cache) lets repeated queries hit the cache — so p99 clears
-**while the storm is still running**.
+The `booklogr` use-case ships three scenarios (each with a `README.md` in its `scenarios/<id>/` directory):
+- `latency-cache-stampede`: A disabled search cache + storm causes p99 latency alerts.
+- `db-pool-exhaustion-deploy`: A bad config deploy exhausts connection pools.
+- `decoy-deploy-control`: A control scenario.
+
+Select a scenario by passing the **`SCENARIO_ID=<id>`** variable to `pnpm forge` tasks. If omitted, the stack's Taskfile defaults it to `latency-cache-stampede`.
 
 ### Run it
 

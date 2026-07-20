@@ -94,7 +94,13 @@ private tests/oracle), never a pre-existing public bug. The source of
 contamination-freeness.
 
 ### `submit`
-The agent's "done, here's my fix" signal. It is an **engine handoff, not a forge
+The agent's "done, here's my fix" signal (optionally passing `--rca`). It is an **engine handoff, not a forge
 push**: the agent commits to a local branch and drops a completion sentinel; the
 engine captures the diff and owns the forge push / PR / CI. The sandbox has no
 forge access.
+
+### Run record
+The canonical snake_case `run-record.v1` artifact emitted per run, containing identity, the agent's trajectory, diff, CI/CD results, scores, and timings.
+
+### Pruned record
+A copy of the run record stripped of the raw agent transcript (to keep its size manageable) but retaining identity and scores, committed to the scenario's `records/` directory.

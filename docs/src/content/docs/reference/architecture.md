@@ -45,7 +45,7 @@ local forge — so the separation is also a network boundary (the cheap half of
 | `runner/` | `AgentRunner` boundary where an external meta-harness plugs in; collects a `Trajectory`. |
 | `deploy/` | `CiGate` (build + tests) → `AutoMerge` (commit to the run workspace) → `CdDeployer` (compose rebuild + swap). |
 | `verify/` | `Oracle` / `CompoundedOracle` / `MitigationOracle` — the behavioural, objective oracle. |
-| `record/` | `RunRecorder`: persist a `RunRecord` (trigger + trajectory + diff + score + timings). |
+| `record/` | `RunRecorder`: serializes to canonical snake_case `run-record.v1`, ingests transcript/RCA handoffs, and writes pruned/full-store outputs. |
 | `cleanup/` | `Cleanup`: reset the workspace, tear down the deployment, redeploy the baseline, stop load. |
 | `conductor` | `Conductor` / `runIncident(config, deps)`: sequences all of the above. |
 

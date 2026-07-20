@@ -24,7 +24,7 @@ fix can**.
 | `runner/`    | `AgentRunner` boundary where an external meta-harness (t3code) plugs in; collects a `Trajectory`. |
 | `deploy/`    | `CiGate` (build + tests) → `AutoMerge` (commit to run workspace) → `CdDeployer` (compose rebuild + swap). |
 | `verify/`    | `Oracle` / `CompoundedOracle` / `MitigationOracle` — the behavioral, objective oracle.       |
-| `record/`    | `RunRecorder`: persist a `RunRecord` (trigger + trajectory + diff + score + timings) to a run directory. |
+| `record/`    | `RunRecorder`: serializes to canonical snake_case `run-record.v1`, ingests transcript/RCA handoffs, and writes pruned/full-store outputs. |
 | `cleanup/`   | `Cleanup`: reset the workspace, tear down the deployment, redeploy the baseline, stop load.   |
 | `conductor`  | `Conductor` / `runIncident(config, deps)`: sequences all of the above.                        |
 
@@ -74,7 +74,7 @@ are baked in now; the v1 implementation drives exactly one use-case scenario.
 
 - **`DiagnosisOracle`** (LLM-judge against a structured root-cause + checklist,
   separate judge model) — drops into `CompoundedOracle` as one more weighted
-  sub-oracle with no refactor; the submit payload then gains an `rca` field.
+  sub-oracle with no refactor. (The RCA reporting channel itself exists now — ADR-0027 — only the judge is deferred).
 - **`patch` profile** (declarative folder + hidden tests + reference solution).
 - **GitHub fork/PR/branch-protection** apparatus.
 - **Multi-signal / Slack triggers** (the v2 trigger-bus generalization).

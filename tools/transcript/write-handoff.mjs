@@ -1,3 +1,5 @@
+// write-handoff.mjs — Driver contract script to package agent transcripts or RCAs
+// into a standard envelope for the engine, correlated with the runId.
 import { parseArgs } from "node:util";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";

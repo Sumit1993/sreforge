@@ -9,8 +9,8 @@
 //   (apply solution/fix.patch, branch, push, open PR) -> GiteaCiGate (poll the
 //   forge Actions run for HEAD) -> GiteaAutoMerge (merge the PR) ->
 //   ComposeCdDeployer (rebuild+swap booklogr-api) -> MitigationOracle (clear +
-//   sustained-clear under STILL-ACTIVE storm) -> FileRunRecorder -> ComposeCleanup
-//   (reset workspace to origin/baseline + redeploy regressed).
+//   sustained-clear under STILL-ACTIVE storm) -> FileRunRecorder (ingest
+//   transcript/RCA handoffs, capture full/pruned records).
 //
 // PRECONDITION: the incident must already be live (regressed deploy + storm +
 // the alert FIRING). Arm it first (inject-regression.sh + up + k6 + confirm-fire).
@@ -23,6 +23,7 @@
 //   set -a; source ../../.env; set +a            # GITEA_TOKEN, owner/repo, urls
 //   node run-incident.mjs                          # positive: reference fix
 //   node run-incident.mjs --patch /abs/bad.patch --message "WIP" --scenario-id neg
+//   node run-incident.mjs --run-id r1 --record-dir /tmp/rec --pruned-record-dir /tmp/pruned --full-store-dir /tmp/full
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
