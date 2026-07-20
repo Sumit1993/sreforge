@@ -38,7 +38,8 @@ Each phase verb maps to a task in the stack's `Taskfile.yml`:
 | `run` | Drive a graded run (scripted, or `RUNNER=external`) |
 | `verify` | Behavioural verification + boundary / de-tell probes |
 | `down` | Tear down the deploy + load planes |
-| `status` | Report current stack state |
+| `status` | Fast per-plane runtime view (forge plane, deploy N/M with offenders named, agent workspace, alert state, p99) |
+| `doctor` | Preflight misconfiguration + bootstrap checks, all planes, per-line PASS/FAIL/WARN with fix hints, exit non-zero on any FAIL |
 | `console` | Harness-side operator console (status + deep-links) |
 | `smoke` | Quick positive/negative smoke checks |
 
@@ -47,6 +48,7 @@ Each phase verb maps to a task in the stack's `Taskfile.yml`:
 | Verb | Purpose |
 |---|---|
 | `dashboard` | Spawns the cross-use-case operator control plane (`tools/dashboard`, ADR-0024) |
+| `forge-up` / `forge-down` | `forge-plane` gitea+runner lifecycle; `forge-up` recovers a stale runner and never restarts a healthy gitea |
 
 ## Composite verbs
 

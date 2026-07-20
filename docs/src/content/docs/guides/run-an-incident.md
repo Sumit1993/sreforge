@@ -53,6 +53,8 @@ verb list and argument handling.
 
 ## A typical session
 
+Run `pnpm forge doctor <use-case>` before a session and `pnpm forge forge-up` when the runner is down.
+
 ```sh
 # Cold bring-up (once)
 pnpm forge fresh booklogr
