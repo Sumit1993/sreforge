@@ -127,17 +127,19 @@ if (!verb || verb === "help" || verb === "--help" || verb === "-h") usage();
 // `dashboard` is CROSS-use-case (the operator control plane, ADR-0024) — it takes
 // no use-case; it discovers them all. Handle before the use-case check below.
 if (verb === "dashboard") {
-  const res = spawnSync("node", [resolve(REPO_ROOT, "tools/dashboard/server.mjs")], {
+  const res = spawnSync(process.execPath, [resolve(REPO_ROOT, "tools/dashboard/server.mjs")], {
     cwd: REPO_ROOT, stdio: "inherit", env: process.env,
   });
-  process.exit(res.status ?? 0);
+  if (res.error || res.status == null) process.exit(1);
+  process.exit(res.status);
 }
 if (verb === "forge-up" || verb === "forge-down") {
   const op = verb === "forge-up" ? "up" : "down";
-  const res = spawnSync("node", [resolve(REPO_ROOT, "tools/forge-plane/forge-plane.mjs"), op], {
+  const res = spawnSync(process.execPath, [resolve(REPO_ROOT, "tools/forge-plane/forge-plane.mjs"), op], {
     cwd: REPO_ROOT, stdio: "inherit", env: process.env,
   });
-  process.exit(res.status ?? 0);
+  if (res.error || res.status == null) process.exit(1);
+  process.exit(res.status);
 }
 
 if (!ref) die(`'${verb}' needs a use-case: pnpm forge ${verb} <use-case>`);

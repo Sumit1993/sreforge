@@ -1,12 +1,20 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { classifyHijack, classifyRunnerError, classifyWincred, diffEnvKeys, summarize, runAllChecks } from "../lib.mjs";
+import { resolve } from "node:path";
+import { classifyHijack, classifyRunnerError, classifyWincred, diffEnvKeys, summarize, runAllChecks, resolveRepoRoot } from "../lib.mjs";
 
 test("classifyHijack", () => {
-  assert.equal(classifyHijack(200, 401, true), "hijacked-proxy");
-  assert.equal(classifyHijack(200, 200, true), "healthy");
-  assert.equal(classifyHijack(401, 401, true), "healthy");
-  assert.equal(classifyHijack(null, null, false), "down");
+  assert.equal(classifyHijack({status: 200}, {status: 401}), "hijacked-proxy");
+  assert.equal(classifyHijack({status: 200}, {status: 200, json: {version: "1.0"}}), "healthy");
+  assert.equal(classifyHijack({status: 401}, {status: 401, json: {message: "Unauthorized"}}), "healthy");
+  assert.equal(classifyHijack({status: 401}, {status: 401, headers: {'set-cookie': 'i_like_gitea'}}), "healthy");
+  assert.equal(classifyHijack({status: 401}, {status: 401, json: {}, headers: {}}), "down");
+  assert.equal(classifyHijack({status: null}, {status: null}), "down");
+});
+
+test("resolveRepoRoot", () => {
+  const fakeUsecase = resolve("/fake/repo/use-cases/booklogr");
+  assert.equal(resolveRepoRoot(fakeUsecase), resolve("/fake/repo"));
 });
 
 test("classifyRunnerError", () => {

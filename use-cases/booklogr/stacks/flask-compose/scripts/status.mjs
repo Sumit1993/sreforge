@@ -1,14 +1,14 @@
-#!/usr/bin/env node
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile as _execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROM, P99_EXPR, PRIMARY_ALERT, getAlerts, firingNames, queryScalar, parseArgs } from "./lib.mjs";
 import { classifyRunnerError } from "../../../../../tools/doctor/lib.mjs";
 
+const execFile = promisify(_execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STACK = resolve(HERE, "..");
-const REPO_ROOT = resolve(STACK, "../../../..");
 
 function isRunning(container) {
   try {
@@ -30,14 +30,15 @@ function getStartError(container) {
 
 const deployServices = ["booklogr-db", "booklogr-api", "booklogr-web", "booklogr-prometheus", "booklogr-alertmanager", "booklogr-grafana", "book-metadata"];
 let deployHealthy = 0;
-for (const svc of deployServices) {
+await Promise.all(deployServices.map(async (svc) => {
   try {
-    const out = execFileSync("docker", ["inspect", "-f", "{{.State.Status}} {{.State.Health.Status}}", svc], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-    if (out.includes("running") && !out.includes("unhealthy")) {
+    const { stdout } = await execFile("docker", ["inspect", "-f", "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", svc], { encoding: "utf8", timeout: 5000 });
+    const out = stdout.trim();
+    if (out === "running healthy" || out === "running none") {
       deployHealthy++;
     }
   } catch {}
-}
+}));
 
 const giteaOk = isRunning("sreforge-gitea");
 const runnerOk = isRunning("sreforge-runner");

@@ -1,12 +1,20 @@
 import { execSync, spawnSync, execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
 
-export function classifyHijack(statusLocalhost, status127, bodyShapeOk) {
-  if (statusLocalhost !== null && status127 !== null && statusLocalhost !== status127) {
+export function classifyHijack(resLocal, res127) {
+  if (resLocal.status !== null && res127.status !== null && resLocal.status !== res127.status) {
     return "hijacked-proxy";
   }
-  if (statusLocalhost !== null && statusLocalhost === status127 && bodyShapeOk) {
-    return "healthy";
+  if (resLocal.status !== null && resLocal.status === res127.status) {
+    const hasVersion = !!res127.json?.version;
+    const isGitea401 = res127.status === 401 && (
+      (res127.json && res127.json.message !== undefined) ||
+      (res127.headers && res127.headers['set-cookie'] && res127.headers['set-cookie'].includes('i_like_gitea'))
+    );
+    if (hasVersion || isGitea401) {
+      return "healthy";
+    }
   }
   return "down";
 }
@@ -55,17 +63,24 @@ export function summarize(results) {
 export async function runAllChecks(checks) {
   const results = [];
   for (const check of checks) {
+    let timer;
     try {
       const result = await Promise.race([
         check.run(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("check timed out")), 5000))
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("check timed out")), 5000); })
       ]);
       results.push({ id: check.id, plane: check.plane, ...result });
     } catch (e) {
       results.push({ id: check.id, plane: check.plane, status: "fail", detail: e.message });
+    } finally {
+      clearTimeout(timer);
     }
   }
   return results;
+}
+
+export function resolveRepoRoot(usecasePath) {
+  return resolve(usecasePath, "../..");
 }
 
 export function defineChecks(config) {
@@ -75,15 +90,17 @@ export function defineChecks(config) {
     runnerContainer, giteaContainer,
     envPath, exampleEnvPath, substratePath,
     coreNodeModulesPath, coreDistPath, rootNodeModulesPath,
-    deployServices, prometheusUrl, alertmanagerUrl
+    deployServices, prometheusUrl, alertmanagerUrl, deployUpHint
   } = config;
 
   const safeFetch = async (url, options = {}) => {
     try {
       const res = await fetch(url, options);
-      return { status: res.status, ok: res.ok, json: await res.json().catch(() => ({})) };
+      const headers = {};
+      res.headers.forEach((v, k) => headers[k] = v);
+      return { status: res.status, ok: res.ok, json: await res.json().catch(() => ({})), headers };
     } catch {
-      return { status: null, ok: false, json: {} };
+      return { status: null, ok: false, json: {}, headers: {} };
     }
   };
 
@@ -113,8 +130,7 @@ export function defineChecks(config) {
           safeFetch(`${giteaLocalhostUrl}/api/v1/version`),
           safeFetch(`${gitea127Url}/api/v1/version`)
         ]);
-        const bodyShapeOk = !!res127.json?.version;
-        const cls = classifyHijack(resLocal.status, res127.status, bodyShapeOk);
+        const cls = classifyHijack(resLocal, res127);
         if (cls === "hijacked-proxy") {
           hijackDetected = true;
           return { status: "fail", detail: `port 3000 hijacked (localhost:${resLocal.status} vs 127:${res127.status})`, hint: 'VS Code PORTS → stop forwarding / kill extension host via `ss -ltnp | grep :3000`; add `remote.portsAttributes {"3000":{"onAutoForward":"ignore"}}`; then RESTART gitea — it only binds at container start' };
@@ -127,9 +143,9 @@ export function defineChecks(config) {
       id: "stale-runner-shim", plane: "forge",
       run: async () => {
         try {
-          const running = execFileSync("docker", ["inspect", "-f", "{{.State.Running}}", runnerContainer], { encoding: "utf8", stdio: "pipe" }).trim();
+          const running = execFileSync("docker", ["inspect", "-f", "{{.State.Running}}", runnerContainer], { encoding: "utf8", stdio: "pipe", timeout: 5000 }).trim();
           if (running === "true") return { status: "pass", detail: "runner running" };
-          const err = execFileSync("docker", ["inspect", "-f", "{{.State.Error}}", runnerContainer], { encoding: "utf8", stdio: "pipe" }).trim();
+          const err = execFileSync("docker", ["inspect", "-f", "{{.State.Error}}", runnerContainer], { encoding: "utf8", stdio: "pipe", timeout: 5000 }).trim();
           const cls = classifyRunnerError(err);
           if (cls === "stale-shim") return { status: "fail", detail: "stale runner shim mount detected", hint: "pnpm forge forge-up" };
           return { status: "fail", detail: "runner not running", hint: "pnpm forge forge-up" };
@@ -210,7 +226,7 @@ export function defineChecks(config) {
         const details = [];
         for (const svc of deployServices) {
           try {
-            const out = execFileSync("docker", ["inspect", "-f", "{{.State.Status}} {{.State.Health.Status}}", svc], { encoding: "utf8", stdio: "pipe" }).trim();
+            const out = execFileSync("docker", ["inspect", "-f", "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", svc], { encoding: "utf8", stdio: "pipe", timeout: 5000 }).trim();
             if (out.includes("running") && !out.includes("unhealthy")) {
               count++;
             } else {
@@ -221,7 +237,7 @@ export function defineChecks(config) {
           }
         }
         if (count === deployServices.length) return { status: "pass", detail: `${count}/${deployServices.length} healthy` };
-        return { status: "fail", detail: `${count}/${deployServices.length} healthy (${details.join(', ')})`, hint: "pnpm forge up booklogr" };
+        return { status: "fail", detail: `${count}/${deployServices.length} healthy (${details.join(', ')})`, hint: deployUpHint };
       }
     },
     {
@@ -229,7 +245,7 @@ export function defineChecks(config) {
       run: async () => {
         const res = await safeFetch(`${prometheusUrl}/api/v1/alerts`);
         if (res.status === 200 && res.json?.status === "success") return { status: "pass", detail: "prometheus ok" };
-        return { status: "fail", detail: "prometheus unreachable or invalid response", hint: "pnpm forge up booklogr" };
+        return { status: "fail", detail: "prometheus unreachable or invalid response", hint: deployUpHint };
       }
     },
     {
