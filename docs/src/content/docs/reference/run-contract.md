@@ -116,6 +116,7 @@ Each run produces an artifact set in **`runs/<runId>/`**:
 - `transcript.txt`: The engine runner's log.
 - `agent-transcript.json`: The agent-provided conversation trace.
 - `rca.json` / `rca.txt`: The agent's root cause analysis, if provided.
+- `diagnosis.json`: The **`diagnosis.v1`** RCA-judge result, if the [RCA judge](../../concepts/closed-loop-verification/) has graded the run's `rca.txt` against the scenario's authored root-cause truth. Reported *beside* the verdict — its score never feeds `record.json` or the pass decision. Absent is a normal state (no RCA, judge not run, or judge unreachable). Written by `tools/rca-judge/judge.mjs`; never written into or read from `record.json`.
 
 The engine also captures the record into persistent storage via a split (ADR-0026):
 - **Pruned record**: The `record.json` stripped of `trajectory.transcript` and the raw payload (`raw_text`/`raw_json`) of `agent_transcript`, but retaining `agent_transcript`'s identity header (`harness`, `model`, `provider`, `session`, `run_id`, `captured_at`) plus a `full_record_sha256` reference, is committed to `use-cases/<uc>/scenarios/<id>/records/<runId>.json`.
