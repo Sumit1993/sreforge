@@ -18,11 +18,13 @@
 #      neutral identity — purely so HEAD captures the edits for the engine to
 #      diff. (An empty edit set skips the commit; the sentinel is still written,
 #      and the engine will see an empty diff = no fix produced.)
-#   3. write the sentinel /workspace/.sreforge/submit.json
+#   3. copy the optional --rca file (e.g. a postmortem) to /workspace/.sreforge/rca.txt
+#      alongside the submission.
+#   4. write the sentinel /workspace/.sreforge/submit.json
 #        { "submittedAt": <ISO8601>, "headSha": <HEAD sha>, "note": <message> }
 #      ATOMICALLY (temp file + rename) so the host never reads a half-written
 #      file. A second invocation overwrites it — latest submission wins.
-#   4. print a neutral confirmation and exit 0.
+#   5. print a neutral confirmation and exit 0.
 #
 # DE-TELL / BOUNDARY POSTURE
 #   No forge env, no token, no remote, no network. The .sreforge/ sentinel dir
@@ -34,8 +36,9 @@
 #   POSIX sh + busybox/alpine: only git, date, and standard shell builtins.
 #
 # USAGE (inside agent-shell, cwd /workspace)
-#   submit                       # submit the current edits
-#   submit "raised cache TTL"    # submit with an optional note
+#   submit [--rca <path>] ["note"]
+#   submit                                      # submit the current edits
+#   submit "raised cache TTL"                   # submit with an optional note
 # =============================================================================
 set -eu
 

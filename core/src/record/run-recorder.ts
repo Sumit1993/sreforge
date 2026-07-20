@@ -12,8 +12,11 @@ export interface FileRunRecorderOptions {
   readonly baseDir: string;
   /** Optional path to the raw transcript handoff from the agent harness. */
   readonly transcriptHandoffPath?: string;
+  /** Optional/best-effort path to an RCA handoff to ingest (writes rca.json/rca.txt). */
   readonly rcaHandoffPath?: string;
+  /** Optional/best-effort directory to write pruned JSON records to. */
   readonly prunedRecordDir?: string;
+  /** Optional/best-effort directory to write full JSON records keyed by SHA-256 to. */
   readonly fullRecordStoreDir?: string;
 }
 
@@ -23,6 +26,7 @@ export interface FileRunRecorderOptions {
  *   - `diff.patch`    — the graded git diff (also embedded in record.json),
  *   - `transcript.txt`— the engine runner's own event log (NOT the agent transcript),
  *   - `agent-transcript.json` — the raw agent output, if captured.
+ *   - `rca.json` / `rca.txt` — present when the driver handed off an RCA.
  *
  * The diff and transcript logs are split out as standalone files so auditors can
  * read them without parsing the JSON envelope.
