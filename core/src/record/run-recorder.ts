@@ -12,7 +12,11 @@ export interface FileRunRecorderOptions {
   readonly baseDir: string;
   /** Optional path to the raw transcript handoff from the agent harness. */
   readonly transcriptHandoffPath?: string;
+  /** Optional/best-effort path to an RCA handoff to ingest (writes rca.json/rca.txt). */
+  readonly rcaHandoffPath?: string;
+  /** Optional/best-effort directory to write pruned JSON records to. */
   readonly prunedRecordDir?: string;
+  /** Optional/best-effort directory to write full JSON records keyed by SHA-256 to. */
   readonly fullRecordStoreDir?: string;
 }
 
@@ -22,6 +26,7 @@ export interface FileRunRecorderOptions {
  *   - `diff.patch`    — the graded git diff (also embedded in record.json),
  *   - `transcript.txt`— the engine runner's own event log (NOT the agent transcript),
  *   - `agent-transcript.json` — the raw agent output, if captured.
+ *   - `rca.json` / `rca.txt` — present when the driver handed off an RCA.
  *
  * The diff and transcript logs are split out as standalone files so auditors can
  * read them without parsing the JSON envelope.
@@ -29,12 +34,14 @@ export interface FileRunRecorderOptions {
 export class FileRunRecorder implements RunRecorder {
   readonly #baseDir: string;
   readonly #handoffPath?: string;
+  readonly #rcaHandoffPath?: string;
   readonly #prunedRecordDir?: string;
   readonly #fullRecordStoreDir?: string;
 
   constructor(options: FileRunRecorderOptions) {
     this.#baseDir = options.baseDir;
     this.#handoffPath = options.transcriptHandoffPath;
+    this.#rcaHandoffPath = options.rcaHandoffPath;
     this.#prunedRecordDir = options.prunedRecordDir;
     this.#fullRecordStoreDir = options.fullRecordStoreDir;
   }
@@ -67,6 +74,31 @@ export class FileRunRecorder implements RunRecorder {
         }
       } catch (err: unknown) {
         console.warn(`WARNING: Failed to read or parse transcript handoff at ${this.#handoffPath}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    if (this.#rcaHandoffPath && existsSync(this.#rcaHandoffPath)) {
+      try {
+        const content = await readFile(this.#rcaHandoffPath, "utf8");
+        const handoff = JSON.parse(content);
+        if (
+          handoff.schema_version !== "agent-rca.v1" ||
+          typeof handoff.run_id !== "string" ||
+          (handoff.raw_text !== undefined && typeof handoff.raw_text !== "string")
+        ) {
+          console.warn("WARNING: Invalid RCA handoff envelope, skipping ingest");
+        } else if (handoff.run_id === record.runId) {
+          writes.push(writeFile(join(runDir, "rca.json"), content, "utf8"));
+          if (handoff.raw_text !== undefined) {
+            writes.push(writeFile(join(runDir, "rca.txt"), handoff.raw_text, "utf8"));
+          }
+        } else {
+          const err = `RCA mismatch: handoff file run_id '${handoff.run_id}' != record runId '${record.runId}'`;
+          console.error(`ERROR: ${err}`);
+          writes.push(writeFile(join(runDir, "rca-error.txt"), err + "\n", "utf8"));
+        }
+      } catch (err: unknown) {
+        console.warn(`WARNING: Failed to read or parse RCA handoff at ${this.#rcaHandoffPath}:`, err instanceof Error ? err.message : err);
       }
     }
 
