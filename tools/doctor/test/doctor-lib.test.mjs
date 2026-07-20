@@ -157,10 +157,17 @@ test("compose drift: DEPLOY_SERVICES matches docker-compose.yml container names"
 	);
 	const composeText = readFileSync(composePath, "utf8");
 
-	for (const svc of DEPLOY_SERVICES) {
-		assert.ok(
-			composeText.includes(`container_name: ${svc}`),
-			`Expected compose file to define container_name: ${svc}`,
-		);
+	const parsedServices = [];
+	for (const line of composeText.split('\n')) {
+		const match = line.match(/^\s*container_name:\s*([^\s]+)/);
+		if (match) {
+			parsedServices.push(match[1]);
+		}
 	}
+
+	assert.deepEqual(
+		parsedServices.sort(),
+		[...DEPLOY_SERVICES].sort(),
+		"DEPLOY_SERVICES must exactly match container_names in compose file",
+	);
 });
