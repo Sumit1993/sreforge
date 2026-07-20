@@ -178,13 +178,13 @@ tasks:
 
   # ── run (per run; the engine) ────────────────────────────────────────────────
   run:
-    desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>)"
+    desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>, record-dir overrides)"
     deps: [build-core]
     # Fail fast (~5s) if the CI runner is dead — avoids a 10-min timeout in the
-    # GiteaCiGate. Recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner
+    # GiteaCiGate. Recovery: pnpm forge forge-up (docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner)
     preconditions:
       - sh: 'docker inspect -f "running:{{ "{{" }}.State.Running{{ "}}" }}" sreforge-runner 2>/dev/null | grep -q "running:true"'
-        msg: "sreforge-runner is not running — recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner"
+        msg: "sreforge-runner is not running — recovery: pnpm forge forge-up"
     vars:
       RUN_ID: '{{.id | default ""}}'
     env:
@@ -264,6 +264,10 @@ tasks:
       - node scripts/verify-mcp.mjs
 
   # ── diagnostics ──────────────────────────────────────────────────────────────
+  doctor:
+    desc: "thorough preflight for misconfiguration + fresh-checkout gaps"
+    cmds: [node scripts/doctor.mjs]
+
   status:
     desc: "one-shot: current p99 + which alerts are firing"
     cmds: [node scripts/status.mjs]

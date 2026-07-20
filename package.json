@@ -17,7 +17,8 @@
     "certify:validate": "node tools/certify/validate-manifest.mjs",
     "test:certify": "node --test tools/certify/test/*.test.mjs",
     "test:transcript": "node --test tools/transcript/test/*.test.mjs",
-    "test:record": "node --test tools/record/test/*.test.mjs"
+    "test:record": "node --test tools/record/test/*.test.mjs",
+    "test:doctor": "node --test tools/doctor/test/*.test.mjs"
   },
   "devDependencies": {
     "@go-task/cli": "^3.51.1",

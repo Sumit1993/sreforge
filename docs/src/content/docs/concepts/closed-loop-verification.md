@@ -85,7 +85,7 @@ The oracle is structured as a weighted **compound oracle** spanning the SRE
 lifecycle — *detect → diagnose → mitigate*. v1 implements only the **mitigate**
 dimension. A `DiagnosisOracle` (an LLM-judge against a structured root cause,
 using a separate judge model) drops in later as one more weighted sub-oracle with
-no refactor; the submit payload then gains an `rca` field.
+no refactor. (The RCA reporting channel itself exists now via `submit --rca` — ADR-0027 — only the judge is deferred).
 
 ## Next
 
