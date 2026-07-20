@@ -128,7 +128,7 @@ The `run-record.v1` schema fields include:
 | Field | Meaning |
 |---|---|
 | `run_id`, `scenario_id`, `profile` | Run + scenario identity |
-| `trigger` | The firing alert that opened the run (`source`, `alert_name`, `severity`, `labels`, `annotations`, `fired_at`) |
+| `trigger` | The firing alert that opened the run (`source`, `alert_name`, `severity`, `labels`, `annotations`, `fired_at`, `signals`) |
 | `trajectory` | What the agent produced: `agent_name`, `diff`, `submitted`, `duration_ms` |
 | `ci`, `deploy` | CI-gate result and the redeploy result (`null` if not reached) |
 | `score` | The oracle's `oracle_score` (see below) |

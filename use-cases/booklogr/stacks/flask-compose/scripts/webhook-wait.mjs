@@ -28,11 +28,13 @@
 //      WEBHOOK_PORT (default 8080), AGENT_UID/GID (default current).
 // =============================================================================
 import { execFileSync } from "node:child_process";
+import { mergeNotifications, parseCaptureFile } from "./lib-storm.mjs";
 
 const env = process.env;
 const CONTAINER = "agent-shell";
 const PORT = Number(env.WEBHOOK_PORT || 8080);
 const TIMEOUT_S = Number(env.WEBHOOK_TIMEOUT_S || 420);
+const STORM_WINDOW_S = Number(env.WEBHOOK_STORM_WINDOW_S || 0);
 const U = `${env.AGENT_UID || process.getuid()}:${env.AGENT_GID || process.getgid()}`;
 const OUT = "/tmp/.oncall-notification.json"; // in-box; box is recreated per run
 
@@ -57,8 +59,14 @@ while read -r line; do
   esac
 done
 case "$CL" in ''|*[!0-9]*) CL=0 ;; esac
-if [ "$CL" -gt 0 ]; then head -c "$CL" > ${OUT}; fi
-if [ -s ${OUT} ]; then
+if [ "$CL" -gt 0 ]; then
+  head -c "$CL" > ${OUT}.tmp
+  if [ -s ${OUT}.tmp ]; then
+    cat ${OUT}.tmp >> ${OUT}
+    printf '\\036' >> ${OUT}
+  fi
+fi
+if [ -s ${OUT}.tmp ]; then
   printf 'HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n'
 else
   printf 'HTTP/1.1 500 Internal Server Error\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n'
@@ -74,9 +82,13 @@ execFileSync("docker", ["exec", "-i", "-u", U, CONTAINER, "sh", "-c", `cat > ${H
   input: HANDLER,
 });
 const LISTEN =
-  `rm -f ${OUT}; timeout ${TIMEOUT_S} sh -c ` +
+  `rm -f ${OUT} ${OUT}.tmp; timeout ${TIMEOUT_S} sh -c ` +
   `'while [ ! -s ${OUT} ]; do nc -l -p ${PORT} -e sh ${HSH} || exit 3; done'; ` +
-  `rc=$?; rm -f ${HSH}; [ -s ${OUT} ] && cat ${OUT} || exit $rc`;
+  `rc=$?; ` +
+  `if [ -s ${OUT} ] && [ ${STORM_WINDOW_S} -gt 0 ]; then ` +
+  `  timeout ${STORM_WINDOW_S} sh -c 'while true; do nc -l -p ${PORT} -e sh ${HSH}; done'; ` +
+  `fi; ` +
+  `rm -f ${HSH} ${OUT}.tmp; [ -s ${OUT} ] && cat ${OUT} || exit $rc`;
 
 console.error(`webhook-wait: listening in-box on :${PORT} (timeout ${TIMEOUT_S}s)…`);
 let body;
@@ -97,15 +109,22 @@ try {
   process.exit(1);
 }
 
-let payload;
+let payloads;
 try {
-  payload = JSON.parse(body.trim());
-} catch {
-  console.error(`webhook-wait: captured a request body but it is not JSON:\n${body.slice(0, 800)}`);
+  payloads = parseCaptureFile(body);
+} catch (e) {
+  console.error(`webhook-wait: captured a request body but it failed to parse: ${e.message}\n${body.slice(0, 800)}`);
   process.exit(1);
 }
 
-const alerts = Array.isArray(payload.alerts) ? payload.alerts.length : 0;
-const names = [...new Set((payload.alerts || []).map((a) => a?.labels?.alertname).filter(Boolean))];
+if (payloads.length === 0) {
+  console.error(`webhook-wait: captured empty payloads`);
+  process.exit(1);
+}
+
+const merged = STORM_WINDOW_S > 0 ? mergeNotifications(payloads) : payloads[0];
+
+const alerts = Array.isArray(merged.alerts) ? merged.alerts.length : 0;
+const names = [...new Set((merged.alerts || []).map((a) => a?.labels?.alertname).filter(Boolean))];
 console.error(`webhook-wait: 🔔 notification received — ${alerts} alert(s)${names.length ? ` [${names.join(", ")}]` : ""}`);
-process.stdout.write(JSON.stringify(payload));
+process.stdout.write(JSON.stringify(merged));
