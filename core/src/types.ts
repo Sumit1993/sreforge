@@ -50,6 +50,17 @@ export type RunPhase =
 // ---------------------------------------------------------------------------
 
 /**
+ * A single correlated alert signal contributing to a multi-alert trigger.
+ */
+export interface TriggerSignal {
+  alertName: string;
+  severity?: string;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  firedAt: string; // ISO8601
+}
+
+/**
  * A normalized event that opens an incident run. In v1 this is produced from a
  * firing Prometheus alert; in v2 it generalizes to a multi-signal trigger bus.
  */
@@ -66,6 +77,11 @@ export interface Trigger {
   readonly annotations: Readonly<Record<string, string>>;
   /** When the alert started firing (ISO-8601). Set by the confirm-fire gate. */
   readonly firedAt: string;
+  /**
+   * Optional correlated signals for a multi-alert trigger bus. When present,
+   * signals[0] is the primary and the scalar fields above mirror it.
+   */
+  readonly signals?: readonly TriggerSignal[];
 }
 
 // ---------------------------------------------------------------------------

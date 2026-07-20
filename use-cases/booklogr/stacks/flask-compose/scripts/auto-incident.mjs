@@ -26,9 +26,13 @@
 // incident — a repeat-scenario tell); official scoring uses a cold session.
 // =============================================================================
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assembleT0Bundle,
+  renderT0Bundle,
+} from "../../../../../core/dist/context/t0-bundle.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STACK = resolve(HERE, "..");
@@ -80,7 +84,7 @@ function task(name, extra = []) {
 }
 
 // Forward the run's opt-ins to `task agent` as task vars (PROVIDER=… MCP=…).
-const optIns = ["PROVIDER", "MCP", "EGRESS_ALLOWLIST"]
+const optIns = ["PROVIDER", "MCP", "EGRESS_ALLOWLIST", "WEBHOOK_STORM_WINDOW_S"]
   .filter((k) => env[k])
   .map((k) => `${k}=${env[k]}`);
 
@@ -131,6 +135,49 @@ if (listenerExit !== 0 || !payloadJson) {
   process.exit(listenerExit || 1);
 }
 const payload = JSON.parse(payloadJson);
+let t0BundleJson = "";
+if (payload.schema_version === "storm-capture.v1") {
+  const slackTriage = [];
+  const triageFeedPath = env.TRIAGE_FEED;
+  if (triageFeedPath && existsSync(triageFeedPath)) {
+    try {
+      const feedStr = readFileSync(triageFeedPath, "utf8");
+      for (const line of feedStr.split("\\n")) {
+        if (line.trim()) {
+          slackTriage.push(JSON.parse(line));
+        }
+      }
+    } catch (e) {
+      console.error(`auto: failed to parse TRIAGE_FEED at ${triageFeedPath}: ${e.message}`);
+    }
+  }
+
+  const signals = (payload.alerts || []).map((a) => {
+    const labels = a.labels || {};
+    return {
+      alertName: labels.alertname || "UnknownAlert",
+      severity: labels.severity,
+      labels,
+      annotations: a.annotations || {},
+      firedAt: a.startsAt || new Date().toISOString(),
+    };
+  });
+
+  if (signals.length > 0) {
+    const trigger = {
+      source: "multi-alert",
+      alertName: signals[0].alertName,
+      severity: signals[0].severity,
+      labels: signals[0].labels,
+      annotations: signals[0].annotations,
+      firedAt: signals[0].firedAt,
+      signals,
+    };
+    const bundle = assembleT0Bundle({ runId, trigger, slackTriage });
+    t0BundleJson = renderT0Bundle(bundle);
+  }
+}
+
 const names = [...new Set((payload.alerts || []).map((a) => a?.labels?.alertname).filter(Boolean))];
 console.log(`\nauto ── 🔔 alert push received [${names.join(", ")}] → launching agent`);
 console.log(`auto ── agent: ${AGENT_CMD}`);
@@ -143,7 +190,7 @@ console.log(`auto ── agent: ${AGENT_CMD}`);
 // AGENT_ENV_ALLOWLIST) or they are silently dropped before reaching the box.
 const AGENT_ENV_DEFAULT = [
   "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "TERM",
-  "WEBHOOK_PAYLOAD", "WEBHOOK_PORT", "AGENT_UID", "AGENT_GID",
+  "WEBHOOK_PAYLOAD", "T0_BUNDLE", "WEBHOOK_PORT", "AGENT_UID", "AGENT_GID",
   "AGENT_WINDOW", "AGENT_OUT_MAX", "RUN_ID",
 ];
 const extraNames = (env.AGENT_ENV_ALLOWLIST || "")
@@ -174,6 +221,9 @@ for (const k of allowedNames) {
   if (k in env) agentEnv[k] = env[k];
 }
 agentEnv.WEBHOOK_PAYLOAD = payloadJson;
+if (t0BundleJson) {
+  agentEnv.T0_BUNDLE = t0BundleJson;
+}
 agentEnv.RUN_ID = runId;
 
 // Clear any handoff left by a previous cycle: a stale transcript picked up by

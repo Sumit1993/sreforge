@@ -40,8 +40,8 @@ local forge — so the separation is also a network boundary (the cheap half of
 
 | Module | Responsibility |
 |---|---|
-| `triggers/` | Event sources → a normalized `Trigger`. v1: `PrometheusAlertTrigger` reads `/api/v1/alerts`. |
-| `context/` | `ContextAssembler`: `Trigger` + `AgentContext` → a neutral, honest programmatic brief. |
+| `triggers/` | Event sources → a normalized `Trigger`. v1: `TriggerBus` correlates multiple sources (e.g. `PrometheusAlertTrigger` and external feeds). |
+| `context/` | `ContextAssembler`: `Trigger` + `AgentContext` → a neutral, honest programmatic brief (e.g., `t0-bundle.v1`). |
 | `runner/` | `AgentRunner` boundary where an external meta-harness plugs in; collects a `Trajectory`. |
 | `deploy/` | `CiGate` (build + tests) → `AutoMerge` (commit to the run workspace) → `CdDeployer` (compose rebuild + swap). |
 | `verify/` | `Oracle` / `CompoundedOracle` / `MitigationOracle` — the behavioural, objective oracle. |
@@ -62,10 +62,10 @@ poll trigger → assemble context → run agent → CI gate → auto-merge
 
 1. **trigger** — the scenario has already injected the fault and confirmed the
    target alert is firing (the confirm-fire gate is the scenario's
-   responsibility). The conductor polls the trigger source for the `Trigger`.
-2. **context** — assemble a neutral brief from the trigger and `AgentContext`
-   (service endpoints + run-workspace path/service + submit command). No mention
-   of a harness or evaluation.
+   responsibility). The conductor polls the `TriggerBus` for a correlated `Trigger`.
+2. **context** — assemble a neutral brief (e.g., `T0Bundle`) from the trigger and `AgentContext`
+   (service endpoints + run-workspace path/service + submit command), optionally blending
+   multi-signal streams. No mention of a harness or evaluation.
 3. **run** — hand the brief to the `AgentRunner`. The agent investigates, edits
    the run workspace in place, and calls `submit`. It never merges or deploys.
 4. **CI gate** — build + the substrate's existing tests. Red → no deploy, the

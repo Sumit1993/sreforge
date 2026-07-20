@@ -22,6 +22,13 @@ export interface DiskTrigger {
   labels: Readonly<Record<string, string>>;
   annotations: Readonly<Record<string, string>>;
   fired_at: string;
+  signals?: readonly {
+    alert_name: string;
+    severity?: string;
+    labels: Readonly<Record<string, string>>;
+    annotations: Readonly<Record<string, string>>;
+    fired_at: string;
+  }[];
 }
 
 export interface DiskTrajectory {
@@ -95,6 +102,17 @@ export function toDiskRecord(record: RunRecord, agentTranscript?: unknown): Disk
       labels: record.trigger.labels,
       annotations: record.trigger.annotations,
       fired_at: record.trigger.firedAt,
+      ...(record.trigger.signals
+        ? {
+            signals: record.trigger.signals.map(s => ({
+              alert_name: s.alertName,
+              ...(s.severity !== undefined ? { severity: s.severity } : {}),
+              labels: s.labels,
+              annotations: s.annotations,
+              fired_at: s.firedAt,
+            })),
+          }
+        : {}),
     },
     trajectory: {
       agent_name: record.trajectory.agentName,
@@ -152,6 +170,17 @@ export function fromDiskRecord(disk: DiskRunRecord): RunRecord {
       labels: disk.trigger.labels,
       annotations: disk.trigger.annotations,
       firedAt: disk.trigger.fired_at,
+      ...(disk.trigger.signals
+        ? {
+            signals: disk.trigger.signals.map(s => ({
+              alertName: s.alert_name,
+              ...(s.severity !== undefined ? { severity: s.severity } : {}),
+              labels: s.labels,
+              annotations: s.annotations,
+              firedAt: s.fired_at,
+            })),
+          }
+        : {}),
     },
     trajectory: {
       agentName: disk.trajectory.agent_name,

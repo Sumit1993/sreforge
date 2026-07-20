@@ -20,7 +20,8 @@
     "test:transcript": "node --test tools/transcript/test/*.test.mjs",
     "test:record": "node --test tools/record/test/*.test.mjs",
     "test:doctor": "node --test tools/doctor/test/*.test.mjs",
-    "test:rca-judge": "node --test tools/rca-judge/test/*.test.mjs"
+    "test:rca-judge": "node --test tools/rca-judge/test/*.test.mjs",
+    "test:trigger-bus": "node --test core/test/trigger-bus.test.mjs core/test/t0-bundle.test.mjs use-cases/booklogr/stacks/flask-compose/scripts/test/lib-storm.test.mjs"
   },
   "devDependencies": {
     "@go-task/cli": "^3.51.1",

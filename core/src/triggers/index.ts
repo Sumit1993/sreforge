@@ -13,3 +13,5 @@ export interface TriggerSource {
 
 export { PrometheusAlertTrigger } from "./prometheus-alert.js";
 export type { PrometheusAlertTriggerOptions } from "./prometheus-alert.js";
+export { correlateSignals, MultiAlertTrigger, TriggerBus } from "./trigger-bus.js";
+export type { MultiAlertTriggerOptions, TriggerBusOptions } from "./trigger-bus.js";

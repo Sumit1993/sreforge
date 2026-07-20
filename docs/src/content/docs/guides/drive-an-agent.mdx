@@ -172,6 +172,7 @@ recreated per incident, so nothing carries memory across runs (ADR-0025).
   (default: the reference Ollama driver). It receives the notification JSON in
   `WEBHOOK_PAYLOAD` — the same data the agent could pull from
   `$ALERTMANAGER_URL`, so the push adds no extra hint.
+- **Storm capture and T=0 context:** The listener can capture a configurable time window (`WEBHOOK_STORM_WINDOW_S`) of grouped alerts and combine them with an optional Slack feed (`TRIAGE_FEED`). The merged signals are delivered as a JSON bundle (`T0_BUNDLE`) in addition to the legacy `WEBHOOK_PAYLOAD`.
 - To prove the pipeline without a model (the auto path's `smoke-positive`
   analog, zero egress): `AGENT_CMD='bash scripts/agent-reference.sh'` applies
   the scenario's reference fix in-box and submits.
