@@ -2,6 +2,38 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+export function dockerInspect(
+	container,
+	format,
+	{ timeoutMs = 5000, _exec = execFileSync } = {},
+) {
+	try {
+		const args = format
+			? ["inspect", "-f", format, container]
+			: ["inspect", container];
+		const out = _exec("docker", args, {
+			encoding: "utf8",
+			stdio: format ? ["ignore", "pipe", "ignore"] : "ignore",
+			timeout: timeoutMs,
+		});
+		return format ? out.trim() : true;
+	} catch {
+		return format ? "" : false;
+	}
+}
+
+export function isRunning(container, opts = {}) {
+	return dockerInspect(container, "{{.State.Running}}", opts) === "true";
+}
+
+export function containerExists(container, opts = {}) {
+	return dockerInspect(container, undefined, opts) === true;
+}
+
+export function getStartError(container, opts = {}) {
+	return dockerInspect(container, "{{.State.Error}}", opts);
+}
+
 export function classifyHijack(resLocal, res127) {
 	if (
 		resLocal.status !== null &&

@@ -1,40 +1,17 @@
 #!/usr/bin/env node
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { classifyRunnerError } from "../doctor/lib.mjs";
+import {
+	classifyRunnerError,
+	containerExists,
+	getStartError,
+	isRunning,
+} from "../doctor/lib.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 const FORGE_YML = resolve(REPO_ROOT, "infra/forge/forge.yml");
-
-function dockerInspect(container, format) {
-	try {
-		const args = format
-			? ["inspect", "-f", format, container]
-			: ["inspect", container];
-		const out = execFileSync("docker", args, {
-			encoding: "utf8",
-			stdio: format ? ["ignore", "pipe", "ignore"] : "ignore",
-			timeout: 5000,
-		});
-		return format ? out.trim() : true;
-	} catch {
-		return format ? "" : false;
-	}
-}
-
-function isRunning(container) {
-	return dockerInspect(container, "{{.State.Running}}") === "true";
-}
-
-function containerExists(container) {
-	return dockerInspect(container) === true;
-}
-
-function getStartError(container) {
-	return dockerInspect(container, "{{.State.Error}}");
-}
 
 function runDocker(args, opts = {}) {
 	const res = spawnSync("docker", args, {

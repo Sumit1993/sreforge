@@ -1,9 +1,13 @@
-import { execFile as _execFile, execFileSync } from "node:child_process";
+import { execFile as _execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { classifyRunnerError } from "../../../../../tools/doctor/lib.mjs";
+import {
+	classifyRunnerError,
+	getStartError,
+	isRunning,
+} from "../../../../../tools/doctor/lib.mjs";
 import {
 	DEPLOY_SERVICES,
 	firingNames,
@@ -18,32 +22,6 @@ import {
 const execFile = promisify(_execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STACK = resolve(HERE, "..");
-
-function isRunning(container) {
-	try {
-		const out = execFileSync(
-			"docker",
-			["inspect", "-f", "{{.State.Running}}", container],
-			{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-		).trim();
-		return out === "true";
-	} catch {
-		return false;
-	}
-}
-
-function getStartError(container) {
-	try {
-		const out = execFileSync(
-			"docker",
-			["inspect", "-f", "{{.State.Error}}", container],
-			{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-		).trim();
-		return out;
-	} catch {
-		return "";
-	}
-}
 
 const svcResults = await Promise.all(
 	DEPLOY_SERVICES.map(async (svc) => {

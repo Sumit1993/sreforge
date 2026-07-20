@@ -5,8 +5,11 @@ import {
 	classifyHijack,
 	classifyRunnerError,
 	classifyWincred,
+	containerExists,
 	defineChecks,
 	diffEnvKeys,
+	getStartError,
+	isRunning,
 	resolveRepoRoot,
 	runAllChecks,
 	summarize,
@@ -182,5 +185,47 @@ test("compose drift: DEPLOY_SERVICES matches docker-compose.yml container names"
 		parsedServices.sort(),
 		[...DEPLOY_SERVICES].sort(),
 		"DEPLOY_SERVICES must exactly match container_names in compose file",
+	);
+});
+
+test("dockerInspect helpers", () => {
+	const fakeExecFormat = (cmd, args, opts) => {
+		assert.equal(cmd, "docker");
+		assert.equal(opts.timeout, 5000);
+		if (args.includes("running-container")) return "true\n";
+		if (args.includes("stopped-container")) return "false\n";
+		if (args.includes("error-container")) return "some-error\n";
+		throw new Error("not found");
+	};
+
+	assert.equal(isRunning("running-container", { _exec: fakeExecFormat }), true);
+	assert.equal(
+		isRunning("stopped-container", { _exec: fakeExecFormat }),
+		false,
+	);
+	assert.equal(
+		isRunning("missing-container", { _exec: fakeExecFormat }),
+		false,
+	);
+
+	const fakeExecNoFormat = (cmd, args, _opts) => {
+		assert.equal(cmd, "docker");
+		assert.equal(args[0], "inspect");
+		if (args.includes("missing-container")) throw new Error("not found");
+		return ""; // execFileSync returns stdout but we ignore it
+	};
+
+	assert.equal(
+		containerExists("running-container", { _exec: fakeExecNoFormat }),
+		true,
+	);
+	assert.equal(
+		containerExists("missing-container", { _exec: fakeExecNoFormat }),
+		false,
+	);
+
+	assert.equal(
+		getStartError("error-container", { _exec: fakeExecFormat }),
+		"some-error",
 	);
 });
