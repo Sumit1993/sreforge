@@ -183,6 +183,10 @@ const transcriptPath = resolve(STACK, ".run-workspace", "agent-transcript.json")
 if (existsSync(transcriptPath)) {
   rmSync(transcriptPath);
 }
+const rcaPath = resolve(STACK, ".run-workspace", "agent-rca.json");
+if (existsSync(rcaPath)) {
+  rmSync(rcaPath);
+}
 
 const agent = spawnSync("sh", ["-c", AGENT_CMD], {
   stdio: "inherit",

@@ -60,6 +60,20 @@ function localShell(command) {
     return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
   }
 }
+function localShellArgv(args) {
+  try {
+    const out = execFileSync(args[0], args.slice(1), {
+      encoding: "utf8",
+      cwd: "/workspace",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: Number(env.AGENT_SHELL_TIMEOUT_MS || 120000),
+    });
+    return { exit: 0, out };
+  } catch (e) {
+    return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
+  }
+}
 
 const clip = (s) =>
   s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n…[truncated ${s.length - OUT_MAX} bytes]` : s;
@@ -90,7 +104,10 @@ const tools = [
         "Call this exactly once, when your fix is applied.",
       parameters: {
         type: "object",
-        properties: { note: { type: "string", description: "One-line summary of the fix." } },
+        properties: { 
+          note: { type: "string", description: "One-line summary of the fix." },
+          "rca-file": { type: "string", description: "Path to the postmortem file." }
+        },
       },
     },
   },
@@ -107,7 +124,8 @@ const SYSTEM = [
   "explains the signals, and fix it in place.",
   "Investigate efficiently: prefer targeted commands (grep -rn, reading specific files, git log)",
   "over dumping large directory trees; keep each command's output focused.",
-  "When your fix is applied, call submit. Keep working until you have submitted.",
+  "When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"",
+  "Keep working until you have submitted.",
 ].join("\n");
 
 // Kickoff: symptom-level only — never name the alert cause (de-tell).
@@ -115,9 +133,9 @@ const KICKOFF = env.WEBHOOK_PAYLOAD
   ? "This alert notification was just delivered:\n" +
     env.WEBHOOK_PAYLOAD +
     "\nInvestigate from the alerting stack, find the root cause in the code, " +
-    "apply a fix in /workspace, and submit."
+    "apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\""
   : "An alert is firing for the service. Investigate from the alerting stack, find the root " +
-    "cause in the code, apply a fix in /workspace, and submit.";
+    "cause in the code, apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"";
 
 const messages = [
   { role: "system", content: SYSTEM },
@@ -207,9 +225,20 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
       messages.push({ role: "tool", tool_name: "run_shell", content: clip(`(exit ${r.exit})\n${r.out}`) });
     } else if (name === "submit") {
       const note = String(args.note || "fix").replace(/[^\w .,:;/-]/g, " ").slice(0, 200);
-      console.log(`[${step}] ✅ submit: ${note}`);
+      let rcaFile = args["rca-file"] ? String(args["rca-file"]) : "";
+      let submitArgs = ["submit"];
+      if (rcaFile) {
+        if (/^[A-Za-z0-9._/-]+$/.test(rcaFile) && !rcaFile.startsWith("/") && !rcaFile.includes("..")) {
+          submitArgs.push("--rca", rcaFile);
+        } else {
+          console.warn(`[${step}] ⚠ warning: rejected invalid RCA path "${rcaFile}", submitting without RCA`);
+          rcaFile = "";
+        }
+      }
+      submitArgs.push(note);
+      console.log(`[${step}] ✅ submit: ${note}${rcaFile ? ` (rca: ${rcaFile})` : ""}`);
       // submit is on PATH (/usr/local/bin/submit) — run it directly
-      const r = localShell(`submit "${note}"`);
+      const r = localShellArgv(submitArgs);
       console.log(r.out.trimEnd());
       messages.push({ role: "tool", tool_name: "submit", content: clip(`(exit ${r.exit})\n${r.out}`) });
       submitted = r.exit === 0;
