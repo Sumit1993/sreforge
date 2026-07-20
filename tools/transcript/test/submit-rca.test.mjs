@@ -102,3 +102,36 @@ test("submit --rca with no following path warns and proceeds without RCA", () =>
   const sentinel = JSON.parse(readFileSync(sentinelPath, "utf8"));
   assert.equal(sentinel.note, "");
 });
+
+test("submit --rca /etc/hostname warns and proceeds without RCA", () => {
+  const ws = tmp();
+  execFileSync("git", ["init", ws]);
+  execFileSync("git", ["-C", ws, "config", "user.name", "Test"]);
+  execFileSync("git", ["-C", ws, "config", "user.email", "test@test.com"]);
+  execFileSync("git", ["-C", ws, "commit", "--allow-empty", "-m", "init"]);
+
+  const r = runSubmit(ws, ["--rca", "/etc/hostname", "fix note"]);
+  assert.equal(r.exit, 0);
+  assert.match(r.out, /RCA path outside workspace, ignoring/);
+  assert.ok(!existsSync(join(ws, ".sreforge/rca.txt")));
+});
+
+test("submit --rca with symlink pointing outside warns and proceeds without RCA", () => {
+  const ws = tmp();
+  execFileSync("git", ["init", ws]);
+  execFileSync("git", ["-C", ws, "config", "user.name", "Test"]);
+  execFileSync("git", ["-C", ws, "config", "user.email", "test@test.com"]);
+  execFileSync("git", ["-C", ws, "commit", "--allow-empty", "-m", "init"]);
+
+  const externalDir = tmp();
+  const externalFile = join(externalDir, "escape.txt");
+  writeFileSync(externalFile, "evil", "utf8");
+  
+  const symlinkPath = join(ws, "link.txt");
+  execFileSync("ln", ["-s", externalFile, symlinkPath]);
+
+  const r = runSubmit(ws, ["--rca", symlinkPath, "fix note"]);
+  assert.equal(r.exit, 0);
+  assert.match(r.out, /RCA path outside workspace, ignoring/);
+  assert.ok(!existsSync(join(ws, ".sreforge/rca.txt")));
+});

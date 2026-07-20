@@ -254,7 +254,7 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
       let rcaFile = args["rca-file"] ? String(args["rca-file"]) : "";
       let submitArgs = ["submit"];
       if (rcaFile) {
-        if (/^[A-Za-z0-9._/-]+$/.test(rcaFile)) {
+        if (/^[A-Za-z0-9._/-]+$/.test(rcaFile) && !rcaFile.startsWith("/") && !rcaFile.includes("..")) {
           submitArgs.push("--rca", rcaFile);
         } else {
           console.warn(`[${step}] ⚠ warning: rejected invalid RCA path "${rcaFile}", submitting without RCA`);

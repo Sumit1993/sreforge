@@ -143,3 +143,16 @@ test("invalid kind exits 1", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Invalid kind value/);
 });
+
+test("--kind rca --raw-json-file exits non-zero", () => {
+  const result = runScript([
+    "--kind", "rca",
+    "--out", "/tmp/out.json",
+    "--run-id", "123",
+    "--harness", "agy",
+    "--session", "cold",
+    "--raw-json-file", "/tmp/raw.json"
+  ]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /rca handoff requires --raw-text-file/);
+});

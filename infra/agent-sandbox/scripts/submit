@@ -103,14 +103,24 @@ SENTINEL="$SENTINEL_DIR/submit.json"
 mkdir -p "$SENTINEL_DIR"
 
 if [ -n "$RCA_PATH" ]; then
-  if [ -s "$RCA_PATH" ]; then
-    cp "$RCA_PATH" "$WORKSPACE/.sreforge/rca.txt.tmp" && mv "$WORKSPACE/.sreforge/rca.txt.tmp" "$WORKSPACE/.sreforge/rca.txt" || {
-      echo "submit: warning — RCA copy failed, continuing without RCA" >&2
-      rm -f "$WORKSPACE/.sreforge/rca.txt.tmp"
-    }
-  else
-    echo "submit: warning: --rca $RCA_PATH is missing or empty" >&2
-  fi
+  CANONICAL_WORKSPACE="$(readlink -f "$WORKSPACE" 2>/dev/null || realpath "$WORKSPACE")"
+  CANONICAL_RCA="$(readlink -f "$RCA_PATH" 2>/dev/null || realpath "$RCA_PATH" 2>/dev/null || echo "")"
+  
+  case "$CANONICAL_RCA" in
+    "$CANONICAL_WORKSPACE/"*)
+      if [ -s "$CANONICAL_RCA" ]; then
+        cp "$CANONICAL_RCA" "$WORKSPACE/.sreforge/rca.txt.tmp" && mv "$WORKSPACE/.sreforge/rca.txt.tmp" "$WORKSPACE/.sreforge/rca.txt" || {
+          echo "submit: warning — RCA copy failed, continuing without RCA" >&2
+          rm -f "$WORKSPACE/.sreforge/rca.txt.tmp"
+        }
+      else
+        echo "submit: warning: --rca $RCA_PATH is missing or empty" >&2
+      fi
+      ;;
+    *)
+      echo "submit: warning — RCA path outside workspace, ignoring" >&2
+      ;;
+  esac
 fi
 
 TMP="$SENTINEL_DIR/.submit.json.tmp.$$"

@@ -42,6 +42,11 @@ function run() {
     process.exit(1);
   }
 
+  if (values.kind === "rca" && values["raw-json-file"]) {
+    console.error("rca handoff requires --raw-text-file");
+    process.exit(1);
+  }
+
   if (!values["raw-text-file"] && !values["raw-json-file"]) {
     console.error("Must provide either --raw-text-file or --raw-json-file");
     process.exit(1);

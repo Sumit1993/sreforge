@@ -63,13 +63,16 @@ fi
 # The loop starts fresh each time, so this is always cold by default.
 SESSION="${AGENT_SESSION:-cold}"
 
+# Parameterized out_file as the first arg so RCA doesn't clobber the transcript.
 # Best-effort: the transcript is a debugging artifact, never the graded evidence
 # (the verdict is outcome-based, ADR-0004). Under `set -e` an unguarded failure
 # here would abort before the sentinel check below and throw away a successful
 # agent run — so every path is `|| warn`.
 write_handoff() {
+  local out_file="$1"
+  shift
   node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
-    --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" \
+    --out "$out_file" \
     --run-id "${RUN_ID:-run-unknown}" \
     --harness "agent-loop" \
     --session "$SESSION" \
@@ -82,14 +85,14 @@ write_handoff() {
 
 JSON_TMP="$SCRATCH/raw.json"
 if docker exec agent-shell cat /workspace/.sreforge/agent-transcript.json > "$JSON_TMP" 2>/dev/null; then
-  write_handoff --raw-json-file "$JSON_TMP"
+  write_handoff "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" --raw-json-file "$JSON_TMP"
 else
-  write_handoff --raw-text-file "$AGENT_LOG"
+  write_handoff "$(cd "$HERE/.." && pwd)/.run-workspace/agent-transcript.json" --raw-text-file "$AGENT_LOG"
 fi
 
 RCA_TMP="$SCRATCH/rca.txt"
 if docker exec agent-shell cat /workspace/.sreforge/rca.txt > "$RCA_TMP" 2>/dev/null; then
-  write_handoff --kind rca --raw-text-file "$RCA_TMP" || echo "agent-inbox: WARNING — rca handoff failed (continuing)" >&2
+  write_handoff "$(cd "$HERE/.." && pwd)/.run-workspace/agent-rca.json" --kind rca --raw-text-file "$RCA_TMP" || echo "agent-inbox: WARNING — rca handoff failed (continuing)" >&2
 fi
 
 if [ "$SUBMITTED" = true ]; then
