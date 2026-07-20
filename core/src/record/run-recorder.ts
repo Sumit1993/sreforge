@@ -100,6 +100,8 @@ export class FileRunRecorder implements RunRecorder {
             "utf8"
           )
         );
+      } else if (this.#fullRecordStoreDir) {
+        console.warn(`WARNING: Skipped full-record store write for run '${record.runId}' (missing sha256)`);
       }
     }
 

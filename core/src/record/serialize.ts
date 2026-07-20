@@ -148,7 +148,7 @@ export function fromDiskRecord(disk: DiskRunRecord): RunRecord {
     trigger: {
       source: disk.trigger.source,
       alertName: disk.trigger.alert_name,
-      severity: disk.trigger.severity,
+      ...(disk.trigger.severity !== undefined ? { severity: disk.trigger.severity } : {}),
       labels: disk.trigger.labels,
       annotations: disk.trigger.annotations,
       firedAt: disk.trigger.fired_at,
@@ -164,7 +164,7 @@ export function fromDiskRecord(disk: DiskRunRecord): RunRecord {
     ci: disk.ci ? {
       green: disk.ci.green,
       output: disk.ci.output,
-      exitCode: disk.ci.exit_code,
+      ...(disk.ci.exit_code !== undefined ? { exitCode: disk.ci.exit_code } : {}),
       durationMs: disk.ci.duration_ms,
     } : null,
     deploy: disk.deploy ? {
@@ -196,8 +196,23 @@ function fromDiskScore(disk: DiskOracleScore): OracleScore {
   };
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize);
+  }
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    const result: Record<string, unknown> = {};
+    for (const key of keys) {
+      result[key] = canonicalize((value as Record<string, unknown>)[key]);
+    }
+    return result;
+  }
+  return value;
+}
+
 export function serializeDiskRecord(disk: DiskRunRecord): string {
-  return JSON.stringify(disk, null, 2) + "\n";
+  return JSON.stringify(canonicalize(disk), null, 2) + "\n";
 }
 
 export function pruneDiskRecord(full: DiskRunRecord): DiskRunRecord {

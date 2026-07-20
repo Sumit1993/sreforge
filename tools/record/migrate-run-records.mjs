@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile, rename } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -100,7 +101,9 @@ async function main() {
     if (dryRun) {
       console.log(`[dry-run] Would migrate ${dir.name}`);
     } else {
-      await writeFile(recordPath, outBytes, "utf8");
+      const tempPath = `${recordPath}.${randomUUID()}.tmp`;
+      await writeFile(tempPath, outBytes, "utf8");
+      await rename(tempPath, recordPath);
       console.log(`[migrated] ${dir.name}`);
     }
     migrated++;

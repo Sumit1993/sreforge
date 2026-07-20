@@ -175,3 +175,35 @@ test("writes pruned and full records when configured", async () => {
   const storedFullBytes = readFileSync(fullPath);
   assert.equal(storedFullBytes.toString("utf8"), fullBytes.toString("utf8"), "full record must match exactly");
 });
+
+test("mismatched handoff with pruned and full record configured", async () => {
+  const base = tmp();
+  const prunedDir = tmp();
+  const fullDir = tmp();
+  
+  const handoff = makeHandoff(tmp(), "some-other-run");
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+    prunedRecordDir: prunedDir,
+    fullRecordStoreDir: fullDir,
+  }).record(makeRecord());
+
+  assert.ok(existsSync(join(runDir, "record.json")));
+  assert.ok(existsSync(join(runDir, "transcript-error.txt")));
+  assert.ok(!existsSync(join(runDir, "agent-transcript.json")));
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.agent_transcript, undefined);
+
+  const prunedPath = join(prunedDir, `${RUN_ID}.json`);
+  assert.ok(existsSync(prunedPath), "pruned record must be written");
+  const pruned = JSON.parse(readFileSync(prunedPath, "utf8"));
+  assert.equal(pruned.agent_transcript, undefined);
+  assert.ok(pruned.full_record_sha256, "pruned record must have sha256");
+
+  const fullPath = join(fullDir, `${pruned.full_record_sha256}.json`);
+  assert.ok(existsSync(fullPath), "full record must be written at content-addressed path");
+});
+

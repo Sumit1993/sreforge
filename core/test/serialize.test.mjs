@@ -82,3 +82,33 @@ test("pruneDiskRecord", () => {
   assert.equal(full.trajectory.transcript, "hello");
   assert.deepEqual(full.agent_transcript, { t: 1 });
 });
+
+test("serialize round-trip with absent optionals", () => {
+  const minimal = { ...dummyRecord };
+  minimal.trigger = { ...minimal.trigger };
+  delete minimal.trigger.severity;
+  minimal.ci = { ...minimal.ci };
+  delete minimal.ci.exitCode;
+
+  const disk = toDiskRecord(minimal);
+  assert.equal("severity" in disk.trigger, false, "severity should be absent on disk record");
+  assert.equal("exit_code" in disk.ci, false, "exit_code should be absent on disk record");
+
+  const restored = fromDiskRecord(disk);
+  assert.deepEqual(restored, minimal);
+  assert.equal("severity" in restored.trigger, false);
+  assert.equal("exitCode" in restored.ci, false);
+});
+
+test("serializeDiskRecord determinism", () => {
+  const disk1 = toDiskRecord(dummyRecord);
+  disk1.trigger.labels = { a: "1", b: "2" };
+
+  const disk2 = toDiskRecord(dummyRecord);
+  disk2.trigger.labels = { b: "2", a: "1" };
+
+  const bytes1 = serializeDiskRecord(disk1);
+  const bytes2 = serializeDiskRecord(disk2);
+
+  assert.equal(bytes1, bytes2, "byte output should be identical regardless of key insertion order");
+});
