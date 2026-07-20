@@ -296,3 +296,51 @@ test("a malformed rca handoff never affects record.json or transcript", async ()
   assert.ok(!existsSync(join(runDir, "rca.json")));
   assert.ok(!existsSync(join(runDir, "rca.txt")));
 });
+
+test("refuses the rca when raw_text is not a string", async () => {
+  const base = tmp();
+  const dir = tmp();
+  const rcaHandoff = join(dir, "agent-rca.json");
+  writeFileSync(
+    rcaHandoff,
+    JSON.stringify({
+      schema_version: "agent-rca.v1",
+      run_id: RUN_ID,
+      raw_text: { some: "object" },
+    }),
+  );
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    rcaHandoffPath: rcaHandoff,
+  }).record(makeRecord());
+
+  assert.ok(!existsSync(join(runDir, "rca.json")), "invalid rca must NOT be filed");
+  assert.ok(!existsSync(join(runDir, "rca.txt")), "invalid rca must NOT be filed");
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.verdict, "passed");
+});
+
+test("refuses the rca when schema_version is wrong", async () => {
+  const base = tmp();
+  const dir = tmp();
+  const rcaHandoff = join(dir, "agent-rca.json");
+  writeFileSync(
+    rcaHandoff,
+    JSON.stringify({
+      schema_version: "wrong-version",
+      run_id: RUN_ID,
+      raw_text: "text",
+    }),
+  );
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    rcaHandoffPath: rcaHandoff,
+  }).record(makeRecord());
+
+  assert.ok(!existsSync(join(runDir, "rca.json")), "invalid rca must NOT be filed");
+  assert.ok(!existsSync(join(runDir, "rca.txt")), "invalid rca must NOT be filed");
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.verdict, "passed");
+});

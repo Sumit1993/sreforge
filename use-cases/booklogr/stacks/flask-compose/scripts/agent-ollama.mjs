@@ -96,6 +96,18 @@ function inBox(command) {
     return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
   }
 }
+function inBoxArgv(args) {
+  try {
+    const out = execFileSync(
+      "docker",
+      ["exec", "-u", U, "-w", "/workspace", CONTAINER, ...args],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 },
+    );
+    return { exit: 0, out };
+  } catch (e) {
+    return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
+  }
+}
 const clip = (s) =>
   s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n…[truncated ${s.length - OUT_MAX} bytes]` : s;
 
@@ -239,13 +251,19 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
       messages.push({ role: "tool", tool_name: "run_shell", content: clip(`(exit ${r.exit})\n${r.out}`) });
     } else if (name === "submit") {
       const note = String(args.note || "fix").replace(/[^\w .,:;/-]/g, " ").slice(0, 200);
-      let rcaFlag = "";
-      if (args["rca-file"]) {
-        const rcaFile = String(args["rca-file"]).replace(/["$]/g, "");
-        rcaFlag = `--rca "${rcaFile}" `;
+      let rcaFile = args["rca-file"] ? String(args["rca-file"]) : "";
+      let submitArgs = ["submit"];
+      if (rcaFile) {
+        if (/^[A-Za-z0-9._/-]+$/.test(rcaFile)) {
+          submitArgs.push("--rca", rcaFile);
+        } else {
+          console.warn(`[${step}] ⚠ warning: rejected invalid RCA path "${rcaFile}", submitting without RCA`);
+          rcaFile = "";
+        }
       }
-      console.log(`[${step}] ✅ submit: ${note}${rcaFlag ? ` (rca: ${args["rca-file"]})` : ""}`);
-      const r = inBox(`submit ${rcaFlag}"${note}"`);
+      submitArgs.push(note);
+      console.log(`[${step}] ✅ submit: ${note}${rcaFile ? ` (rca: ${rcaFile})` : ""}`);
+      const r = inBoxArgv(submitArgs);
       console.log(r.out.trimEnd());
       messages.push({ role: "tool", tool_name: "submit", content: clip(`(exit ${r.exit})\n${r.out}`) });
       submitted = r.exit === 0;
@@ -290,22 +308,26 @@ try {
 
 try {
   if (inBox("test -f /workspace/.sreforge/rca.txt").exit === 0) {
-    const rcaOut = resolve(logDir, "agent-rca.json");
-    const rcaTmp = resolve(logDir, "rca.txt");
     const catRes = inBox("cat /workspace/.sreforge/rca.txt");
-    writeFileSync(rcaTmp, catRes.out, "utf8");
-    execFileSync("node", [
-      handoffScript,
-      "--kind", "rca",
-      "--out", rcaOut,
-      "--run-id", runId,
-      "--harness", "ollama",
-      "--session", session,
-      "--model", MODEL,
-      "--provider", provider,
-      "--submitted", String(submitted),
-      "--raw-text-file", rcaTmp
-    ]);
+    if (catRes.exit !== 0 || !catRes.out.trim()) {
+      console.warn("agent-ollama: WARNING — rca read failed or empty, skipping handoff (continuing)");
+    } else {
+      const rcaOut = resolve(logDir, "agent-rca.json");
+      const rcaTmp = resolve(logDir, "rca.txt");
+      writeFileSync(rcaTmp, catRes.out, "utf8");
+      execFileSync("node", [
+        handoffScript,
+        "--kind", "rca",
+        "--out", rcaOut,
+        "--run-id", runId,
+        "--harness", "ollama",
+        "--session", session,
+        "--model", MODEL,
+        "--provider", provider,
+        "--submitted", String(submitted),
+        "--raw-text-file", rcaTmp
+      ]);
+    }
   }
 } catch (err) {
   console.warn(`agent-ollama: WARNING — rca handoff failed (continuing; the run is still gradeable): ${err.message}`);

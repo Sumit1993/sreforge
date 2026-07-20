@@ -89,7 +89,7 @@ fi
 
 RCA_TMP="$SCRATCH/rca.txt"
 if docker exec agent-shell cat /workspace/.sreforge/rca.txt > "$RCA_TMP" 2>/dev/null; then
-  write_handoff --kind rca --raw-text-file "$RCA_TMP" || true
+  write_handoff --kind rca --raw-text-file "$RCA_TMP" || echo "agent-inbox: WARNING — rca handoff failed (continuing)" >&2
 fi
 
 if [ "$SUBMITTED" = true ]; then

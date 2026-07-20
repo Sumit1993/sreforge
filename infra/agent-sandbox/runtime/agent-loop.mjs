@@ -60,6 +60,20 @@ function localShell(command) {
     return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
   }
 }
+function localShellArgv(args) {
+  try {
+    const out = execFileSync(args[0], args.slice(1), {
+      encoding: "utf8",
+      cwd: "/workspace",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: Number(env.AGENT_SHELL_TIMEOUT_MS || 120000),
+    });
+    return { exit: 0, out };
+  } catch (e) {
+    return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
+  }
+}
 
 const clip = (s) =>
   s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n…[truncated ${s.length - OUT_MAX} bytes]` : s;
@@ -211,14 +225,20 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
       messages.push({ role: "tool", tool_name: "run_shell", content: clip(`(exit ${r.exit})\n${r.out}`) });
     } else if (name === "submit") {
       const note = String(args.note || "fix").replace(/[^\w .,:;/-]/g, " ").slice(0, 200);
-      let rcaFlag = "";
-      if (args["rca-file"]) {
-        const rcaFile = String(args["rca-file"]).replace(/["$]/g, "");
-        rcaFlag = `--rca "${rcaFile}" `;
+      let rcaFile = args["rca-file"] ? String(args["rca-file"]) : "";
+      let submitArgs = ["submit"];
+      if (rcaFile) {
+        if (/^[A-Za-z0-9._/-]+$/.test(rcaFile)) {
+          submitArgs.push("--rca", rcaFile);
+        } else {
+          console.warn(`[${step}] ⚠ warning: rejected invalid RCA path "${rcaFile}", submitting without RCA`);
+          rcaFile = "";
+        }
       }
-      console.log(`[${step}] ✅ submit: ${note}${rcaFlag ? ` (rca: ${args["rca-file"]})` : ""}`);
+      submitArgs.push(note);
+      console.log(`[${step}] ✅ submit: ${note}${rcaFile ? ` (rca: ${rcaFile})` : ""}`);
       // submit is on PATH (/usr/local/bin/submit) — run it directly
-      const r = localShell(`submit ${rcaFlag}"${note}"`);
+      const r = localShellArgv(submitArgs);
       console.log(r.out.trimEnd());
       messages.push({ role: "tool", tool_name: "submit", content: clip(`(exit ${r.exit})\n${r.out}`) });
       submitted = r.exit === 0;

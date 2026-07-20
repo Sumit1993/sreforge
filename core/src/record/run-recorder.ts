@@ -77,10 +77,16 @@ export class FileRunRecorder implements RunRecorder {
       try {
         const content = await readFile(this.#rcaHandoffPath, "utf8");
         const handoff = JSON.parse(content);
-        if (handoff.run_id === record.runId) {
+        if (
+          handoff.schema_version !== "agent-rca.v1" ||
+          typeof handoff.run_id !== "string" ||
+          (handoff.raw_text !== undefined && typeof handoff.raw_text !== "string")
+        ) {
+          console.warn("WARNING: Invalid RCA handoff envelope, skipping ingest");
+        } else if (handoff.run_id === record.runId) {
           writes.push(writeFile(join(runDir, "rca.json"), content, "utf8"));
           if (handoff.raw_text !== undefined) {
-            writes.push(writeFile(join(runDir, "rca.txt"), String(handoff.raw_text), "utf8"));
+            writes.push(writeFile(join(runDir, "rca.txt"), handoff.raw_text, "utf8"));
           }
         } else {
           const err = `RCA mismatch: handoff file run_id '${handoff.run_id}' != record runId '${record.runId}'`;

@@ -45,9 +45,14 @@ set -eu
 WORKSPACE="${WORKSPACE:-/workspace}"
 
 RCA_PATH=""
-if [ "${1:-}" = "--rca" ] && [ $# -ge 2 ]; then
-  RCA_PATH="$2"
-  shift 2
+if [ "${1:-}" = "--rca" ]; then
+  if [ $# -ge 2 ] && [ -n "$2" ]; then
+    RCA_PATH="$2"
+    shift 2
+  else
+    echo "submit: warning — --rca given without a path, ignoring" >&2
+    if [ $# -ge 2 ]; then shift 2; else shift 1; fi
+  fi
 fi
 NOTE="${1:-}"
 
@@ -99,7 +104,10 @@ mkdir -p "$SENTINEL_DIR"
 
 if [ -n "$RCA_PATH" ]; then
   if [ -s "$RCA_PATH" ]; then
-    cp "$RCA_PATH" "$SENTINEL_DIR/rca.txt" || echo "submit: warning: could not copy RCA from $RCA_PATH" >&2
+    cp "$RCA_PATH" "$WORKSPACE/.sreforge/rca.txt.tmp" && mv "$WORKSPACE/.sreforge/rca.txt.tmp" "$WORKSPACE/.sreforge/rca.txt" || {
+      echo "submit: warning — RCA copy failed, continuing without RCA" >&2
+      rm -f "$WORKSPACE/.sreforge/rca.txt.tmp"
+    }
   else
     echo "submit: warning: --rca $RCA_PATH is missing or empty" >&2
   fi

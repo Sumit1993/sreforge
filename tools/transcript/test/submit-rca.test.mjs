@@ -83,3 +83,22 @@ test("submit --rca missing file prints warning but still submits", () => {
   const sentinel = JSON.parse(readFileSync(sentinelPath, "utf8"));
   assert.equal(sentinel.note, "fix note");
 });
+
+test("submit --rca with no following path warns and proceeds without RCA", () => {
+  const ws = tmp();
+  execFileSync("git", ["init", ws]);
+  execFileSync("git", ["-C", ws, "config", "user.name", "Test"]);
+  execFileSync("git", ["-C", ws, "config", "user.email", "test@test.com"]);
+  execFileSync("git", ["-C", ws, "commit", "--allow-empty", "-m", "init"]);
+
+  const r = runSubmit(ws, ["--rca"]);
+  assert.equal(r.exit, 0);
+  assert.match(r.out, /without a path, ignoring/);
+
+  assert.ok(!existsSync(join(ws, ".sreforge/rca.txt")));
+
+  const sentinelPath = join(ws, ".sreforge/submit.json");
+  assert.ok(existsSync(sentinelPath));
+  const sentinel = JSON.parse(readFileSync(sentinelPath, "utf8"));
+  assert.equal(sentinel.note, "");
+});
