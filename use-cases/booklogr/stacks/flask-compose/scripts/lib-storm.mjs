@@ -27,3 +27,27 @@ export function mergeNotifications(payloads) {
 		alerts: Array.from(alertsMap.values()),
 	};
 }
+
+export function parseCaptureFile(raw) {
+	const parts = raw.split("\x1e").map(s => s.trim()).filter(s => s.length > 0);
+	return parts.map((part, index) => {
+		try {
+			return JSON.parse(part);
+		} catch (e) {
+			throw new Error(`failed to parse part at index ${index}: ${e.message}`);
+		}
+	});
+}
+
+export function parseTriageFeed(raw) {
+	const lines = raw.split("\n").map(s => s.trim()).filter(s => s.length > 0);
+	const results = [];
+	for (let i = 0; i < lines.length; i++) {
+		try {
+			results.push(JSON.parse(lines[i]));
+		} catch (e) {
+			console.warn(`parseTriageFeed: skipping bad line ${i}: ${e.message}`);
+		}
+	}
+	return results;
+}

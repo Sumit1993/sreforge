@@ -28,7 +28,7 @@
 //      WEBHOOK_PORT (default 8080), AGENT_UID/GID (default current).
 // =============================================================================
 import { execFileSync } from "node:child_process";
-import { mergeNotifications } from "./lib-storm.mjs";
+import { mergeNotifications, parseCaptureFile } from "./lib-storm.mjs";
 
 const env = process.env;
 const CONTAINER = "agent-shell";
@@ -109,14 +109,11 @@ try {
   process.exit(1);
 }
 
-const payloads = [];
+let payloads;
 try {
-  const parts = body.split("\\x1e").filter((s) => s.trim().length > 0);
-  for (const part of parts) {
-    payloads.push(JSON.parse(part.trim()));
-  }
-} catch {
-  console.error(`webhook-wait: captured a request body but it failed to parse:\n${body.slice(0, 800)}`);
+  payloads = parseCaptureFile(body);
+} catch (e) {
+  console.error(`webhook-wait: captured a request body but it failed to parse: ${e.message}\n${body.slice(0, 800)}`);
   process.exit(1);
 }
 

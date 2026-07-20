@@ -33,6 +33,7 @@ import {
   assembleT0Bundle,
   renderT0Bundle,
 } from "../../../../../core/dist/context/t0-bundle.js";
+import { parseTriageFeed } from "./lib-storm.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STACK = resolve(HERE, "..");
@@ -142,11 +143,7 @@ if (payload.schema_version === "storm-capture.v1") {
   if (triageFeedPath && existsSync(triageFeedPath)) {
     try {
       const feedStr = readFileSync(triageFeedPath, "utf8");
-      for (const line of feedStr.split("\\n")) {
-        if (line.trim()) {
-          slackTriage.push(JSON.parse(line));
-        }
-      }
+      slackTriage.push(...parseTriageFeed(feedStr));
     } catch (e) {
       console.error(`auto: failed to parse TRIAGE_FEED at ${triageFeedPath}: ${e.message}`);
     }

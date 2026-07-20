@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeNotifications } from "../lib-storm.mjs";
+import { mergeNotifications, parseCaptureFile, parseTriageFeed } from "../lib-storm.mjs";
 
 test("mergeNotifications - dedupes by fingerprint and fallback", () => {
 	const payloads = [
@@ -45,4 +45,33 @@ test("mergeNotifications - dedupes by fingerprint and fallback", () => {
 	// New alert in second payload
 	const c = merged.alerts.filter((a) => a.fingerprint === "f2");
 	assert.equal(c.length, 1);
+});
+
+test("parseCaptureFile - single payload with trailing separator", () => {
+	const raw = '{"test":1}\x1e';
+	const res = parseCaptureFile(raw);
+	assert.deepEqual(res, [{ test: 1 }]);
+});
+
+test("parseCaptureFile - three payloads", () => {
+	const raw = '{"a":1}\x1e{"b":2}\x1e{"c":3}\x1e';
+	const res = parseCaptureFile(raw);
+	assert.deepEqual(res, [{ a: 1 }, { b: 2 }, { c: 3 }]);
+});
+
+test("parseCaptureFile - throws on bad json with index", () => {
+	const raw = '{"a":1}\x1ebad\x1e{"c":3}\x1e';
+	assert.throws(() => parseCaptureFile(raw), /index 1/);
+});
+
+test("parseTriageFeed - three messages + trailing newline", () => {
+	const raw = '{"a":1}\n{"b":2}\n{"c":3}\n';
+	const res = parseTriageFeed(raw);
+	assert.deepEqual(res, [{ a: 1 }, { b: 2 }, { c: 3 }]);
+});
+
+test("parseTriageFeed - corrupt middle line drops one", () => {
+	const raw = '{"a":1}\nbad json\n{"c":3}\n';
+	const res = parseTriageFeed(raw);
+	assert.deepEqual(res, [{ a: 1 }, { c: 3 }]);
 });
