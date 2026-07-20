@@ -86,17 +86,90 @@ test("evaluateVerdict: decoy-rate no diagnoses -> DISQUALIFIED explicit", () => 
 
 test("run orchestration with injected stub executor", () => {
 	const calls = [];
-	const runIds = runCampaign({
+	const { runIds } = runCampaign({
 		scenario: "/path/to/scenario-xyz",
 		runs: 2,
 		useCase: "booklogr",
 		idPrefix: "hr",
-		executor: (args) => calls.push(args),
+		executor: (args) => {
+			calls.push(args);
+			return 0;
+		},
 	});
 	assert.deepEqual(runIds, ["hr-scenario-xyz-1", "hr-scenario-xyz-2"]);
 	assert.equal(calls.length, 2);
 	assert.equal(calls[0].rid, "hr-scenario-xyz-1");
 	assert.equal(calls[1].rid, "hr-scenario-xyz-2");
+});
+
+test("run-flow with stub executor: cycle 2 of 3 fails -> run_failed row, median over 2", async () => {
+	const outDir = tmp();
+	mkdirSync(join(outDir, "verify"), { recursive: true });
+	const opts = {
+		cmd: "run",
+		scenario: outDir,
+		runs: 3,
+		useCase: "booklogr",
+		idPrefix: "test",
+		mode: "score-headroom",
+		threshold: 0.8,
+	};
+	const mockFinder = (_useCase, _scenarioId, rid) => {
+		return {
+			record: { score: { score: 0.5 }, verdict: "resolved" },
+			recordPath: "fake.json",
+			diagnosis: null,
+			runDir: "some-dir",
+		};
+	};
+	const { runIds, failedRunIds } = runCampaign({
+		scenario: opts.scenario,
+		runs: opts.runs,
+		useCase: opts.useCase,
+		agentCmd: null,
+		idPrefix: opts.idPrefix,
+		executor: (args) => (args.rid.endsWith("-2") ? 1 : 0),
+	});
+	opts.runIds = runIds;
+	opts.failedRunIds = failedRunIds;
+	await scoreSubcommand(opts, mockFinder);
+
+	const mdPath = join(outDir, "verify", "headroom.md");
+	assert.ok(existsSync(mdPath));
+	const md = readFileSync(mdPath, "utf8");
+	assert.match(md, /\| test-.+-2 \| — \| run_failed \|/);
+	assert.match(md, /\*\*Mitigation Median\*\*: 0\.5/);
+});
+
+test("run-flow with stub executor: all cycles fail -> insufficient-valid-runs verdict", async () => {
+	const outDir = tmp();
+	mkdirSync(join(outDir, "verify"), { recursive: true });
+	const opts = {
+		cmd: "run",
+		scenario: outDir,
+		runs: 2,
+		useCase: "booklogr",
+		idPrefix: "test",
+		mode: "score-headroom",
+		threshold: 0.8,
+	};
+	const mockFinder = () => ({ record: null });
+	const { runIds, failedRunIds } = runCampaign({
+		scenario: opts.scenario,
+		runs: opts.runs,
+		useCase: opts.useCase,
+		agentCmd: null,
+		idPrefix: opts.idPrefix,
+		executor: () => 1,
+	});
+	opts.runIds = runIds;
+	opts.failedRunIds = failedRunIds;
+	await scoreSubcommand(opts, mockFinder);
+
+	const mdPath = join(outDir, "verify", "headroom.md");
+	assert.ok(existsSync(mdPath));
+	const md = readFileSync(mdPath, "utf8");
+	assert.match(md, /\*\*ERROR\*\* — insufficient valid runs/);
 });
 
 test("scoreSubcommand: missing record -> clear error", async () => {
@@ -112,6 +185,7 @@ test("scoreSubcommand: missing record -> clear error", async () => {
 	} catch (err) {
 		assert.ok(err instanceof HeadroomError);
 		assert.match(err.message, /Missing record for run r1/);
+		assert.match(err.message, /records\/r1\.json/);
 	}
 });
 

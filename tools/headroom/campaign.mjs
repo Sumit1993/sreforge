@@ -11,7 +11,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "../..");
+export const REPO_ROOT = resolve(HERE, "../..");
 
 export class HeadroomError extends Error {}
 function fail(msg) {
@@ -214,6 +214,7 @@ export function runCampaign({
 	executor,
 }) {
 	const runIds = [];
+	const failedRunIds = [];
 	const scenarioShort = basename(resolve(scenario));
 
 	for (let i = 1; i <= runs; i++) {
@@ -222,9 +223,18 @@ export function runCampaign({
 		loud(
 			`Running cycle ${i}/${runs} for scenario ${scenarioShort}, run ID ${rid}...`,
 		);
-		executor({ useCase, rid, agentCmd, scenario });
+		let status;
+		try {
+			status = executor({ useCase, rid, agentCmd, scenario });
+		} catch {
+			status = 1;
+		}
+		if (status !== 0) {
+			loud(`Cycle ${i} failed. Recording run_failed.`);
+			failedRunIds.push(rid);
+		}
 	}
-	return runIds;
+	return { runIds, failedRunIds };
 }
 
 export function parseArgs(argv) {
@@ -280,10 +290,27 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 	let judgeModel = null;
 
 	for (const rid of opts.runIds) {
-		const { record, diagnosis, runDir } = finderFn(useCase, scenarioShort, rid);
+		const isFailed = opts.failedRunIds && opts.failedRunIds.includes(rid);
+		let record, diagnosis, runDir;
 
-		if (!record) {
-			fail(`Missing record for run ${rid}`);
+		if (isFailed) {
+			record = { run_failed: true };
+		} else {
+			const found = finderFn(useCase, scenarioShort, rid);
+			record = found.record;
+			diagnosis = found.diagnosis;
+			runDir = found.runDir;
+
+			if (!record) {
+				const expectedPath = join(
+					resolve(REPO_ROOT, "use-cases", useCase),
+					"scenarios",
+					scenarioShort,
+					"records",
+					`${rid}.json`
+				);
+				fail(`Missing record for run ${rid} at ${expectedPath}`);
+			}
 		}
 
 		let currentDiagnosis = diagnosis;
@@ -407,7 +434,7 @@ async function main() {
 
 	if (opts.cmd === "run") {
 		if (!opts.scenario) fail("--scenario <id> is required for run");
-		const runIds = runCampaign({
+		const { runIds, failedRunIds } = runCampaign({
 			scenario: opts.scenario,
 			runs: opts.runs,
 			useCase: opts.useCase,
@@ -416,6 +443,7 @@ async function main() {
 			executor: defaultExecutor,
 		});
 		opts.runIds = runIds;
+		opts.failedRunIds = failedRunIds;
 		await scoreSubcommand(opts);
 	} else if (opts.cmd === "score") {
 		await scoreSubcommand(opts);
