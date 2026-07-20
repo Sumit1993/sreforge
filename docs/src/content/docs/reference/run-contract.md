@@ -121,6 +121,7 @@ Each run produces an artifact set in **`runs/<runId>/`**:
 The engine also captures the record into persistent storage via a split (ADR-0026):
 - **Pruned record**: The `record.json` stripped of `trajectory.transcript` and the raw payload (`raw_text`/`raw_json`) of `agent_transcript`, but retaining `agent_transcript`'s identity header (`harness`, `model`, `provider`, `session`, `run_id`, `captured_at`) plus a `full_record_sha256` reference, is committed to `use-cases/<uc>/scenarios/<id>/records/<runId>.json`.
 - **Full record**: The complete run state is archived in a content-addressed private store seam.
+- **Headroom campaign runs**: `tools/headroom` campaign run-ids and their records land in these exact same existing paths (`runs/<runId>/record.json` and pruned copies); the campaign records nothing new.
 
 The `run-record.v1` schema fields include:
 

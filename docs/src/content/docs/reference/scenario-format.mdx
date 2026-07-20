@@ -130,6 +130,10 @@ that section and nothing else. It is **harness-internal**: like all of
 never inside it (it is not a `[verify.weights]` signal).
 :::
 
+:::note[`verify/headroom.md` qualification]
+A scenario must have a baseline-headroom qualification campaign run against it before it can count toward an A/B verdict. The `tools/headroom` campaign tool writes `verify/headroom.md`, asserting whether the scenario is `QUALIFIED` or `DISQUALIFIED` based on baseline runs (it must read `QUALIFIED`).
+:::
+
 ### Endpoints (harness-internal reference)
 
 ```toml
