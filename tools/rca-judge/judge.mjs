@@ -53,6 +53,10 @@ export const SCHEMA_VERSION = "diagnosis.v1";
 // false_leads is BAD and forfeits its weight. The three weights sum to exactly 1.
 export const WEIGHTS = { root_cause_correct: 0.5, evidence_grounded: 0.3, no_false_leads: 0.2 };
 const ROOT_CAUSE_HEADING = "## Root cause (harness-internal)";
+// Hard cap on a single judge model call. A judge endpoint that accepts the TCP
+// connection then stalls is the "timeout" best-effort failure (ADR-0027): abort
+// so the error flows into the --judge catch → log loudly, write nothing, exit 0.
+const JUDGE_TIMEOUT_MS = Number(process.env.RCA_JUDGE_TIMEOUT_MS) || 120_000;
 
 function fail(msg) {
   process.stderr.write(`rca-judge: ${msg}\n`);
@@ -200,6 +204,9 @@ async function ollamaCall(prompt) {
       messages: [{ role: "user", content: prompt }],
       stream: false,
     }),
+    // A stalled endpoint that holds the connection open is the "timeout" case:
+    // AbortSignal fires → fetch rejects → --judge catch logs & exits 0.
+    signal: AbortSignal.timeout(JUDGE_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
