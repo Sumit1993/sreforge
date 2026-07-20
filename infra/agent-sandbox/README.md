@@ -94,12 +94,15 @@ docker socket and no docker CLI**, and the toolset (`curl`/`git`/`jq`) and the
 ## submit — the engine handoff
 
 `submit` (baked at `/usr/local/bin/submit`; `SUBMIT_CMD=submit`) is a handoff, not a
-push. From `/workspace` it commits the agent's edits to a local branch and writes the
-completion sentinel `/workspace/.sreforge/submit.json`. It contacts **no** forge and
-**no** network — it only writes to `/workspace`. The host engine
-(`ExternalAgentRunner`) watches the sentinel, captures the diff, and owns the forge
-push / PR / CI. Select this mode with `AGENT_MODE=external` (or `RUNNER=external`) on
-`run-incident.mjs`; the default remains the scripted runner.
+push. From `/workspace` it commits the agent's edits to a local branch, copies an
+optional postmortem (`--rca <path>`) into the engine-private sentinel dir (best-effort,
+never blocks submission), and writes the completion sentinel
+`/workspace/.sreforge/submit.json`. It contacts **no** forge and **no** network —
+it only writes to `/workspace`. The host engine (`ExternalAgentRunner`) watches the
+sentinel, captures the diff, and owns the forge push / PR / CI. The agent-loop
+kickoff asks for a postmortem on every incident run. Select this mode with
+`AGENT_MODE=external` (or `RUNNER=external`) on `run-incident.mjs`; the default
+remains the scripted runner.
 
 ## Bring it up and exec in
 

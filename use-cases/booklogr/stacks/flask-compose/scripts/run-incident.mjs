@@ -201,6 +201,7 @@ const deps = {
   recorder: new FileRunRecorder({
     baseDir: recordDir,
     transcriptHandoffPath: resolve(STACK, ".run-workspace", "agent-transcript.json"),
+    rcaHandoffPath: resolve(STACK, ".run-workspace", "agent-rca.json"),
     prunedRecordDir,
     fullRecordStoreDir: fullStoreDir,
   }),

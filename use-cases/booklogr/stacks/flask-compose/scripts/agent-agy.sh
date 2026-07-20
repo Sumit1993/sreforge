@@ -92,8 +92,8 @@ Reachable endpoints are provided as env vars inside the host — run: env | grep
 The service's source is a git checkout at /workspace — read it, find the regression that explains the signals, and fix it in place.
 Investigate efficiently: prefer targeted commands (grep -rn, reading specific files, git log) over dumping large directory trees.
 So your work is auditable, echo each command before running it.
-When your fix is applied in /workspace, finish by running:
-  docker exec -u $U -w /workspace agent-shell sh -c 'submit "one-line summary of the fix"'
+When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit:
+  docker exec -u $U -w /workspace agent-shell sh -c 'submit --rca postmortem.md "one-line summary of the fix"'
 Keep working until you have submitted.
 
 This alert notification was just delivered to the incident host:
@@ -132,6 +132,21 @@ node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
   --submitted "$SUBMITTED" \
   --raw-text-file "$LOG" \
   || echo "agent-agy: WARNING — transcript handoff failed (continuing; the run is still gradeable)" >&2
+
+RCA_TMP="$SCRATCH/rca.txt"
+if docker exec agent-shell cat /workspace/.sreforge/rca.txt > "$RCA_TMP" 2>/dev/null; then
+  node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
+    --kind rca \
+    --out "$(cd "$HERE/.." && pwd)/.run-workspace/agent-rca.json" \
+    --run-id "${RUN_ID:-run-unknown}" \
+    --harness "agy" \
+    --session "$SESSION" \
+    --model "$MODEL" \
+    --provider "$PROVIDER" \
+    --submitted "$SUBMITTED" \
+    --raw-text-file "$RCA_TMP" \
+    || echo "agent-agy: WARNING — rca handoff failed (continuing; the run is still gradeable)" >&2
+fi
 
 if [ "$SUBMITTED" = true ]; then
   echo "agent-agy: submit sentinel present — ready to grade. transcript: $LOG"
