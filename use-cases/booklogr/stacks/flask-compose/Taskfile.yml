@@ -178,7 +178,7 @@ tasks:
 
   # ── run (per run; the engine) ────────────────────────────────────────────────
   run:
-    desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>)"
+    desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>, record-dir overrides)"
     deps: [build-core]
     # Fail fast (~5s) if the CI runner is dead — avoids a 10-min timeout in the
     # GiteaCiGate. Recovery: pnpm forge forge-up (docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner)
