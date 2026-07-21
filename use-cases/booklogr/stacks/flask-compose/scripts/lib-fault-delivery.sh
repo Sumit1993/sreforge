@@ -34,9 +34,16 @@ fault_delivery_arm_deploy_recent() {
   git -C "$work" reset --hard "$anchor_ref"
   git -C "$work" clean -fd
   git -C "$work" apply --whitespace=nowarn "$patch_file"
+  # NOTE (cold-arm #66 finding): `commit -am` only stages MODIFIED tracked
+  # files, never new files created by `git apply` (e.g. a new migration file).
+  # db-pool's config-only fault.patch happened to work with -am by accident;
+  # a new-file fault (like #66's drop-migration) silently produced "nothing
+  # to commit" and the whole arm failed. `git add -A` first makes this mode
+  # correct for both modify-only and new-file patches.
+  git -C "$work" add -A
   GIT_AUTHOR_NAME="$author_name" GIT_AUTHOR_EMAIL="$author_email" \
   GIT_COMMITTER_NAME="$author_name" GIT_COMMITTER_EMAIL="$author_email" \
-    git -C "$work" commit -am "$msg" >/dev/null
+    git -C "$work" commit -m "$msg" >/dev/null
   git -C "$work" push -f origin HEAD:main
 }
 
