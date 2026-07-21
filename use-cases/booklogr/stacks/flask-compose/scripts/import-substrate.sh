@@ -137,6 +137,16 @@ git -C "$WORK_DIR" add -A
 export GIT_AUTHOR_DATE="2026-06-09 09:47:18 +0200" GIT_COMMITTER_DATE="2026-06-09 09:47:18 +0200"
 git -C "$WORK_DIR" diff --cached --quiet || commit -m "Add Prometheus metrics (prometheus-flask-exporter, multiprocess mode)" >/dev/null
 
+# commit 1.5 — baseline schema: the composite index backing the default
+# library listing (owner-scoped, title-ordered). A separate concern from the
+# observability + CI baseline commits, so it lands as its own commit the way a
+# real team would land a schema PR.
+mkdir -p "$WORK_DIR/migrations/versions"
+cp instrumentation/schema/versions/*_add_books_owner_title_index.py "$WORK_DIR/migrations/versions/"
+git -C "$WORK_DIR" add -A
+export GIT_AUTHOR_DATE="2026-06-10 09:12:41 +0200" GIT_COMMITTER_DATE="2026-06-10 09:12:41 +0200"
+git -C "$WORK_DIR" diff --cached --quiet || commit -m "Add owner/title index to books table" >/dev/null
+
 # commit 2 — self-hosted CI. A self-hosted fork also drops the upstream's
 # GitHub-only publish/docs automation (Docker Hub / Pages — upstream infra).
 mkdir -p "$WORK_DIR/.gitea/workflows"

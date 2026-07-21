@@ -1,0 +1,99 @@
+# scenario.toml — machine-readable manifest for the cascading-upstream-failure scenario.
+#
+# Taxonomy: engine (core) · use-case (booklogr) · stack (flask-compose) · scenario (cascading-upstream-failure).
+# This is an `incident`-profile scenario: the fault is injected against a LIVE deployment and
+# verification is a behavioral closed loop (the alert must clear under still-active load), as opposed
+# to the `patch` profile (static diff scored against a fixed test set).
+
+# --- identity ------------------------------------------------------------------
+id        = "cascading-upstream-failure"
+use_case  = "booklogr"
+stack     = "flask-compose"
+profile   = "incident"
+title     = "Library listing latency after a schema-cleanup deploy"
+difficulty = "hard"
+tags      = ["latency", "database", "index", "migration", "deploy-correlation", "cascading-upstream"]
+
+description = """
+A recent deploy shipped a database "schema cleanup" migration that dropped a composite index
+(owner_id, lower(title)) backing the default library listing. The uncached GET /v1/books route
+sorts each owner's library by title; without the index Postgres reverts to a full sequential scan
+plus top-N sort of the entire library on every request. Under normal library-read load this
+saturates database/worker CPU and drives p99 request latency above the 300ms SLO, tripping
+BooklogrApiLatencyP99High. Symptoms present as broad API slowness (the library page spins, search
+lags) rather than pointing at the database schema. The fix must restore an index that serves the
+owner-scoped, title-ordered listing so the read path no longer scans and sorts the whole table.
+"""
+
+# --- expected signal -----------------------------------------------------------
+[expected]
+alert                 = "BooklogrApiLatencyP99High"
+severity              = "critical"
+p99_threshold_seconds = 0.3
+
+p99_promql = """
+histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[30s])))
+"""
+
+# --- determinism / timing knobs ------------------------------------------------
+[determinism]
+confirm_fire_timeout_seconds = 240   # TUNE-ON-CERT
+sustained_clear_seconds      = 30
+alert_fired_at               = ""
+
+# --- paths (relative to this scenario directory) -------------------------------
+[paths]
+stack    = "../../stacks/flask-compose"
+compose  = "../../stacks/flask-compose/compose/docker-compose.yml"
+solution = "solution/fix.patch"
+oracle   = "verify/oracle.md"
+
+# --- fault injection -----------------------------------------------------------
+# How the harness makes the incident happen. The fault is a schema migration that
+# drops the ix_books_owner_lower_title index.
+# This is an arm-deploy-recent scenario. The orchestrator resets the origin/main
+# to a healthy baseline (baseline^), applies the fault patch (inject/fault.patch),
+# commits it with the author identity to simulate a real recent deployment, and
+# pushes to origin/main. This uses the `fault_delivery_arm_deploy_recent` function
+# from `scripts/lib-fault-delivery.sh`, pulling config from `scenario.env`.
+# The load driver is k6 running a constant-arrival-rate storm of uncached GET /v1/books
+# title-sorted library-list reads (booklogr-storm-shelf.js) over the seeded library. CRITICAL: load
+# runs CONTINUOUSLY and is NEVER stopped during verification.
+[inject]
+command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
+mode     = "storm"
+continuous = true
+stop_during_verification = false
+
+# --- verification (v1 mitigation oracle) ---------------------------------------
+[verify]
+oracle           = "mitigation"
+pass_threshold   = 0.85
+load_active_during_scoring = true
+  # Services whose firing alerts count toward the no_new_alerts regression signal.
+  # Book-metadata is NOT a signal in this scenario — its alert is out of scope so a
+  # cross-service false-positive can never dock this grade (PR #71 smoke finding).
+  services = ["booklogr-api"]   # BINDING — grader scope for no_new_alerts
+
+signals          = [
+  "ci_green",
+  "alert_cleared",
+  "sustained_clear",
+  "time_to_clear",
+  "no_new_alerts",
+]
+
+[verify.weights]
+ci_green          = 0.25
+alert_cleared     = 0.35
+sustained_clear   = 0.20
+time_to_clear     = 0.10
+no_new_alerts     = 0.10
+
+# --- endpoints (harness-internal reference, not agent-facing) ------------------
+[endpoints]
+prometheus   = "http://localhost:9090"
+alertmanager = "http://localhost:9093"
+grafana      = "http://localhost:3002"
+api          = "http://localhost:5000"
+web          = "http://localhost:5150"
