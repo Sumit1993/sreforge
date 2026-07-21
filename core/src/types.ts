@@ -278,6 +278,14 @@ export interface MitigationCriteria {
   readonly maxClearTimeSeconds: number;
   /** How long the alert must stay cleared to count as mitigated. */
   readonly sustainedClearSeconds: number;
+  /**
+   * Services whose firing alerts count toward the `no_new_alerts` regression
+   * signal. When set, an alert is a regression only if its `service` label is in
+   * this set. When omitted, the signal is unscoped (every non-target firing alert
+   * counts) — the legacy behavior. The booklogr harness always supplies this,
+   * defaulting to the primary (redeployed) service.
+   */
+  readonly inScopeServices?: readonly string[];
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { AlertProbe } from "./index.js";
+import type { AlertProbe, FiringAlert } from "./index.js";
 
 /** Configuration for a {@link PrometheusAlertProbe}. */
 export interface PrometheusAlertProbeOptions {
@@ -49,13 +49,18 @@ export class PrometheusAlertProbe implements AlertProbe {
     );
   }
 
-  async firingAlerts(): Promise<readonly string[]> {
+  async firingAlerts(): Promise<readonly FiringAlert[]> {
     const alerts = await this.#fetchAlerts();
-    const names = alerts
-      .filter((alert) => alert.state === "firing")
-      .map((alert) => alert.labels?.alertname)
-      .filter((name): name is string => typeof name === "string");
-    return [...new Set(names)];
+    const seen = new Set<string>();
+    const out: FiringAlert[] = [];
+    for (const a of alerts) {
+      if (a.state !== "firing") continue;
+      const name = a.labels?.alertname;
+      if (typeof name !== "string" || seen.has(name)) continue;
+      seen.add(name);
+      out.push({ alertName: name, service: a.labels?.service });
+    }
+    return out;
   }
 
   now(): number {
