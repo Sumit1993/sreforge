@@ -76,6 +76,22 @@ case "$DELIVERY_MODE" in
     fault_delivery_arm_deploy_recent "$STACK/substrate/booklogr" "$BASELINE_REF" \
       "$REPO_ROOT/$FAULT_PATCH" "$COMMIT_MESSAGE" "$AUTHOR_NAME" "$AUTHOR_EMAIL"
     ;;
+  arm-deploy-recent-compound)
+    : "${FAULT_PATCH_1:?scenario.env for $SCENARIO_ID must set FAULT_PATCH_1}"
+    : "${COMMIT_MESSAGE_1:?scenario.env for $SCENARIO_ID must set COMMIT_MESSAGE_1}"
+    : "${AUTHOR_NAME_1:?scenario.env for $SCENARIO_ID must set AUTHOR_NAME_1}"
+    : "${AUTHOR_EMAIL_1:?scenario.env for $SCENARIO_ID must set AUTHOR_EMAIL_1}"
+    : "${COMMIT_DATE_1:?scenario.env for $SCENARIO_ID must set COMMIT_DATE_1}"
+    : "${FAULT_PATCH_2:?scenario.env for $SCENARIO_ID must set FAULT_PATCH_2}"
+    : "${COMMIT_MESSAGE_2:?scenario.env for $SCENARIO_ID must set COMMIT_MESSAGE_2}"
+    : "${AUTHOR_NAME_2:?scenario.env for $SCENARIO_ID must set AUTHOR_NAME_2}"
+    : "${AUTHOR_EMAIL_2:?scenario.env for $SCENARIO_ID must set AUTHOR_EMAIL_2}"
+    : "${COMMIT_DATE_2:?scenario.env for $SCENARIO_ID must set COMMIT_DATE_2}"
+    fault_delivery_arm_deploy_recent_compound "$STACK/substrate/booklogr" "$BASELINE_REF" \
+      "$REPO_ROOT/$FAULT_PATCH_1" "$COMMIT_MESSAGE_1" "$AUTHOR_NAME_1" "$AUTHOR_EMAIL_1" "$COMMIT_DATE_1" \
+      "$REPO_ROOT/$FAULT_PATCH_2" "$COMMIT_MESSAGE_2" "$AUTHOR_NAME_2" "$AUTHOR_EMAIL_2" "$COMMIT_DATE_2"
+    ;;
+
   arm-runtime-notrace)
     : "${FAULT_PATCH:?scenario.env for $SCENARIO_ID must set FAULT_PATCH}"
     : "${COMMIT_MESSAGE:?scenario.env for $SCENARIO_ID must set COMMIT_MESSAGE}"
@@ -172,7 +188,7 @@ if [ -n "${SEED_COUNT:-}" ]; then
   if [ "${DB_WAS_RESET:-0}" = "1" ]; then
     echo "==> Seeding library after DB reset (#79)..."
     bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
-  elif [ "$DELIVERY_MODE" = "arm-deploy-recent" ]; then
+  elif [ "$DELIVERY_MODE" = "arm-deploy-recent" ] || [ "$DELIVERY_MODE" = "arm-deploy-recent-compound" ]; then
     echo "==> Seeding library for delivery mode '$DELIVERY_MODE'..."
     bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
   fi
