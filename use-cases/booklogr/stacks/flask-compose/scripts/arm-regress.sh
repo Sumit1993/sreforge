@@ -73,9 +73,6 @@ case "$DELIVERY_MODE" in
     : "${COMMIT_MESSAGE:?scenario.env for $SCENARIO_ID must set COMMIT_MESSAGE}"
     : "${AUTHOR_NAME:?scenario.env for $SCENARIO_ID must set AUTHOR_NAME}"
     : "${AUTHOR_EMAIL:?scenario.env for $SCENARIO_ID must set AUTHOR_EMAIL}"
-    if [ -n "${SEED_COUNT:-}" ]; then
-      bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
-    fi
     fault_delivery_arm_deploy_recent "$STACK/substrate/booklogr" "$BASELINE_REF" \
       "$REPO_ROOT/$FAULT_PATCH" "$COMMIT_MESSAGE" "$AUTHOR_NAME" "$AUTHOR_EMAIL"
     ;;
@@ -167,9 +164,16 @@ if [ "$healthy" -ne 1 ]; then
 fi
 echo "==> booklogr-api is healthy (regressed, load quiesced — not yet firing)"
 
-# Re-seed after a #79 DB reset — the pre-arm seed (if any) was wiped with the
-# volume. seed-library.sh is idempotent, so this is a no-op when no reset ran.
-if [ "${DB_WAS_RESET:-0}" = "1" ] && [ -n "${SEED_COUNT:-}" ]; then
-  echo "==> Re-seeding library after DB reset (#79)..."
-  bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
+# Seed the DB post-deploy if the scenario defines SEED_COUNT AND (the DB volume
+# was reset by #79 reconciliation OR the delivery mode seeds on arm, i.e.
+# arm-deploy-recent). Seeding after healthcheck ensures the DB schema is fully
+# migrated and avoids running seed scripts against a potentially poisoned DB.
+if [ -n "${SEED_COUNT:-}" ]; then
+  if [ "${DB_WAS_RESET:-0}" = "1" ]; then
+    echo "==> Seeding library after DB reset (#79)..."
+    bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
+  elif [ "$DELIVERY_MODE" = "arm-deploy-recent" ]; then
+    echo "==> Seeding library for delivery mode '$DELIVERY_MODE'..."
+    bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
+  fi
 fi
