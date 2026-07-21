@@ -188,7 +188,7 @@ console.log(`auto ── agent: ${AGENT_CMD}`);
 const AGENT_ENV_DEFAULT = [
   "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "TERM",
   "WEBHOOK_PAYLOAD", "T0_BUNDLE", "WEBHOOK_PORT", "AGENT_UID", "AGENT_GID",
-  "AGENT_WINDOW", "AGENT_OUT_MAX", "RUN_ID",
+  "AGENT_WINDOW", "AGENT_OUT_MAX", "RUN_ID", "AGY_MODEL",
 ];
 const extraNames = (env.AGENT_ENV_ALLOWLIST || "")
   .split(",")
@@ -204,9 +204,9 @@ const AGENT_CONTROL_PLANE = new Set([
   "AGENT_PROM_URL", "AGENT_API_URL", "AGENT_GRAFANA_URL", "AGENT_ALERTMANAGER_URL",
 ]);
 
-// Warn (don't silently drop) if an AGENT_* tuning knob is set but not allowlisted.
+// Warn (don't silently drop) if an AGENT_*/AGY_* tuning knob is set but not allowlisted.
 for (const k of Object.keys(env)) {
-  if (k.startsWith("AGENT_") && !allowedNames.has(k) && !AGENT_CONTROL_PLANE.has(k)) {
+  if (/AGY|AGENT/.test(k) && !allowedNames.has(k) && !AGENT_CONTROL_PLANE.has(k)) {
     console.error(
       `auto: WARN — ${k} is set but not in AGENT_ENV_ALLOWLIST — it will NOT reach the agent box.`,
     );
