@@ -73,8 +73,9 @@ SCENARIO_ID=worker-cpu-starvation pnpm forge run booklogr
   low-rate, uncached book-detail stream that routes through the book-metadata
   provider (the cross-service coupling — kept under ~1 % of volume so it does not
   move the healthy-baseline p99). See the script header for the physics.
-- **Storm capture:** `WEBHOOK_STORM_WINDOW_S=30` groups the co-firing alerts into
-  one delivery at t0.
+- **Storm capture:** `WEBHOOK_STORM_WINDOW_S=180` groups the co-firing alerts into
+  one delivery at t0 (raised from 30 at cert: the coupled book-metadata alert
+  reaches firing ~2m20s after storm resume — its rule holds a `for: 2m`).
 - **Triage:** `TRIAGE_FEED` points at `inject/triage.jsonl` — symptom-level
   chatter that passes the t0-bundle `assertSymptomLevel` guard.
 - **Readiness gate:** `READINESS_GATE=on` (the storm never lets up; the rollout
