@@ -1,6 +1,13 @@
 import type { OracleScore, OracleSignal } from "../types.js";
 import type { Oracle, OracleContext } from "./index.js";
 
+/** A single firing alert with the labels the oracle scopes on. */
+export interface FiringAlert {
+  readonly alertName: string;
+  /** The alert's `service` label, if any. */
+  readonly service?: string;
+}
+
 /**
  * Reads the live alert state during behavioral verification. Implementations
  * back this with Prometheus/Alertmanager. Kept as a narrow port so the oracle
@@ -9,8 +16,8 @@ import type { Oracle, OracleContext } from "./index.js";
 export interface AlertProbe {
   /** True while the named alert is firing. */
   isFiring(alertName: string): Promise<boolean>;
-  /** Names of all alerts currently firing — used to detect regressions. */
-  firingAlerts(): Promise<readonly string[]>;
+  /** All alerts currently firing (deduped by name) — used to detect regressions. */
+  firingAlerts(): Promise<readonly FiringAlert[]>;
   /** Monotonic clock in milliseconds (injectable for determinism/tests). */
   now(): number;
 }
@@ -104,18 +111,26 @@ export class MitigationOracle implements Oracle {
         )
       : false;
 
-    // Signal 5 — no new alerts fired (regression check), excluding the target.
-    const otherFiring = (await this.#probe.firingAlerts()).filter(
-      (name) => name !== alert,
-    );
-    const noNewAlerts = otherFiring.length === 0;
+    // Signal 5 — no new alerts fired (regression check), scoped to the
+    // scenario's declared in-scope services and excluding the target.
+    const firing = await this.#probe.firingAlerts();
+    const scope = mitigation.inScopeServices;
+    const otherFiring = firing.filter((a) => a.alertName !== alert);
+    const regressions =
+      scope === undefined
+        ? otherFiring
+        : otherFiring.filter(
+            (a) => a.service !== undefined && scope.includes(a.service),
+          );
+    const noNewAlerts = regressions.length === 0;
+    const regressionNames = regressions.map((a) => a.alertName);
 
     const signals: readonly OracleSignal[] = [
       signal("ci_green", ciGreen, ciGreen ? 1 : 0, SIGNAL_WEIGHTS.ciGreen, "CI build + existing tests passed"),
       signal("alert_cleared", alertCleared, alertCleared ? 1 : 0, SIGNAL_WEIGHTS.alertCleared, `alert ${alert} cleared within budget`),
       signal("sustained_clear", sustainedClear, sustainedClear ? 1 : 0, SIGNAL_WEIGHTS.sustainedClear, `alert stayed cleared for ${mitigation.sustainedClearSeconds}s`),
       signal("time_to_clear", alertCleared, timeToClearValue, SIGNAL_WEIGHTS.timeToClear, alertCleared ? `cleared in ${Math.round(timeToClearMs / 1_000)}s` : "did not clear"),
-      signal("no_new_alerts", noNewAlerts, noNewAlerts ? 1 : 0, SIGNAL_WEIGHTS.noNewAlerts, noNewAlerts ? "no regression alerts" : `new alerts: ${otherFiring.join(", ")}`),
+      signal("no_new_alerts", noNewAlerts, noNewAlerts ? 1 : 0, SIGNAL_WEIGHTS.noNewAlerts, noNewAlerts ? "no regression alerts" : `new alerts: ${regressionNames.join(", ")}`),
     ];
 
     return scoreFrom(this.id, signals, this.#passThreshold);

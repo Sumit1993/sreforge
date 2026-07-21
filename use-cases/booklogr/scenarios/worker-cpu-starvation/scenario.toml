@@ -1,35 +1,45 @@
-# scenario.toml — machine-readable manifest for the decoy-deploy-control scenario.
+# scenario.toml — machine-readable manifest for the worker-cpu-starvation scenario.
 #
-# Taxonomy: engine (core) · use-case (booklogr) · stack (flask-compose) · scenario (decoy-deploy-control).
+# Taxonomy: engine (core) · use-case (booklogr) · stack (flask-compose) · scenario (worker-cpu-starvation).
 # This is an `incident`-profile scenario: the fault is injected against a LIVE deployment and
 # verification is a behavioral closed loop (the alert must clear under still-active load), as opposed
 # to the `patch` profile (static diff scored against a fixed test set).
+#
+# CERTIFICATION PENDING (ADR-0026): this scenario ships authored but NOT certified. No acceptance.json,
+# no headroom.md, no recorded fire times exist yet — they must come from real certification runs.
+# See README.md "CERTIFICATION PENDING" for the exact live evidence still required.
 
 # --- identity ------------------------------------------------------------------
-id        = "decoy-deploy-control"     # BINDING — unique scenario id; matches the folder name
+id        = "worker-cpu-starvation"    # BINDING — unique scenario id; matches the folder name
 use_case  = "booklogr"                 # BINDING — product domain this scenario exercises
 stack     = "flask-compose"            # BINDING — substrate: Flask + Gunicorn + Prometheus/Alertmanager/Grafana on Docker Compose
 profile   = "incident"                 # ARCHETYPE — incident = live deploy + behavioral closed-loop oracle (NOT patch)
-title     = "Cache outage masked by an unrelated recent deploy"  # BINDING — human-readable scenario title
-difficulty = "hard"                    # ARCHETYPE — easy | medium | hard — the recent commit on main is a plausible-looking red herring; the actual cause has zero forge trace
-tags      = ["latency", "cache", "deploy-correlation", "runtime-config-drift"]  # BINDING — fault-class tags
+title     = "Worker pool CPU-starved by full-library re-sort on the hot read path"  # BINDING — human-readable scenario title
+difficulty = "hard"                    # ARCHETYPE — easy | medium | hard — structurally hard: a multi-service alert storm that must be grouped into ONE incident with a shared cause
+tags      = ["latency", "cpu", "worker-starvation", "storm", "multi-alert", "deploy-correlation"]  # BINDING — fault-class tags
 
-# One-paragraph description of the scenario (human-readable, neutral framing).
+# One-paragraph description of the scenario (human-readable, harness-internal — NOT the agent brief;
+# the ContextAssembler renders the neutral agent brief from the alert + live endpoints, not from this).
 description = """
-p99 request latency on book search breaches the 300ms SLO and fires BooklogrApiLatencyP99High.
-There IS a real recent deploy on main, but it only fixes an unrelated HTTP status code bug in the
-settings endpoint and is physically incapable of affecting search latency. The actual cause is that
-the deployed cache backend has drifted to NullCache at the runtime/infra layer, outside application
-source control — every search request now misses the cache and pays the book-metadata upstream's full
-1.1-1.3s latency. An agent that anchors on "what changed recently in git" and reverts the innocent
-deploy will NOT clear the incident: the fix must restore the cache backend itself. The scenario is a
-control for deploy-correlation reasoning: recency of a commit does not by itself establish causation.
+A recent deploy-time change to the `/v1/books` library-list route replaced the database-side ORDER BY +
+LIMIT/OFFSET pagination with an in-application "shelf ordering" pass: it now materializes the owner's ENTIRE
+library (150k seeded rows) as ORM objects and Unicode-normalizes + sorts them in Python on every request
+before slicing out the requested page. The work is CPU-bound (ORM hydration of the full result set plus a
+per-row article-insensitive / accent-folded sort key), so under the constant-arrival-rate library-read storm
+all four Gunicorn workers saturate their CPU. Once the workers are pinned, EVERY endpoint queues at accept —
+including cached routes like `/v1/books/search` and book-detail lookups — so p99 request latency climbs well
+past the 300ms SLO and fires BooklogrApiLatencyP99High. Because the starved API can no longer drive its normal
+call volume to the book-metadata provider, that downstream service's inbound request traffic collapses,
+firing a second, cross-service signal (service=book-metadata). Grouping these signals into a single incident
+with a shared cause is the point of this scenario. The fix must stop the per-request full-library re-sort so
+the read path returns to database-side pagination and the workers are no longer CPU-starved.
 """
 
 # --- expected signal -----------------------------------------------------------
 # The alert the agent is paged on and the SLO it encodes. Used by the confirm-fire gate and the oracle.
+# UNCHANGED from the existing booklogr-rules.yml primary latency alert — this scenario does NOT edit that file.
 [expected]
-alert                 = "BooklogrApiLatencyP99High"  # BINDING — alert name in the Prometheus rule set
+alert                 = "BooklogrApiLatencyP99High"  # BINDING — alert name in the existing Prometheus rule set (booklogr-rules.yml, unchanged)
 severity              = "critical"                    # ARCHETYPE — paging severity
 p99_threshold_seconds = 0.3                           # ARCHETYPE — alert fires when p99 > 0.3s for 30s; healthy baseline well under 100ms
 
@@ -44,13 +54,12 @@ histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_b
 # Harness timing contract. The confirm-fire gate proves the fault is live BEFORE the agent starts;
 # the oracle requires the alert to stay cleared for sustained_clear_seconds under still-active load.
 [determinism]
-confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for BooklogrApiLatencyP99High to enter firing state under storm load
+confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for BooklogrApiLatencyP99High to enter firing state under storm load (CPU saturation fires fast; kept at db-pool's 240)
 sustained_clear_seconds      = 30    # ARCHETYPE — alert must remain cleared this long (load still active) to score as mitigated
 alert_fired_at               = ""    # populated at runtime by the confirm-fire gate (RFC3339 timestamp of first firing)
 
 # --- paths (relative to this scenario directory) -------------------------------
-# All paths are relative to use-cases/booklogr/scenarios/decoy-deploy-control/.
-# The booklogr compose lives IN-REPO at stacks/flask-compose/compose — not an external sibling repo.
+# All paths are relative to use-cases/booklogr/scenarios/worker-cpu-starvation/.
 [paths]
 stack    = "../../stacks/flask-compose"                          # BINDING — harness-side run layer for this substrate
 compose  = "../../stacks/flask-compose/compose/docker-compose.yml"  # BINDING — in-repo compose file (not an external ops repo)
@@ -58,23 +67,19 @@ solution = "solution/fix.patch"                                 # BINDING — ca
 oracle   = "verify/oracle.md"                                    # BINDING — v1 mitigation-oracle specification (harness-internal)
 
 # --- fault injection -----------------------------------------------------------
-# How the harness makes the incident happen. TWO things are deployed at arm time (mode 3,
-# fault_delivery_arm_runtime_notrace in scripts/lib-fault-delivery.sh):
-#   1. A REAL recent commit on main (inject/fault.patch — the settings.py status-code fix),
-#      pushed under the maintainer identity with a real current timestamp, exactly like an
-#      ordinary innocuous deploy. This commit CANNOT cause the incident.
-#   2. The real fault, applied with ZERO forge trace: a compose-level `.env` override
-#      (CACHE_TYPE=NullCache) written into the deploy directory, picked up by the shared
-#      force-recreate step. Nothing is committed or pushed for this half.
-# The scenario's own base anchor (scenario/decoy-deploy-control, prepared once by
-# scripts/prepare-decoy-base.sh) already carries two BACKDATED "old code" commits: the app's
-# CACHE_TYPE read from os.environ (12-factor idiom) and a boot log line that prints the
-# effective cache backend — the diagnosis breadcrumb for this scenario.
-# The load driver is k6 in constant-arrival-rate mode (booklogr-storm.js), hitting
-# GET /v1/books/search over a fixed 8-query working set at 25 req/s — identical dynamics to
-# latency-cache-stampede (same cached route, same upstream latency), because the underlying
-# mechanism here is also "the cache is off": CRITICAL: load runs CONTINUOUSLY and is NEVER
-# stopped during verification.
+# How the harness makes the incident happen. The fault is a single-file change to
+# api/routes/books.py (get_books): the DB-side ORDER BY + paginate is replaced with a full-library
+# materialize-normalize-sort-in-Python pass. Reverting the commit (solution/fix.patch) restores
+# database-side pagination.
+# This is an arm-deploy-recent scenario. The orchestrator resets origin/main to a healthy baseline
+# (baseline^), applies the fault patch (inject/fault.patch), commits it with the author identity to
+# simulate a real recent deployment, and pushes to origin/main. This uses the
+# `fault_delivery_arm_deploy_recent` function from `scripts/lib-fault-delivery.sh`, pulling config from
+# scenario.env.
+# The load driver is k6 running a constant-arrival-rate BROWSE-MIXED storm (booklogr-storm-browse-mixed.js):
+# a dominant stream of uncached GET /v1/books library-list reads (the CPU-saturating path) plus a low-rate
+# stream of uncached book-detail lookups that route through the book-metadata provider (the cross-service
+# coupling). CRITICAL: load runs CONTINUOUSLY and is NEVER stopped during verification.
 [inject]
 command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
 mode     = "storm"                    # ARCHETYPE — constant-arrival-rate storm over fixed query working set
@@ -83,20 +88,20 @@ stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): loa
 
 # --- verification (v1 mitigation oracle) ---------------------------------------
 # Multi-signal, objective, no-LLM oracle. v1 ships mitigation only; diagnosis/RCA judge is deferred to v2.
-# Full contract and measurement details in verify/oracle.md, including the MANDATORY negative test
-# (reverting the innocent recent commit must NOT clear the alert — see verify/negative-fixture.patch).
-# Acceptable fix families: pin the cache backend in application config so it ignores the runtime
-# env override (solution/fix.patch), or any equivalent change that stops CACHE_TYPE=NullCache from
-# reaching the effective config. Reverting the innocent settings.py commit does NOT count — it does
-# not touch the cache backend at all. The oracle grades observed behavior, NOT a diff match.
+# IDENTICAL signal set and weights to db-pool-exhaustion-deploy — the mitigation oracle is UNCHANGED.
+# The cross-service book-metadata storm signal is NOT a verify signal (diagnosis/storm-grouping is the
+# #56 judge's job, never a mitigation gate). Full contract and measurement details in verify/oracle.md.
+# Acceptable fix families: revert the shelf-ordering commit; restore database-side ORDER BY + LIMIT/OFFSET
+# pagination; or otherwise stop the per-request full-library materialize/sort so the read path no longer
+# pins the workers' CPU. The oracle grades observed behavior, NOT a diff match against solution/fix.patch.
 [verify]
 oracle           = "mitigation"       # ARCHETYPE — oracle family; compound oracle drops in detect/diagnose later without refactor
 pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
 load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
-  # Services whose firing alerts count toward the no_new_alerts regression signal.
-  # Book-metadata is NOT a signal in this scenario — its alert is out of scope so a
-  # cross-service false-positive can never dock this grade (PR #71 smoke finding).
-  services = ["booklogr-api"]   # BINDING — grader scope for no_new_alerts
+  # Both services are in scope: book-metadata's rate collapse/recovery is a legitimate
+  # coupled signal here — a correct fix restores provider traffic and clears the alert;
+  # if it stays stalled post-fix that is a real regression and must count.
+  services = ["booklogr-api", "book-metadata"]   # BINDING — grader scope for no_new_alerts
 
 # Signal weights (must sum to 1.0). Three HARD signals (ci_green + alert_cleared + sustained_clear = 0.80)
 # plus soft credit. A fix that clears the alert briefly but does NOT sustain under active storm scores
@@ -110,7 +115,7 @@ signals          = [
   "no_new_alerts",     # ARCHETYPE — no other alert (BooklogrApiHighErrorRate, BooklogrApiDown) transitions to firing post-fix
 ]
 
-# Signal weights used by the compound oracle (must match verify/oracle.md).
+# Signal weights used by the compound oracle (must match verify/oracle.md). UNCHANGED from db-pool.
 [verify.weights]
 ci_green          = 0.25   # ARCHETYPE
 alert_cleared     = 0.35   # ARCHETYPE

@@ -1,0 +1,53 @@
+# Alert rules for the self-hosted book-metadata provider (the custom-URL data
+# provider the booklogr API calls). These are HARNESS observability over our own
+# stub, exposed via prometheus_client on book-metadata:8080/metrics and scraped by
+# the job_name: 'book-metadata' scrape config in prometheus.yml.
+#
+# This is a NEW rules file (scenario worker-cpu-starvation own_additions). It does
+# NOT touch observability/rules/booklogr-rules.yml. Metric names are the stub's:
+#   book_metadata_requests_total     counter, label endpoint (edition|work|search)
+#   book_metadata_inflight_requests  gauge, concurrent in-flight handlers
+#   book_metadata_request_duration_seconds  histogram, handler wall-clock
+#
+# Cross-service physics (see verify/oracle.md "Root cause (harness-internal)"):
+# the API is this provider's sole consumer. When the API's request workers are
+# saturated, browse/detail requests pile up in the API's accept queue and never
+# reach the point of calling the provider, so the provider's INBOUND request rate
+# collapses. (In-flight PILEUP does not occur: the provider's response bodies are
+# tiny, so a slow-reading starved client never blocks the provider's socket
+# write — there is no backpressure to pile up on. Rate collapse is the signal
+# that genuinely moves.)
+#
+# ALL thresholds and windows below are PROVISIONAL and MUST be tuned against live
+# certification soak data before this scenario is certified.  # TUNE-ON-CERT
+groups:
+  - name: book-metadata
+    rules:
+      - alert: BookMetadataTrafficStalled
+        # Fires when the provider WAS serving steady traffic (min-baseline qualifier)
+        # but its inbound request rate has since collapsed to below a ratio of its
+        # trailing baseline (collapse ratio). This keeps it quiet for scenarios that
+        # simply never exercise the provider (idle/no baseline), so it only fires on
+        # an active-then-stalled transition.
+        expr: |
+          (
+            sum(rate(book_metadata_requests_total{job="book-metadata"}[2m]))
+            <
+            0.4 * sum(rate(book_metadata_requests_total{job="book-metadata"}[30m] offset 2m))
+          )
+          and
+          (
+            sum(rate(book_metadata_requests_total{job="book-metadata"}[30m] offset 2m)) > 0.15
+          )
+        for: 2m                       # TUNE-ON-CERT — sustained-collapse window (unchanged)
+        labels:
+          service: book-metadata      # distinct service -> distinct storm group from booklogr-api
+          severity: warning
+        annotations:
+          summary: "book-metadata inbound request traffic has stalled"
+          description: >-
+            The book-metadata provider was serving steady traffic but its inbound
+            request rate has collapsed. Its upstream consumer appears to have stopped
+            driving normal call volume.
+        # Provisional numbers: current-2m rate vs 30m-trailing baseline (baseline window/offset),
+        # collapse ratio 0.4, min-baseline 0.15 req/s, 2m sustain. All  # TUNE-ON-CERT  against real soak data.

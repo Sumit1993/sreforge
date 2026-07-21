@@ -79,6 +79,7 @@ export {
 } from "./verify/index.js";
 export type {
   AlertProbe,
+  FiringAlert,
   MitigationOracleOptions,
   PrometheusAlertProbeOptions,
   WeightedOracle,
