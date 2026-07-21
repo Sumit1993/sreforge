@@ -8,7 +8,7 @@ no-LLM **mitigation oracle**.
 
 The full oracle is a weighted `CompoundedOracle` over the incident lifecycle:
 
-```
+```text
 score = Σ ( weight_i · signal_i )   over phases: detect → diagnose → mitigate
 ```
 
@@ -31,7 +31,7 @@ A recent schema-cleanup deploy dropped the composite index `ix_books_owner_lower
 
 The deploy loop the oracle observes:
 
-```
+```text
 agent edits run workspace → sreforge submit → CI gate → (green) auto-merge
   → docker compose build booklogr-api && up -d booklogr-api
   → oracle scores under STILL-ACTIVE k6 storm load
@@ -65,7 +65,7 @@ If `ci_green` fails, the fix is **not deployed** and the run **cannot pass**
 After redeploy, `BooklogrApiLatencyP99High` must be **absent from the firing
 set**. Measured by polling Prometheus:
 
-```
+```text
 GET http://localhost:9090/api/v1/alerts
 → no alert with labels.alertname == "BooklogrApiLatencyP99High" and state == "firing"
 ```
@@ -100,19 +100,28 @@ proportionally higher within the soft weight.
 
 ### (e) `no_new_alerts` — pass/fail (soft)   weight 0.10
 
-No other alert may transition into the firing state after the fix is deployed
-(regression guard). In particular:
+**Scope (manifest binding).** This signal is evaluated **only over `booklogr-api`
+alerts** — `scenario.toml` → `[verify].services = ["booklogr-api"]`. Alerts from
+other services, notably the cross-service `book-metadata` provider, are **out of
+scope** and can never dock this grade. This is the PR #71 binding: a
+book-metadata false-positive must not fail an otherwise-correct booklogr-api fix.
 
-- `BooklogrApiHighErrorRate` (5xx ratio > 0.05) must not fire or must clear.
-- `BooklogrApiDown` (`up == 0`) must not fire.
-- No new latency, error-rate, or availability alert may appear.
+Within that scope, the regression guard fails only if a **new `booklogr-api`
+alert is still firing at the scoring point** that was not already firing before
+the fix deployed. In particular:
 
-A fix that resolves p99 latency while introducing a new error-rate spike fails
-this signal.
+- `BooklogrApiHighErrorRate` (5xx ratio > 0.05) must not be firing at scoring time.
+- `BooklogrApiDown` (`up == 0`) must not be firing at scoring time.
+- No new latency, error-rate, or availability alert on `booklogr-api` may be firing.
+
+An alert that briefly fires and then clears **before** the scoring point does
+**not** fail this signal — only an alert still firing when the oracle scores
+counts as a regression. A fix that resolves p99 latency while introducing a new
+`booklogr-api` error-rate spike fails this signal.
 
 ## Pass threshold and rationale
 
-```
+```text
 passThreshold = 0.85
 ```
 
@@ -133,8 +142,10 @@ property is what **fails**:
   most **0.80** (`ci_green + alert_cleared` + soft credit) and fails. This is the
   **ADR-0004 anti-cheat**: a surface-level mitigation that does not survive the load
   cannot reach 0.85.
-- A fix that never clears at all scores at most ~0.35 (`ci_green +
-  no_new_alerts`) and fails.
+- A fix that never clears the alert fails the `alert_cleared` hard gate, and per
+  the fail-closed short-circuit (rule 2 below) the run aborts before the soft
+  signals are scored — so its weight ceiling is `ci_green` alone (0.25) and it
+  cannot pass.
 
 `time_to_clear` and `no_new_alerts` are **soft**: a sustained, regression-free
 fix passes comfortably (≈0.90–0.98 regardless of clear speed), while a genuine regression (a newly firing alert)

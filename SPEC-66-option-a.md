@@ -174,7 +174,7 @@ def upgrade():
     op.create_index(
         'ix_books_owner_lower_title',
         'books',
-        ['owner_id', sa.text('lower(title))').text if False else sa.text('lower(title)')],
+        ['owner_id', sa.text('lower(title)')],
         unique=False,
     )
 

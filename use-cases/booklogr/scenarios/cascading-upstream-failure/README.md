@@ -40,10 +40,10 @@ Before running this scenario for the first time, you must create its local ancho
 bash scripts/prepare-scenario.sh cascading-upstream-failure
 ```
 
-The full automated loop — arm the incident (regress + storm + confirm-fire),
-drive a scripted reference fix through the engine (CI gate → auto-merge →
-redeploy → behavioral oracle under still-active load), then reset — is one
-command from the stack dir:
+The full automated loop runs in two phases from the stack dir — first `arm` the
+incident (regress + storm + confirm-fire), then `run`, which drives a scripted
+reference fix through the engine (CI gate → auto-merge → redeploy → behavioral
+oracle under still-active load):
 
 ```bash
 SCENARIO_ID=cascading-upstream-failure pnpm forge arm booklogr
