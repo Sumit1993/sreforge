@@ -82,6 +82,8 @@ discover it from the alerting stack.)
 
 ### `scenario` — run metadata
 
+`id` identifies the target scenario (defaults to `latency-cache-stampede`). `SCENARIO_ID` propagation accepts values via environment variable (`SCENARIO_ID=<id>`) or trailing task argument (`SCENARIO_ID=<id>`) on scenario-aware verbs, threading the ID to smoke and arm scripts. Invalid scenario slugs (not matching `/^[a-z0-9][a-z0-9-]*$/`) are rejected before script execution.
+
 `profile` is `incident` or `patch`. **`alert_fired_at`** is populated by the
 **confirm-fire gate**: setup injects the fault and confirms the alert fired
 *before* the run is handed to the agent; if it never fires, the run aborts or

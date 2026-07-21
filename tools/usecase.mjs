@@ -145,11 +145,26 @@ if (verb === "forge-up" || verb === "forge-down") {
 if (!ref) die(`'${verb}' needs a use-case: pnpm forge ${verb} <use-case>`);
 
 const SCENARIO_VERBS = new Set(["arm", "auto", "run", "smoke", "agent-up", "incident", "e2e"]);
-const hasScenarioId = Boolean(
-  process.env.SCENARIO_ID || rest.some((arg) => arg === "SCENARIO_ID" || arg.startsWith("SCENARIO_ID="))
-);
-if (hasScenarioId && !SCENARIO_VERBS.has(verb)) {
-  die(`verb '${verb}' does not accept SCENARIO_ID`);
+const scenarioIds = [];
+if (process.env.SCENARIO_ID !== undefined) {
+  scenarioIds.push(process.env.SCENARIO_ID);
+}
+for (const arg of rest) {
+  if (arg.startsWith("SCENARIO_ID=")) {
+    scenarioIds.push(arg.slice(12));
+  } else if (arg === "SCENARIO_ID") {
+    scenarioIds.push("");
+  }
+}
+if (scenarioIds.length > 0) {
+  if (!SCENARIO_VERBS.has(verb)) {
+    die(`verb '${verb}' does not accept SCENARIO_ID`);
+  }
+  for (const id of scenarioIds) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+      die(`invalid SCENARIO_ID '${id}' — lowercase slug expected`);
+    }
+  }
 }
 
 const stackDir = resolveStack(ref);
