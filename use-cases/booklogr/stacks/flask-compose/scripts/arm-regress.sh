@@ -11,6 +11,9 @@
 # base-sha assert fails. Running this phase first makes the clone match the armed
 # head; the fire phase (arm-fire.sh) then runs after the box + listener are up.
 #
+# Also reconciles the persisted Postgres DB revision (step 3c, #79) against the
+# incoming scenario's migration tree, resetting booklogr_pgdata when foreign.
+#
 # The manual path is unaffected: arm-incident.sh runs this then arm-fire.sh, so
 # `task arm` behaves exactly as before.
 # =============================================================================
@@ -93,6 +96,42 @@ case "$DELIVERY_MODE" in
     ;;
 esac
 
+# 3c. DB revision reconciliation (#79) — keep the persisted Postgres volume in
+# sync with the freshly checked-out migration tree. Migration-touching scenarios
+# (and any agent-authored migration) can leave alembic_version at a revision that
+# is NOT in THIS scenario's tree; the next `flask db upgrade` then FATALs with an
+# opaque "Can't locate revision". Detect that and reset the DB volume so the app
+# entrypoint migrates a clean DB from scratch. Deterministic (ADR-0010): the
+# decision is a pure function of (live DB revision, incoming migration files).
+# The volume persists across arms by design (ADR-0021); this reconciles it.
+DB_WAS_RESET=0
+MIG_DIR="$WORK/migrations/versions"
+
+# Read the live DB head revision. Any failure (DB down, table absent, fresh
+# volume) => empty => nothing foreign to reconcile, let the entrypoint migrate.
+db_rev="$(docker exec booklogr-db psql -U booklogr -d booklogr -tAc \
+  'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]' || true)"
+
+if [ -n "$db_rev" ]; then
+  # Is db_rev a revision this checkout knows? (revision = '<hex>' in any file.)
+  if grep -rqE "^revision = ['\"]${db_rev}['\"]" "$MIG_DIR" 2>/dev/null; then
+    echo "==> DB revision ${db_rev} is known to this scenario's migration tree — no reset."
+  else
+    echo "==> DB revision ${db_rev} is FOREIGN to scenario '${SCENARIO_ID}' (not in ${MIG_DIR})." >&2
+    echo "==> Resetting the booklogr-db volume so the app migrates a clean DB from scratch (#79)..." >&2
+    docker compose -p booklogr -f "$COMPOSE_FILE" rm -sf booklogr-db >/dev/null 2>&1 || true
+    if ! docker volume rm booklogr_pgdata >/dev/null 2>&1; then
+      echo "FATAL(#79): could not remove docker volume 'booklogr_pgdata' to clear a foreign DB" >&2
+      echo "           revision (${db_rev}) for scenario '${SCENARIO_ID}'. The DB is poisoned and" >&2
+      echo "           this arm cannot be trusted. Recover manually: 'pnpm forge down booklogr'" >&2
+      echo "           (down -v drops the volume), then re-arm. Refusing to continue (fail-closed)." >&2
+      exit 1
+    fi
+    DB_WAS_RESET=1
+    echo "==> booklogr-db volume reset; the redeploy below will migrate a fresh DB."
+  fi
+fi
+
 # 3b. Quiesce any in-flight load BEFORE bringing up the regressed baseline.
 # Deploying a NullCache build straight into an active storm saturates all four
 # gunicorn workers on the slow upstream, so even the GET / healthcheck (3s
@@ -127,3 +166,10 @@ if [ "$healthy" -ne 1 ]; then
   exit 1
 fi
 echo "==> booklogr-api is healthy (regressed, load quiesced — not yet firing)"
+
+# Re-seed after a #79 DB reset — the pre-arm seed (if any) was wiped with the
+# volume. seed-library.sh is idempotent, so this is a no-op when no reset ran.
+if [ "${DB_WAS_RESET:-0}" = "1" ] && [ -n "${SEED_COUNT:-}" ]; then
+  echo "==> Re-seeding library after DB reset (#79)..."
+  bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
+fi

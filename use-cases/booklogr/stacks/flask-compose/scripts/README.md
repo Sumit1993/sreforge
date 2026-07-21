@@ -61,6 +61,8 @@ downloads the Task binary) is permitted under pnpm's default script blocking.
 | **diag** | any time | `status.mjs` | | |
 | **—** | — | | | `lib-deploy.sh`, `lib.mjs` (sourced, never run directly) |
 
+> Note: `arm-regress.sh` reconciles the persisted Postgres DB revision against the incoming scenario's migration tree and resets the `booklogr_pgdata` volume when it is foreign (#79), then re-seeds if the scenario seeds.
+
 `fixtures/no-op-fix.patch` is data (the deliberately-wrong fix the negative smoke
 asserts against), not a script.
 
