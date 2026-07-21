@@ -173,6 +173,7 @@ tasks:
       EGRESS_ALLOWLIST: '{{.EGRESS_ALLOWLIST | default ""}}'
       AGENT_CMD: '{{.AGENT_CMD | default ""}}'
       WEBHOOK_TIMEOUT_S: '{{.WEBHOOK_TIMEOUT_S | default ""}}'
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds:
       - node scripts/auto-incident.mjs
 
@@ -284,14 +285,24 @@ tasks:
   # ── smoke (CI/e2e; sequential — each re-arms the stack) ──────────────────────
   smoke:
     desc: "run both smoke checks (positive then negative)"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds:
       - task: smoke:positive
+        vars:
+          SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
       - task: smoke:negative
+        vars:
+          SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
   smoke:positive:
     desc: "arm + reference fix → assert verdict passed"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds: [bash scripts/smoke-positive.sh]
   smoke:negative:
     desc: "arm + no-op fix → assert anti-cheat holds (not passed)"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds: [bash scripts/smoke-negative.sh]
 
   # ── teardown ─────────────────────────────────────────────────────────────────
