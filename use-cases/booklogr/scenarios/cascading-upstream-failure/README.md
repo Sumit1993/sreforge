@@ -17,7 +17,7 @@ Ships authored, NOT certified. Numbers tagged `# TUNE-ON-CERT` are design target
 7. **#64 headroom** — `verify/headroom.md` reads `QUALIFIED`.
 8. **Lever calibration** — final `SEED_COUNT`/`RATE` recorded; healthy indexed p99 and faulted seq-scan p99 both measured and written to `verify/headroom.md` + `verify/acceptance.json`.
 9. **Index-use proof** — `EXPLAIN (ANALYZE)` shows `Index Scan using ix_books_owner_lower_title` for the healthy hot query and `Seq Scan` + `Sort` under the fault, at the chosen `SEED_COUNT`.
-10. **Anchor coherence** — the `prepare-scenario.sh` anchor's migration head is the baseline index revision; fault patch applies cleanly on top.
+10. **Anchor coherence + CI presence** — the `prepare-scenario.sh` anchor's migration head is the baseline index revision; fault patch applies cleanly on top.
 11. **Shared-surface + recalibration** — db-pool/#65/others re-measured and faults re-confirmed with the index in the substrate.
 12. **Alembic linearity** — after fault then fix, `flask db heads` shows a single head; no dangling/branched revisions.
 
