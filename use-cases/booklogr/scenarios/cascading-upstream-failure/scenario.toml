@@ -70,6 +70,10 @@ stop_during_verification = false
 oracle           = "mitigation"
 pass_threshold   = 0.85
 load_active_during_scoring = true
+  # Services whose firing alerts count toward the no_new_alerts regression signal.
+  # Book-metadata is NOT a signal in this scenario — its alert is out of scope so a
+  # cross-service false-positive can never dock this grade (PR #71 smoke finding).
+  services = ["booklogr-api"]   # BINDING — grader scope for no_new_alerts
 
 signals          = [
   "ci_green",
