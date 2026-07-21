@@ -64,7 +64,9 @@ Composites expand to an ordered sequence of phase verbs:
 ## Arguments
 
 Trailing task args are passed through to the underlying task. **Inside a
-composite, they flow only to the `run` phase.**
+composite, they flow to each scenario-aware phase (`arm`, `run`, `auto`,
+`smoke`); other phases receive none.** For example, `agent-up` forwards
+`SCENARIO_ID=<id>` to its `arm` phase.
 
 Scenario-aware verbs (`arm`, `auto`, `run`, `smoke`, `agent-up`, `incident`, `e2e`) accept `SCENARIO_ID` specified either via environment variable (`SCENARIO_ID=<id>`) or trailing task argument (`SCENARIO_ID=<id>`). If omitted, it defaults to `latency-cache-stampede`. Any other verb invoked with `SCENARIO_ID` fails loudly. Scenario IDs must be valid lowercase slugs matching `/^[a-z0-9][a-z0-9-]*$/`; invalid slugs are rejected before task execution.
 
