@@ -144,6 +144,14 @@ if (verb === "forge-up" || verb === "forge-down") {
 
 if (!ref) die(`'${verb}' needs a use-case: pnpm forge ${verb} <use-case>`);
 
+const SCENARIO_VERBS = new Set(["arm", "auto", "run", "smoke", "agent-up", "incident", "e2e"]);
+const hasScenarioId = Boolean(
+  process.env.SCENARIO_ID || rest.some((arg) => arg === "SCENARIO_ID" || arg.startsWith("SCENARIO_ID="))
+);
+if (hasScenarioId && !SCENARIO_VERBS.has(verb)) {
+  die(`verb '${verb}' does not accept SCENARIO_ID`);
+}
+
 const stackDir = resolveStack(ref);
 
 if (verb === "menu" || verb === "list") {
@@ -152,7 +160,8 @@ if (verb === "menu" || verb === "list") {
 } else if (COMPOSITES[verb]) {
   // Stop at the first failed phase and surface which one (task 6).
   for (const phase of COMPOSITES[verb]) {
-    const code = runTask(stackDir, PHASE_TASK[phase], phase === "run" ? rest : []);
+    const isScenarioPhase = phase === "arm" || phase === "run" || phase === "auto" || phase === "smoke";
+    const code = runTask(stackDir, PHASE_TASK[phase], phase === "run" || isScenarioPhase ? rest : []);
     if (code !== 0) {
       process.stderr.write(`forge: composite '${verb}' stopped — phase '${phase}' failed (exit ${code})\n`);
       process.exit(code);
