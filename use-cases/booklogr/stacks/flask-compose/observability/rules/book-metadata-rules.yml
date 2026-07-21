@@ -24,17 +24,22 @@ groups:
   - name: book-metadata
     rules:
       - alert: BookMetadataTrafficStalled
-        # Fires when the provider WAS serving steady traffic (guard clause) but its
-        # inbound request rate has since collapsed to near zero — its upstream
-        # consumer has stopped driving normal call volume. The recent-activity guard
-        # keeps this quiet for scenarios that simply never exercise the provider
-        # (e.g. library-only storms), so it only fires on an active-then-stalled
-        # transition, not on idle.
+        # Fires when the provider WAS serving steady traffic (min-baseline qualifier)
+        # but its inbound request rate has since collapsed to below a ratio of its
+        # trailing baseline (collapse ratio). This keeps it quiet for scenarios that
+        # simply never exercise the provider (idle/no baseline), so it only fires on
+        # an active-then-stalled transition.
         expr: |
-          (sum(rate(book_metadata_requests_total{job="book-metadata"}[2m])) < 0.2)
+          (
+            sum(rate(book_metadata_requests_total{job="book-metadata"}[2m]))
+            <
+            0.4 * sum(rate(book_metadata_requests_total{job="book-metadata"}[30m] offset 2m))
+          )
           and
-          (sum(increase(book_metadata_requests_total{job="book-metadata"}[15m])) > 30)
-        for: 2m                       # TUNE-ON-CERT — sustained-collapse window
+          (
+            sum(rate(book_metadata_requests_total{job="book-metadata"}[30m] offset 2m)) > 0.15
+          )
+        for: 2m                       # TUNE-ON-CERT — sustained-collapse window (unchanged)
         labels:
           service: book-metadata      # distinct service -> distinct storm group from booklogr-api
           severity: warning
@@ -44,5 +49,5 @@ groups:
             The book-metadata provider was serving steady traffic but its inbound
             request rate has collapsed. Its upstream consumer appears to have stopped
             driving normal call volume.
-        # Provisional numbers: 0.2 req/s floor, >30 requests over 15m to arm the
-        # guard, 2m sustain. All  # TUNE-ON-CERT  against real soak data.
+        # Provisional numbers: current-2m rate vs 30m-trailing baseline (baseline window/offset),
+        # collapse ratio 0.4, min-baseline 0.15 req/s, 2m sustain. All  # TUNE-ON-CERT  against real soak data.

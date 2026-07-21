@@ -108,6 +108,27 @@ const PASS_THRESHOLD = Number(env.PASS_THRESHOLD || 0.85);
 const MAX_CLEAR_SECONDS = Number(env.MAX_CLEAR_SECONDS || 180);
 const SUSTAINED_CLEAR_SECONDS = Number(env.SUSTAINED_CLEAR_SECONDS || 30);
 
+// Services whose alerts count toward no_new_alerts. Precedence:
+//   env SCOPE_SERVICES (comma list)  >  scenario.toml `services = [...]`  >  [SERVICE].
+// scenario.toml is the human source of truth; SERVICE is the primary-service default.
+function resolveScopeServices(scenarioId, primaryService) {
+  const fromEnv = env.SCOPE_SERVICES;
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  try {
+    const tomlPath = join(REPO_ROOT, `use-cases/booklogr/scenarios/${scenarioId}/scenario.toml`);
+    const toml = fs.readFileSync(tomlPath, "utf8");
+    const m = toml.match(/^\s*services\s*=\s*\[([^\]]*)\]/m);
+    if (m) {
+      const list = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+      if (list.length) return list;
+    }
+  } catch { /* fall through to default */ }
+  return [primaryService];
+}
+const SCOPE_SERVICES = resolveScopeServices(scenarioId, SERVICE);
+
 const client = new GiteaClient({ baseUrl: GITEA_URL, token: TOKEN, owner: OWNER, repo: REPO });
 
 // ---- runner mode (OPT-IN; default = scripted, fully backward compatible) ----
@@ -247,6 +268,7 @@ const config = {
     alertToClear: ALERT,
     maxClearTimeSeconds: MAX_CLEAR_SECONDS,
     sustainedClearSeconds: SUSTAINED_CLEAR_SECONDS,
+    inScopeServices: SCOPE_SERVICES,
   },
   recordDir,
 };
@@ -260,6 +282,7 @@ if (AGENT_MODE === "external") {
 }
 console.log(`[run-incident] workspace=${WORKSPACE} service=${SERVICE} compose=${COMPOSE_FILE}`);
 console.log(`[run-incident] passThreshold=${PASS_THRESHOLD} maxClear=${MAX_CLEAR_SECONDS}s sustained=${SUSTAINED_CLEAR_SECONDS}s`);
+console.log(`[run-incident] scopeServices=${SCOPE_SERVICES.join(",")}`);
 
 const { record, recordPath } = await runIncident(config, deps);
 

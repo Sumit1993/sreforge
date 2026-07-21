@@ -98,6 +98,10 @@ stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): loa
 oracle           = "mitigation"       # ARCHETYPE — oracle family; compound oracle drops in detect/diagnose later without refactor
 pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
 load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
+  # Both services are in scope: book-metadata's rate collapse/recovery is a legitimate
+  # coupled signal here — a correct fix restores provider traffic and clears the alert;
+  # if it stays stalled post-fix that is a real regression and must count.
+  services = ["booklogr-api", "book-metadata"]   # BINDING — grader scope for no_new_alerts
 
 # Signal weights (must sum to 1.0). Three HARD signals (ci_green + alert_cleared + sustained_clear = 0.80)
 # plus soft credit. A fix that clears the alert briefly but does NOT sustain under active storm scores

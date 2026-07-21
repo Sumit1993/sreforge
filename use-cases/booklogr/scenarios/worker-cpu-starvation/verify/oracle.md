@@ -68,8 +68,8 @@ substrate:
    API's accept queue and mostly never reach the point of calling the provider (many
    time out first). The provider's **inbound request rate collapses** toward zero.
    This is the signal that genuinely moves, and it is what
-   `BookMetadataTrafficStalled` fires on (`rate(book_metadata_requests_total) < floor`,
-   guarded by a "was recently active" clause so it only fires on an
+   `BookMetadataTrafficStalled` fires on (current rate collapsed below a ratio of its
+   trailing baseline, guarded by a min-baseline qualifier so it only fires on an
    active→stalled transition, never on a genuinely idle provider).
 3. **In-flight PILEUP does NOT occur — and that is the sharp physics point.** One
    might expect the starved, slow-reading client to back-pressure the provider and
@@ -90,8 +90,8 @@ percentile and do not move the healthy-baseline p99. Under the fault the library
 stream's own p99 explodes past threshold, so the primary alert is driven by the
 CPU starvation, not by the coupling stream.
 
-**Thresholds are provisional (`# TUNE-ON-CERT`).** The rate floor, the
-recent-activity guard, and the windows in `book-metadata-rules.yml`, and the
+**Thresholds are provisional (`# TUNE-ON-CERT`).** The collapse ratio,
+min-baseline qualifier, and baseline window/offset in `book-metadata-rules.yml`, and the
 coupling stream's rate in the storm, are all provisional and must be tuned against
 live certification soak data. See the README "CERTIFICATION PENDING" section for
 the specific open questions (including cross-scenario interference: a rate-collapse
