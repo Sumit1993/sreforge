@@ -93,6 +93,11 @@ case "$DELIVERY_MODE" in
     ;;
 esac
 
+# 3a. Apply or clear red-herring provider error injection for book-metadata
+if [ -f "$SCRIPTS/inject-red-herring.sh" ]; then
+  bash "$SCRIPTS/inject-red-herring.sh" "$SCENARIO_ID"
+fi
+
 # 3c. DB revision reconciliation (#79) — keep the persisted Postgres volume in
 # sync with the freshly checked-out migration tree. Migration-touching scenarios
 # (and any agent-authored migration) can leave alembic_version at a revision that

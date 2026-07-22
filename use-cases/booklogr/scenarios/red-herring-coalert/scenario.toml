@@ -1,0 +1,91 @@
+# scenario.toml — machine-readable manifest for the red-herring-coalert scenario.
+#
+# Taxonomy: engine (core) · use-case (booklogr) · stack (flask-compose) · scenario (red-herring-coalert).
+# This is an `incident`-profile scenario: the fault is injected against a LIVE deployment and
+# verification is a behavioral closed loop (the alert must clear under still-active load).
+
+# --- identity ------------------------------------------------------------------
+id        = "red-herring-coalert"   # BINDING — unique scenario id; matches the folder name
+use_case  = "booklogr"                 # BINDING — product domain this scenario exercises
+stack     = "flask-compose"            # BINDING — substrate: Flask + Gunicorn + Prometheus/Alertmanager/Grafana on Docker Compose
+profile   = "incident"                 # ARCHETYPE — incident = live deploy + behavioral closed-loop oracle
+title     = "Cache outage with a co-firing upstream-error alert"  # BINDING — human-readable scenario title
+difficulty = "hard"                    # ARCHETYPE — hard: single-line fix, but live misdirection at the alert layer
+tags      = ["latency", "cache", "cache-stampede", "thundering-herd", "misdirection", "co-alert", "triage"]  # BINDING — fault-class tags
+
+# One-paragraph description of the scenario (human-readable, neutral framing).
+description = """
+Sustained search traffic against the Booklogr API drives p99 request latency above the 300ms SLO
+and triggers the BooklogrApiLatencyP99High alert. A concurrent BookMetadataProviderErrorsElevated
+warning alert also fires on the book-metadata upstream service. The book-metadata upstream has an
+elevated error rate returning fast HTTP 503 responses, while uncached successful lookups encounter
+its normal 1200ms latency. The search-response cache is disabled in api/config.py, so incoming search
+requests miss the cache and block Gunicorn workers on slow upstream calls. Under a k6 constant-arrival-rate
+storm over a fixed 8-query working set, p99 climbs past 0.3s. The agent must triage the co-firing alert
+as non-causal and restore effective caching of /v1/books/search to clear the p99 latency breach.
+"""
+
+# --- expected signal -----------------------------------------------------------
+[expected]
+alert                 = "BooklogrApiLatencyP99High"  # BINDING — alert name in the Prometheus rule set
+severity              = "critical"                    # ARCHETYPE — paging severity
+p99_threshold_seconds = 0.3                           # ARCHETYPE — alert fires when p99 > 0.3s for 30s
+
+p99_promql = """
+histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[30s])))
+"""
+
+# --- determinism / timing knobs ------------------------------------------------
+[determinism]
+confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for BooklogrApiLatencyP99High to enter firing state under storm load
+sustained_clear_seconds      = 30    # ARCHETYPE — alert must remain cleared this long (load still active) to score as mitigated
+alert_fired_at               = ""    # populated at runtime by the confirm-fire gate
+
+# --- paths (relative to this scenario directory) -------------------------------
+[paths]
+stack    = "../../stacks/flask-compose"                          # BINDING — harness-side run layer for this substrate
+compose  = "../../stacks/flask-compose/compose/docker-compose.yml"  # BINDING — in-repo compose file
+solution = "solution/fix.patch"                                 # BINDING — canonical reference fix
+oracle   = "verify/oracle.md"                                    # BINDING — v1 mitigation-oracle specification
+
+# --- fault injection -----------------------------------------------------------
+# Reuses latency-cache-stampede's cache regression (CACHE_TYPE = "NullCache" in api/config.py).
+# In addition, arm applies SEARCH_STUB_5XX_RATE=0.08 to book-metadata via compose env to trigger
+# the concurrent BookMetadataProviderErrorsElevated warning alert.
+[inject]
+command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
+mode     = "storm"                    # ARCHETYPE — constant-arrival-rate storm over fixed query working set
+continuous = true                     # ARCHETYPE — driver runs for full lifecycle
+stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): load stays active while oracle scores
+
+# --- verification (v1 mitigation oracle) ---------------------------------------
+[verify]
+oracle           = "mitigation"       # ARCHETYPE — oracle family
+pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
+load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while oracle scores
+# book-metadata is NOT a mitigation signal here — its error alert is an authored
+# red herring, out of scope so it can never dock no_new_alerts (PR #71 scoping).
+services         = ["booklogr-api"]   # BINDING — grader scope for no_new_alerts
+
+signals          = [
+  "ci_green",          # BINDING — Gitea Actions ci.yml
+  "alert_cleared",     # ARCHETYPE — BooklogrApiLatencyP99High absent from Prometheus firing set
+  "sustained_clear",   # ARCHETYPE — stays cleared for sustained_clear_seconds while storm load runs
+  "time_to_clear",     # ARCHETYPE — seconds from redeploy to clear
+  "no_new_alerts",     # ARCHETYPE — no other in-scope alert transitions to firing post-fix
+]
+
+[verify.weights]
+ci_green          = 0.25
+alert_cleared     = 0.35
+sustained_clear   = 0.20
+time_to_clear     = 0.10
+no_new_alerts     = 0.10
+
+# --- endpoints -----------------------------------------------------------------
+[endpoints]
+prometheus   = "http://localhost:9090"
+alertmanager = "http://localhost:9093"
+grafana      = "http://localhost:3002"
+api          = "http://localhost:5000"
+web          = "http://localhost:5150"
