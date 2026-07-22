@@ -16,6 +16,22 @@ import { resolve, join } from "node:path";
 
 const DEFAULT_TARGET = "use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml";
 
+function isValidServiceValue(rawVal) {
+  if (!rawVal) return false;
+  let val = rawVal.trim();
+  if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+    val = val.slice(1, -1).trim();
+  }
+  if (!val || val === "~" || val.toLowerCase() === "null") return false;
+  return true;
+}
+
+function globToRegExp(pattern) {
+  const escaped = pattern.replace(/[.+^${}()|\\\[\]]/g, "\\$&");
+  const regexStr = "^" + escaped.replace(/\*/g, "[^/]*").replace(/\?/g, ".") + "$";
+  return new RegExp(regexStr);
+}
+
 /**
  * Lint YAML content string for Prometheus alert rules missing a `service` label.
  * @param {string} content - YAML content
@@ -43,8 +59,8 @@ export function lintContent(content, file = "", stats = null) {
     const line = lines[i];
     const lineNum = i + 1;
 
-    // Ignore full-line comments
-    if (/^\s*#/.test(line)) {
+    // Ignore full-line comments and empty lines
+    if (/^\s*#/.test(line) || /^\s*$/.test(line)) {
       continue;
     }
 
@@ -76,6 +92,8 @@ export function lintContent(content, file = "", stats = null) {
         alert: alertName,
         indent,
         hasService: false,
+        inLabels: false,
+        labelsIndent: null,
       };
       continue;
     }
@@ -84,10 +102,30 @@ export function lintContent(content, file = "", stats = null) {
     if (currentAlert) {
       const lineIndentMatch = line.match(/^(\s*)/);
       const lineIndent = lineIndentMatch ? lineIndentMatch[1].length : 0;
-      if (lineIndent > currentAlert.indent) {
-        const lineWithoutComment = line.replace(/#.*$/, "").trimEnd();
-        if (/^\s*service:\s*\S+/.test(lineWithoutComment)) {
-          currentAlert.hasService = true;
+
+      if (lineIndent <= currentAlert.indent) {
+        finalizeCurrent();
+        currentAlert = null;
+        continue;
+      }
+
+      const lineWithoutComment = line.replace(/#.*$/, "").trimEnd();
+
+      if (currentAlert.inLabels) {
+        if (lineIndent <= currentAlert.labelsIndent) {
+          currentAlert.inLabels = false;
+        } else {
+          const serviceMatch = lineWithoutComment.match(/^\s*service:\s*(.*)$/);
+          if (serviceMatch && isValidServiceValue(serviceMatch[1])) {
+            currentAlert.hasService = true;
+          }
+        }
+      }
+
+      if (!currentAlert.inLabels) {
+        if (/^\s*labels:\s*$/.test(lineWithoutComment)) {
+          currentAlert.inLabels = true;
+          currentAlert.labelsIndent = lineIndent;
         }
       }
     }
@@ -147,12 +185,14 @@ export function resolveTargets(patterns) {
       // Simple glob expansion: e.g. path/to/rules/*.yml
       const wildcardIndex = pattern.search(/[*?[]/);
       if (wildcardIndex !== -1) {
-        const dirPart = pattern.slice(0, wildcardIndex);
-        const dir = dirPart.slice(0, dirPart.lastIndexOf("/") + 1) || ".";
+        const lastSlash = pattern.lastIndexOf("/");
+        const dir = lastSlash !== -1 ? pattern.slice(0, lastSlash) : ".";
+        const filenamePattern = lastSlash !== -1 ? pattern.slice(lastSlash + 1) : pattern;
         if (existsSync(dir)) {
+          const regex = globToRegExp(filenamePattern);
           const entries = readdirSync(dir, { withFileTypes: true });
           for (const entry of entries) {
-            if (entry.isFile() && (entry.name.endsWith(".yml") || entry.name.endsWith(".yaml"))) {
+            if (entry.isFile() && regex.test(entry.name)) {
               files.push(join(dir, entry.name));
             }
           }

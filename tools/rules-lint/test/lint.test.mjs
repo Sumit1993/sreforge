@@ -114,3 +114,111 @@ test("CLI exit 1 on missing-label fixture", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("annotation-only service fixture fails lint", () => {
+  const yaml = `
+groups:
+  - name: test.rules
+    rules:
+      - alert: AnnotationOnlyService
+        expr: up == 0
+        annotations:
+          summary: Alert summary
+          service: annotation-service
+`;
+  const stats = { totalAlerts: 0 };
+  const result = lintContent(yaml, "annotation_only.yml", stats);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].alert, "AnnotationOnlyService");
+  assert.equal(stats.totalAlerts, 1);
+});
+
+test("quoted-empty service fixture fails lint", () => {
+  const yamlDouble = `
+groups:
+  - name: test.rules
+    rules:
+      - alert: QuotedDoubleEmpty
+        expr: up == 0
+        labels:
+          service: ""
+`;
+  const yamlSingle = `
+groups:
+  - name: test.rules
+    rules:
+      - alert: QuotedSingleEmpty
+        expr: up == 0
+        labels:
+          service: ''
+`;
+  assert.equal(lintContent(yamlDouble, "double.yml").length, 1);
+  assert.equal(lintContent(yamlSingle, "single.yml").length, 1);
+});
+
+test("null or tilde service fixture fails lint", () => {
+  const yamlNull = `
+groups:
+  - name: test.rules
+    rules:
+      - alert: NullService
+        expr: up == 0
+        labels:
+          service: null
+`;
+  const yamlTilde = `
+groups:
+  - name: test.rules
+    rules:
+      - alert: TildeService
+        expr: up == 0
+        labels:
+          service: ~
+`;
+  assert.equal(lintContent(yamlNull, "null.yml").length, 1);
+  assert.equal(lintContent(yamlTilde, "tilde.yml").length, 1);
+});
+
+test("following recording rule labels do not satisfy alert service requirement", () => {
+  const yaml = `
+groups:
+  - name: test.rules
+    rules:
+      - alert: AlertWithoutService
+        expr: up == 0
+        labels:
+          severity: critical
+      - record: job:up:count
+        expr: count(up)
+        labels:
+          service: recording-service
+`;
+  const stats = { totalAlerts: 0 };
+  const result = lintContent(yaml, "recording_rule.yml", stats);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].alert, "AlertWithoutService");
+  assert.equal(stats.totalAlerts, 1);
+});
+
+test("resolveTargets respects wildcard glob patterns and extensions", () => {
+  const tmpDir = join(tmpdir(), `rules-lint-glob-${Date.now()}`);
+  mkdirSync(tmpDir, { recursive: true });
+  writeFileSync(join(tmpDir, "rule-a.yml"), "content");
+  writeFileSync(join(tmpDir, "rule-b.yaml"), "content");
+  writeFileSync(join(tmpDir, "subset-c.yml"), "content");
+  writeFileSync(join(tmpDir, "other.txt"), "content");
+
+  try {
+    const ymlOnly = resolveTargets([join(tmpDir, "*.yml")]);
+    assert.deepEqual(ymlOnly, [join(tmpDir, "rule-a.yml"), join(tmpDir, "subset-c.yml")]);
+
+    const subsetOnly = resolveTargets([join(tmpDir, "subset-*.yml")]);
+    assert.deepEqual(subsetOnly, [join(tmpDir, "subset-c.yml")]);
+
+    const yamlOnly = resolveTargets([join(tmpDir, "*.yaml")]);
+    assert.deepEqual(yamlOnly, [join(tmpDir, "rule-b.yaml")]);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
