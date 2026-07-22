@@ -516,5 +516,53 @@ export function defineChecks(config) {
 				};
 			},
 		},
+		{
+			id: "ambient-furniture",
+			plane: "deploy",
+			run: async () => {
+				const enabled = process.env.AMBIENT_FURNITURE !== "0";
+				const rulesFile = config.ambientRulesPath || null;
+				const rulesPresent = rulesFile ? existsSync(rulesFile) : false;
+				let commitPresent = false;
+				const substratePath = config.substratePath || null;
+				const author = config.ambientCommitAuthor;
+				const subject = config.ambientCommitSubject;
+				const expectedPattern =
+					author && subject ? `${author}: ${subject}` : null;
+				if (substratePath && expectedPattern) {
+					try {
+						const gitLog = execFileSync(
+							"git",
+							["-C", substratePath, "log", "-n", "5", "--format=%an: %s"],
+							{
+								encoding: "utf8",
+								stdio: ["ignore", "pipe", "ignore"],
+								timeout: 5000,
+							},
+						);
+						if (gitLog.includes(expectedPattern)) {
+							commitPresent = true;
+						}
+					} catch {}
+				}
+
+				const statusStr = enabled
+					? "ENABLED (AMBIENT_FURNITURE=1)"
+					: "DISABLED (AMBIENT_FURNITURE=0)";
+				const alertName = config.ambientAlertName || "ambient-alert";
+				const alertService = config.ambientAlertService || "ambient-service";
+				const ruleStr = rulesPresent
+					? `${alertName} (service: ${alertService})`
+					: "ABSENT";
+				const commitStr = commitPresent && expectedPattern
+					? `PRESENT (${expectedPattern})`
+					: "ABSENT";
+
+				return {
+					status: "pass",
+					detail: `Ambient furniture status: ${statusStr} | Ambient alert rule: ${ruleStr} | Recent deploy commit: ${commitStr}`,
+				};
+			},
+		},
 	];
 }

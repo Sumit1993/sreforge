@@ -32,6 +32,8 @@ source_scenario_env "$SCENARIO_ID"
 
 # 0. Quiesce gate (#74): deterministic observability state per run
 echo "==> Quiesce gate (#74)..."
+rm -f "$STACK/observability/rules/ambient-rules.yml"
+docker exec booklogr-prometheus kill -SIGHUP 1 >/dev/null 2>&1 || true
 bash "$SCRIPTS/quiesce.sh"
 
 # 1. Guard: substrate must be imported
@@ -117,6 +119,57 @@ esac
 if [ -f "$SCRIPTS/inject-red-herring.sh" ]; then
   bash "$SCRIPTS/inject-red-herring.sh" "$SCENARIO_ID"
 fi
+
+# 3d. Ambient realism furniture delivery (Issue #86 / QB-5)
+AMBIENT_FURNITURE="${AMBIENT_FURNITURE:-1}"
+AMBIENT_FURNITURE_OPT_OUT="${AMBIENT_FURNITURE_OPT_OUT:-0}"
+AMBIENT_FURNITURE_COMMIT_OPT_OUT="${AMBIENT_FURNITURE_COMMIT_OPT_OUT:-0}"
+
+if [ "$AMBIENT_FURNITURE" != "0" ] && [ "$AMBIENT_FURNITURE_OPT_OUT" != "1" ]; then
+  echo "==> Applying ambient realism furniture (AMBIENT_FURNITURE=1)..."
+  FURNITURE_DIR="$STACK/furniture"
+  if [ -f "$FURNITURE_DIR/ambient.env" ]; then
+    # shellcheck disable=SC1091
+    . "$FURNITURE_DIR/ambient.env"
+  fi
+
+  # Piece B: Innocent recent deploy commit (opt out via AMBIENT_FURNITURE_COMMIT_OPT_OUT=1 or mode 3)
+  if [ "$AMBIENT_FURNITURE_COMMIT_OPT_OUT" != "1" ] && [ "$DELIVERY_MODE" != "arm-runtime-notrace" ]; then
+    if [ -f "$FURNITURE_DIR/innocent.patch" ]; then
+      git -C "$WORK" apply --whitespace=nowarn "$FURNITURE_DIR/innocent.patch"
+      git -C "$WORK" add -A
+
+      # Wall-clock commit-timestamp dependency (ADR-0010/ADR-0022):
+      # Generates a fresh timestamp after the prior commit to ensure linear history.
+      prev_ts=$(git -C "$WORK" log -1 --format=%ct HEAD 2>/dev/null || echo "0")
+      now_ts=$(date +%s)
+      if [ "$now_ts" -le "$prev_ts" ]; then
+        now_ts=$((prev_ts + 1))
+      fi
+
+      author_name="${AMBIENT_COMMIT_AUTHOR:-Mozzo1000}"
+      author_email="${AMBIENT_COMMIT_EMAIL:-mozzo242@gmail.com}"
+      commit_subject="${AMBIENT_COMMIT_SUBJECT:-refactor(api): normalize response status validation in fields route}"
+
+      GIT_AUTHOR_NAME="$author_name" GIT_AUTHOR_EMAIL="$author_email" \
+      GIT_COMMITTER_NAME="$author_name" GIT_COMMITTER_EMAIL="$author_email" \
+      GIT_AUTHOR_DATE="@$now_ts" GIT_COMMITTER_DATE="@$now_ts" \
+        git -C "$WORK" commit -m "$commit_subject" >/dev/null
+      git -C "$WORK" push -f origin HEAD:main
+      echo "==> Applied innocent deploy commit: $commit_subject"
+    fi
+  else
+    echo "==> Skipping innocent deploy commit (Piece B opt-out active for $SCENARIO_ID)"
+  fi
+
+  # Piece A: Flapping ambient alert rule
+  if [ -f "$FURNITURE_DIR/ambient-rules.yml" ]; then
+    cp "$FURNITURE_DIR/ambient-rules.yml" "$STACK/observability/rules/ambient-rules.yml"
+    echo "==> Loaded ambient alert rule: ${AMBIENT_ALERT_NAME:-EdgeClientRequestJitter}"
+    docker exec booklogr-prometheus kill -SIGHUP 1 >/dev/null 2>&1 || true
+  fi
+fi
+
 
 # 3c. DB revision reconciliation (#79) — keep the persisted Postgres volume in
 # sync with the freshly checked-out migration tree. Migration-touching scenarios

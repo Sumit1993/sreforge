@@ -29,6 +29,25 @@ for (const line of envContent.split("\n")) {
 
 const parsedGiteaUrl = new URL(env.GITEA_URL || "http://127.0.0.1:3000");
 
+const ambientEnvPath = resolve(STACK, "furniture/ambient.env");
+const ambientEnv = {};
+if (existsSync(ambientEnvPath)) {
+	const ambientContent = readFileSync(ambientEnvPath, "utf8");
+	for (const line of ambientContent.split("\n")) {
+		const m = line.match(/^([^=]+)=(.*)$/);
+		if (m) {
+			let val = m[2].trim();
+			if (
+				(val.startsWith('"') && val.endsWith('"')) ||
+				(val.startsWith("'") && val.endsWith("'"))
+			) {
+				val = val.slice(1, -1);
+			}
+			ambientEnv[m[1]] = val;
+		}
+	}
+}
+
 const config = {
 	giteaLocalhostUrl: (() => {
 		const u = new URL(parsedGiteaUrl);
@@ -59,6 +78,16 @@ const config = {
 	alertmanagerUrl: "http://localhost:9093",
 	deployUpHint: "pnpm forge up booklogr",
 	useCase: "booklogr",
+	ambientRulesPath: resolve(
+		STACK,
+		ambientEnv.AMBIENT_RULE_PATH || "observability/rules/ambient-rules.yml",
+	),
+	ambientAlertName: ambientEnv.AMBIENT_ALERT_NAME || "EdgeClientRequestJitter",
+	ambientAlertService: ambientEnv.AMBIENT_ALERT_SERVICE || "edge-client",
+	ambientCommitAuthor: ambientEnv.AMBIENT_COMMIT_AUTHOR || "Mozzo1000",
+	ambientCommitSubject:
+		ambientEnv.AMBIENT_COMMIT_SUBJECT ||
+		"refactor(api): normalize response status validation in fields route",
 };
 
 const checks = defineChecks(config);
