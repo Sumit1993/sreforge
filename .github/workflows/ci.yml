@@ -59,12 +59,23 @@ jobs:
             echo "No core test script on this ref — skipping."
           fi
 
+  rules-lint:
+    name: rules-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Lint alert rules for service labels
+        run: node tools/rules-lint/lint.mjs
+
   # Single stable status check to require in branch protection, independent of how
   # the matrix above expands.
   gate:
     name: CI gate
     if: always()
-    needs: [build]
+    needs: [build, rules-lint]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed
