@@ -2,7 +2,7 @@
 
 The harness-side overlay that turns the imported **booklogr** substrate into a
 lived-in, observable deployment with a local Git forge (CI/CD) and a load
-driver over booklogr's Flask/Postgres stack (ADR-0014/ADR-0015).
+driver over booklogr's Flask/Postgres stack (ADR-0014/ADR-0015). SREForge stack deployments include an ambient-realism baseline representing background infrastructure activity, periodic system telemetry, and standard deployment updates.
 
 > The booklogr app itself is **not** in this tree. It's imported into the local
 > Gitea forge and checked out (gitignored) at `substrate/booklogr` as the build

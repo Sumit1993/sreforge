@@ -288,3 +288,12 @@ test("observability-quiescence check handling non-array alerts payload and malfo
 		globalThis.fetch = originalFetch;
 	}
 });
+
+test("ambient-furniture check reports enabled status and rules", async () => {
+	const checks = defineChecks({ substratePath: "/fake/path" });
+	const check = checks.find((c) => c.id === "ambient-furniture");
+	assert.ok(check, "ambient-furniture check must exist");
+	const res = await check.run();
+	assert.equal(res.status, "pass");
+	assert.match(res.detail, /Ambient furniture status: ENABLED/);
+});

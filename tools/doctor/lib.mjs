@@ -516,5 +516,55 @@ export function defineChecks(config) {
 				};
 			},
 		},
+		{
+			id: "ambient-furniture",
+			plane: "deploy",
+			run: async () => {
+				const enabled = process.env.AMBIENT_FURNITURE !== "0";
+				const rulesFile = substratePath
+					? resolve(
+							substratePath,
+							"../../observability/rules/ambient-rules.yml",
+						)
+					: null;
+				const rulesPresent = rulesFile ? existsSync(rulesFile) : false;
+				let commitPresent = false;
+				if (substratePath) {
+					try {
+						const gitLog = execFileSync(
+							"git",
+							["-C", substratePath, "log", "-n", "5", "--format=%an: %s"],
+							{
+								encoding: "utf8",
+								stdio: ["ignore", "pipe", "ignore"],
+								timeout: 5000,
+							},
+						);
+						if (
+							gitLog.includes(
+								"Mozzo1000: refactor(api): normalize response status validation in settings route",
+							)
+						) {
+							commitPresent = true;
+						}
+					} catch {}
+				}
+
+				const statusStr = enabled
+					? "ENABLED (AMBIENT_FURNITURE=1)"
+					: "DISABLED (AMBIENT_FURNITURE=0)";
+				const ruleStr = rulesPresent
+					? "EdgeClientRequestJitter (service: edge-client)"
+					: "ABSENT";
+				const commitStr = commitPresent
+					? 'PRESENT (Mozzo1000: "refactor(api): normalize response status validation in settings route")'
+					: "ABSENT";
+
+				return {
+					status: "pass",
+					detail: `Ambient furniture status: ${statusStr} | Ambient alert rule: ${ruleStr} | Recent deploy commit: ${commitStr}`,
+				};
+			},
+		},
 	];
 }

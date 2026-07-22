@@ -1,0 +1,12 @@
+groups:
+  - name: edge_telemetry
+    rules:
+      - alert: EdgeClientRequestJitter
+        expr: (time() % 120 < 60) and (sum(rate(flask_http_request_total[1m])) > 0 or vector(1))
+        for: 0s
+        labels:
+          severity: warning
+          service: edge-client
+        annotations:
+          summary: "Edge client traffic generator experiencing periodic latency jitter"
+          description: "Flapping request jitter detected on edge client traffic generator."
