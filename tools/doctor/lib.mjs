@@ -150,8 +150,15 @@ export function defineChecks(config) {
 		deployServices,
 		prometheusUrl,
 		alertmanagerUrl,
-		deployUpHint,
+		useCase,
+		quiesceHint: customQuiesceHint,
 	} = config;
+
+	const quiesceHint =
+		customQuiesceHint ??
+		(useCase
+			? `pnpm forge quiesce ${useCase}`
+			: "pnpm forge quiesce <use-case>");
 
 	const safeFetch = async (url, options = {}) => {
 		try {
@@ -473,6 +480,39 @@ export function defineChecks(config) {
 				return {
 					status: "warn",
 					detail: "alertmanager down (status quo routes to null receiver)",
+				};
+			},
+		},
+		{
+			id: "observability-quiescence",
+			plane: "deploy",
+			run: async () => {
+				const res = await safeFetch(`${prometheusUrl}/api/v1/alerts`);
+				if (res.status !== 200 || res.json?.status !== "success") {
+					return {
+						status: "warn",
+						detail: "prometheus unreachable (cannot query quiescence)",
+					};
+				}
+				const alerts = res.json?.data?.alerts;
+				if (!Array.isArray(alerts)) {
+					return {
+						status: "warn",
+						detail: "prometheus returned malformed alerts payload",
+					};
+				}
+				const firing = alerts.filter(
+					(a) => a && typeof a === "object" && a.state === "firing",
+				).length;
+				const pending = alerts.filter(
+					(a) => a && typeof a === "object" && a.state === "pending",
+				).length;
+				if (firing === 0 && pending === 0) {
+					return { status: "pass", detail: "0 firing / 0 pending" };
+				}
+				return {
+					status: "warn",
+					detail: `${firing} firing / ${pending} pending — run \`${quiesceHint}\` before arm`,
 				};
 			},
 		},

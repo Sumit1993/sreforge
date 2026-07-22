@@ -29,12 +29,14 @@ load/                  k6 constant-arrival-rate storm (mounted into the load pla
 scripts/
   import-substrate.sh  mirror-push upstream → Gitea, commit instrumentation + CI
   up.sh / down.sh      bring up / tear down the app stack (+ load plane)
-  arm-incident.sh      regress + storm + confirm-fire (ADR-0010); reconciles DB revision (#79)
+  quiesce.sh           quiesce observability plane before arm (stop load, wipe carryover, warm-up, assert) (#74)
+  arm-incident.sh      regress + storm + confirm-fire (ADR-0010); runs quiesce gate (#74), reconciles DB revision (#79)
+  confirm-quiesced.mjs evidence poll of 0 firing/pending alerts, targets up, baseline present (#74)
   confirm-fire.mjs     poll until BooklogrApiLatencyP99High fires (ADR-0010)
   verify-clear.mjs     sustained-clear oracle under still-active load (ADR-0004)
   status.mjs / lib.mjs current p99 + alert state; shared helpers
 
-> arm reconciles the persisted DB revision and drops `booklogr_pgdata` when a prior migration-touching scenario left it at a foreign Alembic revision (#79); `down -v` still owns full teardown.
+> arm runs the pre-arm quiesce gate (#74) to guarantee deterministic t=0 observability state, reconciles the persisted DB revision and drops `booklogr_pgdata` when a prior migration-touching scenario left it at a foreign Alembic revision (#79); `down -v` still owns full teardown.
 ```
 
 > The Gitea forge is no longer in this stack: it is **shared** infra at

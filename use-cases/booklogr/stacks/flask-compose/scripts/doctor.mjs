@@ -58,6 +58,7 @@ const config = {
 	prometheusUrl: env.PROM_URL || "http://localhost:9090",
 	alertmanagerUrl: "http://localhost:9093",
 	deployUpHint: "pnpm forge up booklogr",
+	useCase: "booklogr",
 };
 
 const checks = defineChecks(config);

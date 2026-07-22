@@ -31,6 +31,7 @@ Each phase verb maps to a task in the stack's `Taskfile.yml`:
 |---|---|---|
 | `setup` | One-time substrate import + scaffolding | No |
 | `up` | Bring up the deployment + observability stack | No |
+| `quiesce` | Quiesce the observability plane before arm (#74) | Yes |
 | `arm` | Inject the fault and confirm the target alert fires | Yes |
 | `agent` | Bring up the sealed agent sandbox | No |
 | `mcp` | Start the optional read-only Grafana MCP telemetry seam | No |
