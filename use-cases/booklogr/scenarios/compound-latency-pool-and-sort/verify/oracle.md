@@ -8,7 +8,7 @@ no-LLM **mitigation oracle**.
 
 The full oracle is a weighted `CompoundedOracle` over the incident lifecycle:
 
-```
+```text
 score = Σ ( weight_i · signal_i )   over phases: detect → diagnose → mitigate
 ```
 
@@ -37,7 +37,7 @@ Partial mitigation (reverting one of the two culprit commits) leaves p99 > 0.3 s
 
 The deploy loop the oracle observes:
 
-```
+```text
 agent edits run workspace → sreforge submit → CI gate → (green) auto-merge
   → docker compose build booklogr-api && up -d booklogr-api
   → oracle scores under STILL-ACTIVE k6 storm load
@@ -75,7 +75,7 @@ histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_b
 
 ## Pass threshold and rationale
 
-```
+```text
 passThreshold = 0.85
 ```
 
