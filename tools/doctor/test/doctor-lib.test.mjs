@@ -229,3 +229,62 @@ test("dockerInspect helpers", () => {
 		"some-error",
 	);
 });
+
+test("observability-quiescence check handling non-array alerts payload and malformed entries", async () => {
+	const originalFetch = globalThis.fetch;
+	try {
+		// Non-array payload test
+		globalThis.fetch = async () => ({
+			status: 200,
+			ok: true,
+			headers: new Map(),
+			json: async () => ({
+				status: "success",
+				data: { alerts: "not-an-array" },
+			}),
+		});
+		const checks1 = defineChecks({ prometheusUrl: "http://localhost:9090" });
+		const quiesceCheck1 = checks1.find(
+			(c) => c.id === "observability-quiescence",
+		);
+		const res1 = await quiesceCheck1.run();
+		assert.equal(res1.status, "warn");
+		assert.equal(res1.detail, "prometheus returned malformed alerts payload");
+
+		// Malformed alert entries & default <use-case> hint
+		globalThis.fetch = async () => ({
+			status: 200,
+			ok: true,
+			headers: new Map(),
+			json: async () => ({
+				status: "success",
+				data: {
+					alerts: [null, 123, { state: "firing" }, { state: "pending" }],
+				},
+			}),
+		});
+		const res2 = await quiesceCheck1.run();
+		assert.equal(res2.status, "warn");
+		assert.equal(
+			res2.detail,
+			"1 firing / 1 pending — run `pnpm forge quiesce <use-case>` before arm",
+		);
+
+		// Configured useCase hint
+		const checks2 = defineChecks({
+			prometheusUrl: "http://localhost:9090",
+			useCase: "mycase",
+		});
+		const quiesceCheck2 = checks2.find(
+			(c) => c.id === "observability-quiescence",
+		);
+		const res3 = await quiesceCheck2.run();
+		assert.equal(res3.status, "warn");
+		assert.equal(
+			res3.detail,
+			"1 firing / 1 pending — run `pnpm forge quiesce mycase` before arm",
+		);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
