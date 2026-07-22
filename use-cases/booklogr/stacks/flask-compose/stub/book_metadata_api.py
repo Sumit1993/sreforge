@@ -14,6 +14,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote
 
+import threading
+
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 PORT = int(os.environ.get("PORT", "8080"))
@@ -24,12 +26,18 @@ PORT = int(os.environ.get("PORT", "8080"))
 REQUESTS = Counter(
     "book_metadata_requests_total", "Metadata requests served, by endpoint.", ["endpoint"]
 )
+PROVIDER_ERRORS = Counter(
+    "book_metadata_provider_errors_total", "Provider errors returned by endpoint.", ["endpoint"]
+)
 INFLIGHT = Gauge(
     "book_metadata_inflight_requests", "Metadata requests currently being served."
 )
 DURATION = Histogram(
     "book_metadata_request_duration_seconds", "Wall-clock duration of a metadata request handler."
 )
+
+_search_counter = 0
+_search_counter_lock = threading.Lock()
 
 # A small local catalogue. Real-looking titles/authors/page-counts so responses
 # read like a genuine metadata provider's rather than placeholders.
@@ -123,6 +131,16 @@ class Handler(BaseHTTPRequestHandler):
         INFLIGHT.inc()
         _started = time.perf_counter()
         try:
+            rate = float(os.environ.get("SEARCH_STUB_5XX_RATE", "0"))
+            if rate > 0 and len(parts) >= 3 and parts[:2] == ["v1", "search"]:
+                with _search_counter_lock:
+                    global _search_counter
+                    _search_counter += 1
+                    req_idx = _search_counter
+                if (req_idx % 25) < int(round(rate * 25)):
+                    PROVIDER_ERRORS.labels(endpoint="search").inc()
+                    return self._json(503, {"message": "Service Temporarily Unavailable"})
+
             time.sleep(random.uniform(1.1, 1.3))
 
             if len(parts) >= 3 and parts[:2] == ["v1", "edition"]:
