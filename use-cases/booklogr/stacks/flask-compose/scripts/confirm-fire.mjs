@@ -12,6 +12,9 @@
 
 import { PROM, P99_EXPR, PRIMARY_ALERT, getAlerts, firing, queryScalar, sleep, nowIso, parseArgs } from "./lib.mjs";
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const a = parseArgs();
 const ALERT = a.alert || PRIMARY_ALERT;
@@ -63,8 +66,15 @@ while (Date.now() < deadline) {
   if (hit) {
     const firedAt = hit.activeAt || nowIso();
     process.stderr.write(`[confirm-fire] FIRING after ${elapsed}s (p99=${p99s})\n`);
+    const recordPayload = { ok: true, alert: ALERT, state: "firing", p99_seconds: p99, alert_fired_at: firedAt, elapsed_seconds: Number(elapsed) };
+    try {
+      const runWs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".run-workspace");
+      if (!fs.existsSync(runWs)) fs.mkdirSync(runWs, { recursive: true });
+      fs.writeFileSync(path.join(runWs, "confirm-fire.json"), JSON.stringify(recordPayload, null, 2), "utf8");
+      fs.writeFileSync(path.join(runWs, "alert_fired_at.json"), JSON.stringify(recordPayload, null, 2), "utf8");
+    } catch (_e) {}
     // machine-readable result on stdout
-    console.log(JSON.stringify({ ok: true, alert: ALERT, state: "firing", p99_seconds: p99, alert_fired_at: firedAt, elapsed_seconds: Number(elapsed) }));
+    console.log(JSON.stringify(recordPayload));
     process.exit(0);
   }
   process.stderr.write(`[confirm-fire] ${elapsed}s pending… p99=${p99s}\n`);

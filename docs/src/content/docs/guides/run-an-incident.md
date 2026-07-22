@@ -82,8 +82,9 @@ pnpm forge menu booklogr
 
 ## Determinism guarantees
 
-Two checks make verification reliable:
+Three checks make verification reliable:
 
+- **Pre-arm quiesce gate** — before every arm, the harness stops active load, recreates Prometheus and Alertmanager containers to wipe carryover TSDB/alert state (#74), optionally lays a fixed warm-up baseline, and asserts 0 firing AND 0 pending alerts with healthy scrape targets.
 - **Confirm-fire before handoff** — setup injects the fault *and* confirms the
   target alert entered the firing state before the run proceeds. If it never
   fires, the run aborts or retries; a non-incident is never handed to an agent.

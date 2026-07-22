@@ -30,6 +30,10 @@ REPO_ROOT="$(cd "$STACK/../../../.." && pwd)"
 SCENARIO_ID="${SCENARIO_ID:-latency-cache-stampede}"
 source_scenario_env "$SCENARIO_ID"
 
+# 0. Quiesce gate (#74): deterministic observability state per run
+echo "==> Quiesce gate (#74)..."
+bash "$SCRIPTS/quiesce.sh"
+
 # 1. Guard: substrate must be imported
 echo "==> Checking substrate workspace..."
 if [ ! -d "$STACK/substrate/booklogr/.git" ]; then

@@ -286,6 +286,19 @@ console.log(`[run-incident] scopeServices=${SCOPE_SERVICES.join(",")}`);
 
 const { record, recordPath } = await runIncident(config, deps);
 
+// Persist evidence records (quiesced.json, confirm-fire.json, alert_fired_at.json) into run record dir
+const runWs = resolve(STACK, ".run-workspace");
+for (const file of ["quiesced.json", "confirm-fire.json", "alert_fired_at.json"]) {
+  const src = join(runWs, file);
+  if (fs.existsSync(src)) {
+    try {
+      fs.copyFileSync(src, join(recordPath, file));
+    } catch (e) {
+      console.warn(`[run-incident] WARNING: Could not copy ${file} to run record: ${e.message}`);
+    }
+  }
+}
+
 console.log("\n========== RESULT ==========");
 console.log(`verdict : ${record.verdict}`);
 console.log(`score   : ${record.score.score.toFixed(3)} (threshold ${PASS_THRESHOLD}, passed=${record.score.passed})`);

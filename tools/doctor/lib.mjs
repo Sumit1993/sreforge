@@ -476,5 +476,28 @@ export function defineChecks(config) {
 				};
 			},
 		},
+		{
+			id: "observability-quiescence",
+			plane: "deploy",
+			run: async () => {
+				const res = await safeFetch(`${prometheusUrl}/api/v1/alerts`);
+				if (res.status !== 200 || res.json?.status !== "success") {
+					return {
+						status: "warn",
+						detail: "prometheus unreachable (cannot query quiescence)",
+					};
+				}
+				const alerts = res.json?.data?.alerts ?? [];
+				const firing = alerts.filter((a) => a.state === "firing").length;
+				const pending = alerts.filter((a) => a.state === "pending").length;
+				if (firing === 0 && pending === 0) {
+					return { status: "pass", detail: "0 firing / 0 pending" };
+				}
+				return {
+					status: "warn",
+					detail: `${firing} firing / ${pending} pending — run \`pnpm forge quiesce booklogr\` before arm`,
+				};
+			},
+		},
 	];
 }
