@@ -4,6 +4,14 @@ The harness-side overlay that turns the imported **booklogr** substrate into a
 lived-in, observable deployment with a local Git forge (CI/CD) and a load
 driver over booklogr's Flask/Postgres stack (ADR-0014/ADR-0015). SREForge stack deployments include an ambient-realism baseline representing background infrastructure activity, periodic system telemetry, and standard deployment updates.
 
+### Ambient Realism Controls
+
+- `AMBIENT_FURNITURE=0`: Disables ambient-realism elements globally across the stack.
+- `AMBIENT_FURNITURE_OPT_OUT=1`: Opts out of ambient furniture loading during scenario arming.
+- `AMBIENT_FURNITURE_COMMIT_OPT_OUT=1`: Disables background deploy commits while leaving ambient alert rules active.
+
+When `AMBIENT_FURNITURE=0` is set, ambient rules and commits are omitted regardless of individual opt-out variables. `AMBIENT_FURNITURE_OPT_OUT` and `AMBIENT_FURNITURE_COMMIT_OPT_OUT` provide targeted overrides for debugging or specific scenario constraints.
+
 > The booklogr app itself is **not** in this tree. It's imported into the local
 > Gitea forge and checked out (gitignored) at `substrate/booklogr` as the build
 > context. The observability/load/CI overlay lives here, in the harness, never

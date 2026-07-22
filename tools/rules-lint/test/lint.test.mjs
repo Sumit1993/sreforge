@@ -248,3 +248,21 @@ test("checkUnscopedAmbientService asserts edge-client is unscoped across real sc
 	assert.equal(result.count, 7);
 	assert.deepEqual(result.errors, []);
 });
+
+test("checkUnscopedAmbientService ignores services key in non-verify sections", () => {
+	const tmpDir = join(tmpdir(), `rules-lint-unscoped-${Date.now()}`);
+	const scenarioDir = join(tmpDir, "test-scenario");
+	mkdirSync(scenarioDir, { recursive: true });
+	writeFileSync(
+		join(scenarioDir, "scenario.toml"),
+		`[meta]\nservices = ["edge-client"]\n\n[verify]\nservices = ["booklogr-api"]\n`,
+	);
+	try {
+		const result = checkUnscopedAmbientService(tmpDir, "edge-client");
+		assert.equal(result.count, 1);
+		assert.deepEqual(result.errors, []);
+	} finally {
+		rmSync(tmpDir, { recursive: true, force: true });
+	}
+});
+

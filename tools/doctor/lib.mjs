@@ -521,15 +521,15 @@ export function defineChecks(config) {
 			plane: "deploy",
 			run: async () => {
 				const enabled = process.env.AMBIENT_FURNITURE !== "0";
-				const rulesFile = substratePath
-					? resolve(
-							substratePath,
-							"../../observability/rules/ambient-rules.yml",
-						)
-					: null;
+				const rulesFile = config.ambientRulesPath || null;
 				const rulesPresent = rulesFile ? existsSync(rulesFile) : false;
 				let commitPresent = false;
-				if (substratePath) {
+				const substratePath = config.substratePath || null;
+				const author = config.ambientCommitAuthor;
+				const subject = config.ambientCommitSubject;
+				const expectedPattern =
+					author && subject ? `${author}: ${subject}` : null;
+				if (substratePath && expectedPattern) {
 					try {
 						const gitLog = execFileSync(
 							"git",
@@ -540,11 +540,7 @@ export function defineChecks(config) {
 								timeout: 5000,
 							},
 						);
-						if (
-							gitLog.includes(
-								"Mozzo1000: refactor(api): normalize response status validation in settings route",
-							)
-						) {
+						if (gitLog.includes(expectedPattern)) {
 							commitPresent = true;
 						}
 					} catch {}
@@ -553,11 +549,13 @@ export function defineChecks(config) {
 				const statusStr = enabled
 					? "ENABLED (AMBIENT_FURNITURE=1)"
 					: "DISABLED (AMBIENT_FURNITURE=0)";
+				const alertName = config.ambientAlertName || "ambient-alert";
+				const alertService = config.ambientAlertService || "ambient-service";
 				const ruleStr = rulesPresent
-					? "EdgeClientRequestJitter (service: edge-client)"
+					? `${alertName} (service: ${alertService})`
 					: "ABSENT";
-				const commitStr = commitPresent
-					? 'PRESENT (Mozzo1000: "refactor(api): normalize response status validation in settings route")'
+				const commitStr = commitPresent && expectedPattern
+					? `PRESENT (${expectedPattern})`
 					: "ABSENT";
 
 				return {

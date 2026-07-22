@@ -1,5 +1,8 @@
 import { strict as assert } from "node:assert";
-import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import {
 	classifyHijack,
@@ -289,11 +292,72 @@ test("observability-quiescence check handling non-array alerts payload and malfo
 	}
 });
 
-test("ambient-furniture check reports enabled status and rules", async () => {
-	const checks = defineChecks({ substratePath: "/fake/path" });
-	const check = checks.find((c) => c.id === "ambient-furniture");
-	assert.ok(check, "ambient-furniture check must exist");
-	const res = await check.run();
-	assert.equal(res.status, "pass");
-	assert.match(res.detail, /Ambient furniture status: ENABLED/);
+test("ambient-furniture check reports enabled status, rules, and commits using git repo and descriptor", async () => {
+	const tmpDir = join(tmpdir(), `doctor-ambient-${Date.now()}`);
+	mkdirSync(tmpDir, { recursive: true });
+	try {
+		execFileSync("git", ["init"], { cwd: tmpDir, stdio: "ignore" });
+		execFileSync("git", ["config", "user.name", "TestAuthor"], {
+			cwd: tmpDir,
+			stdio: "ignore",
+		});
+		execFileSync("git", ["config", "user.email", "test@example.com"], {
+			cwd: tmpDir,
+			stdio: "ignore",
+		});
+		writeFileSync(join(tmpDir, "dummy.txt"), "hello");
+		execFileSync("git", ["add", "."], { cwd: tmpDir, stdio: "ignore" });
+		execFileSync("git", ["commit", "-m", "initial commit"], {
+			cwd: tmpDir,
+			stdio: "ignore",
+		});
+
+		const rulesFile = join(tmpDir, "ambient-rules.yml");
+		writeFileSync(rulesFile, "groups: []");
+
+		const configAbsent = {
+			substratePath: tmpDir,
+			ambientRulesPath: join(tmpDir, "nonexistent.yml"),
+			ambientAlertName: "TestAlert",
+			ambientAlertService: "test-service",
+			ambientCommitAuthor: "TestAuthor",
+			ambientCommitSubject: "test: ambient commit",
+		};
+		const checkAbsent = defineChecks(configAbsent).find(
+			(c) => c.id === "ambient-furniture",
+		);
+		const resAbsent = await checkAbsent.run();
+		assert.equal(resAbsent.status, "pass");
+		assert.match(resAbsent.detail, /Ambient furniture status: ENABLED/);
+		assert.match(resAbsent.detail, /Ambient alert rule: ABSENT/);
+		assert.match(resAbsent.detail, /Recent deploy commit: ABSENT/);
+
+		// Now add matching commit and test matching state
+		writeFileSync(join(tmpDir, "dummy2.txt"), "world");
+		execFileSync("git", ["add", "."], { cwd: tmpDir, stdio: "ignore" });
+		execFileSync("git", ["commit", "-m", "test: ambient commit"], {
+			cwd: tmpDir,
+			stdio: "ignore",
+		});
+
+		const configPresent = {
+			...configAbsent,
+			ambientRulesPath: rulesFile,
+		};
+		const checkPresent = defineChecks(configPresent).find(
+			(c) => c.id === "ambient-furniture",
+		);
+		const resPresent = await checkPresent.run();
+		assert.equal(resPresent.status, "pass");
+		assert.match(
+			resPresent.detail,
+			/Ambient alert rule: TestAlert \(service: test-service\)/,
+		);
+		assert.match(
+			resPresent.detail,
+			/Recent deploy commit: PRESENT \(TestAuthor: test: ambient commit\)/,
+		);
+	} finally {
+		rmSync(tmpDir, { recursive: true, force: true });
+	}
 });

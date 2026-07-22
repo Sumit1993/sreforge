@@ -128,6 +128,10 @@ AMBIENT_FURNITURE_COMMIT_OPT_OUT="${AMBIENT_FURNITURE_COMMIT_OPT_OUT:-0}"
 if [ "$AMBIENT_FURNITURE" != "0" ] && [ "$AMBIENT_FURNITURE_OPT_OUT" != "1" ]; then
   echo "==> Applying ambient realism furniture (AMBIENT_FURNITURE=1)..."
   FURNITURE_DIR="$STACK/furniture"
+  if [ -f "$FURNITURE_DIR/ambient.env" ]; then
+    # shellcheck disable=SC1091
+    . "$FURNITURE_DIR/ambient.env"
+  fi
 
   # Piece B: Innocent recent deploy commit (opt out via AMBIENT_FURNITURE_COMMIT_OPT_OUT=1 or mode 3)
   if [ "$AMBIENT_FURNITURE_COMMIT_OPT_OUT" != "1" ] && [ "$DELIVERY_MODE" != "arm-runtime-notrace" ]; then
@@ -143,12 +147,16 @@ if [ "$AMBIENT_FURNITURE" != "0" ] && [ "$AMBIENT_FURNITURE_OPT_OUT" != "1" ]; t
         now_ts=$((prev_ts + 1))
       fi
 
-      GIT_AUTHOR_NAME="Mozzo1000" GIT_AUTHOR_EMAIL="mozzo242@gmail.com" \
-      GIT_COMMITTER_NAME="Mozzo1000" GIT_COMMITTER_EMAIL="mozzo242@gmail.com" \
+      author_name="${AMBIENT_COMMIT_AUTHOR:-Mozzo1000}"
+      author_email="${AMBIENT_COMMIT_EMAIL:-mozzo242@gmail.com}"
+      commit_subject="${AMBIENT_COMMIT_SUBJECT:-refactor(api): normalize response status validation in fields route}"
+
+      GIT_AUTHOR_NAME="$author_name" GIT_AUTHOR_EMAIL="$author_email" \
+      GIT_COMMITTER_NAME="$author_name" GIT_COMMITTER_EMAIL="$author_email" \
       GIT_AUTHOR_DATE="@$now_ts" GIT_COMMITTER_DATE="@$now_ts" \
-        git -C "$WORK" commit -m "refactor(api): normalize response status validation in fields route" >/dev/null
+        git -C "$WORK" commit -m "$commit_subject" >/dev/null
       git -C "$WORK" push -f origin HEAD:main
-      echo "==> Applied innocent deploy commit: refactor(api): normalize response status validation in fields route"
+      echo "==> Applied innocent deploy commit: $commit_subject"
     fi
   else
     echo "==> Skipping innocent deploy commit (Piece B opt-out active for $SCENARIO_ID)"
@@ -157,7 +165,7 @@ if [ "$AMBIENT_FURNITURE" != "0" ] && [ "$AMBIENT_FURNITURE_OPT_OUT" != "1" ]; t
   # Piece A: Flapping ambient alert rule
   if [ -f "$FURNITURE_DIR/ambient-rules.yml" ]; then
     cp "$FURNITURE_DIR/ambient-rules.yml" "$STACK/observability/rules/ambient-rules.yml"
-    echo "==> Loaded ambient alert rule: EdgeClientRequestJitter"
+    echo "==> Loaded ambient alert rule: ${AMBIENT_ALERT_NAME:-EdgeClientRequestJitter}"
     docker exec booklogr-prometheus kill -SIGHUP 1 >/dev/null 2>&1 || true
   fi
 fi

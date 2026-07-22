@@ -238,16 +238,20 @@ export function checkUnscopedAmbientService(
 		if (!existsSync(manifestPath)) continue;
 		count++;
 		const content = readFileSync(manifestPath, "utf8");
-		const servicesMatch = content.match(/services\s*=\s*\[(.*?)\]/s);
-		if (servicesMatch) {
-			const servicesStr = servicesMatch[1];
-			if (
-				servicesStr.includes(`"${ambientService}"`) ||
-				servicesStr.includes(`'${ambientService}'`)
-			) {
-				errors.push(
-					`Scenario '${entry.name}' includes ambient service '${ambientService}' in verify.services`,
-				);
+		const verifyMatch = content.match(/^\[verify\]\s*([\s\S]*?)(?=\n\[|$)/m);
+		if (verifyMatch) {
+			const verifyContent = verifyMatch[1];
+			const servicesMatch = verifyContent.match(/services\s*=\s*\[(.*?)\]/s);
+			if (servicesMatch) {
+				const servicesStr = servicesMatch[1];
+				if (
+					servicesStr.includes(`"${ambientService}"`) ||
+					servicesStr.includes(`'${ambientService}'`)
+				) {
+					errors.push(
+						`Scenario '${entry.name}' includes ambient service '${ambientService}' in verify.services`,
+					);
+				}
 			}
 		}
 	}
