@@ -1,0 +1,96 @@
+# scenario.toml — machine-readable manifest for the compound-latency-pool-and-sort scenario.
+#
+# Taxonomy: engine (core) · use-case (booklogr) · stack (flask-compose) · scenario (compound-latency-pool-and-sort).
+# This is an `incident`-profile scenario: the compound fault is injected against a LIVE deployment across
+# two ordered commits, and verification is a behavioral closed loop (the alert must clear under still-active load).
+
+# --- identity ------------------------------------------------------------------
+id          = "compound-latency-pool-and-sort"   # BINDING — unique scenario id; matches the folder name
+use_case    = "booklogr"                        # BINDING — product domain this scenario exercises
+stack       = "flask-compose"                   # BINDING — substrate: Flask + Gunicorn + Prometheus/Alertmanager/Grafana on Docker Compose
+profile     = "incident"                        # ARCHETYPE — incident = live deploy + behavioral closed-loop oracle (NOT patch)
+title       = "Compound latency: DB-pool contention + full-library re-sort, delivered across two deploys"  # BINDING — human-readable scenario title
+difficulty  = "hard"                            # ARCHETYPE — hard — compound fault with two independent, independently-sufficient causes across two commits
+tags        = ["latency", "compound", "multi-cause", "deploy-correlation", "pool", "cpu"]  # BINDING — fault-class tags
+
+# One-paragraph description of the scenario (human-readable, neutral framing).
+description = """
+Two independent performance regressions drive p99 API latency over the 300ms SLO under library-list storm load.
+First, an older configuration commit reduced the SQLAlchemy database connection pool to size 1 with gthread workers.
+Second, a recent application-code commit replaced DB-side pagination with in-memory Python sort and NFKD unicode normalization
+over all 150k library items. Either fault alone is sufficient to breach the SLO. Reverting only the recent hot commit leaves
+the alert firing due to the older config bottleneck; only reverting both commits clears the alert.
+"""
+
+# --- expected signal -----------------------------------------------------------
+# The alert the agent is paged on and the SLO it encodes. Used by the confirm-fire gate and the oracle.
+[expected]
+alert                 = "BooklogrApiLatencyP99High"  # BINDING — alert name in the Prometheus rule set
+severity              = "critical"                    # ARCHETYPE — paging severity
+p99_threshold_seconds = 0.3                           # ARCHETYPE — alert fires when p99 > 0.3s for 30s; healthy baseline well under 100ms
+
+# PromQL used by the confirm-fire gate and oracle to evaluate the alert signal.
+# Metric: flask_http_request_duration_seconds_bucket; scrape job label job="booklogr-api".
+# BINDING — this stack exports the flask_-prefixed metric; do NOT substitute the bare http_request_duration_seconds_bucket.
+p99_promql = """
+histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[30s])))
+"""
+
+# --- determinism / timing knobs ------------------------------------------------
+# Harness timing contract. The confirm-fire gate proves the fault is live BEFORE the agent starts;
+# the oracle requires the alert to stay cleared for sustained_clear_seconds under still-active load.
+[determinism]
+confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for BooklogrApiLatencyP99High to enter firing state under storm load
+sustained_clear_seconds      = 30    # ARCHETYPE — alert must remain cleared this long (load still active) to score as mitigated
+alert_fired_at               = ""    # populated at runtime by the confirm-fire gate (RFC3339 timestamp of first firing)
+
+# --- paths (relative to this scenario directory) -------------------------------
+# All paths are relative to use-cases/booklogr/scenarios/compound-latency-pool-and-sort/.
+[paths]
+stack    = "../../stacks/flask-compose"                          # BINDING — harness-side run layer for this substrate
+compose  = "../../stacks/flask-compose/compose/docker-compose.yml"  # BINDING — in-repo compose file (not an external ops repo)
+solution = "solution/fix.patch"                                 # BINDING — canonical reference fix (harness-internal, not agent-facing)
+oracle   = "verify/oracle.md"                                    # BINDING — v1 mitigation-oracle specification (harness-internal)
+
+# --- fault injection -----------------------------------------------------------
+# Delivery mode: arm-deploy-recent-compound.
+# Applies two ordered commits on top of baseline^:
+#   1. Older commit (Cause 1 — db-pool config/runtime change): backdated ~6 days.
+#   2. Recent commit (Cause 2 — worker-cpu full-library sort change): real current timestamp.
+# Load driver is k6 running constant-arrival-rate storm of uncached GET /v1/books library-list reads.
+[inject]
+command  = "docker compose -p booklogr-edge -f compose/load.yml up -d"
+mode     = "storm"                    # ARCHETYPE — constant-arrival-rate storm over fixed query working set
+continuous = true                     # ARCHETYPE — driver runs for the full run lifecycle (confirm-fire + agent work + verify)
+stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
+
+# --- verification (v1 mitigation oracle) ---------------------------------------
+# Multi-signal, objective, no-LLM oracle.
+[verify]
+oracle           = "mitigation"       # ARCHETYPE — oracle family
+pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
+load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
+  services = ["booklogr-api"]   # BINDING — grader scope for no_new_alerts
+
+signals          = [
+  "ci_green",          # BINDING — Gitea Actions ci.yml: docker build booklogr-api image + container smoke test (GET /)
+  "alert_cleared",     # ARCHETYPE — BooklogrApiLatencyP99High absent from the Prometheus firing set after redeploy
+  "sustained_clear",   # ARCHETYPE — stays cleared for sustained_clear_seconds while k6 storm load is still running
+  "time_to_clear",     # ARCHETYPE — seconds from redeploy to clear (recorded for telemetry, not a hard pass/fail gate)
+  "no_new_alerts",     # ARCHETYPE — no other alert transitions to firing post-fix
+]
+
+[verify.weights]
+ci_green          = 0.25   # ARCHETYPE
+alert_cleared     = 0.35   # ARCHETYPE
+sustained_clear   = 0.20   # ARCHETYPE
+time_to_clear     = 0.10   # ARCHETYPE
+no_new_alerts     = 0.10   # ARCHETYPE
+
+# --- endpoints (harness-internal reference, not agent-facing) ------------------
+[endpoints]
+prometheus   = "http://localhost:9090"   # BINDING — Prometheus UI / query API
+alertmanager = "http://localhost:9093"   # BINDING — Alertmanager UI
+grafana      = "http://localhost:3002"   # BINDING — Grafana dashboards
+api          = "http://localhost:5000"   # BINDING — booklogr Flask API
+web          = "http://localhost:5150"   # BINDING — booklogr web frontend
