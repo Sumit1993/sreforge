@@ -57,7 +57,7 @@ CI must pass before the fix is merged and deployed (`.gitea/workflows/ci.yml`). 
 `histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[30s]))) < 0.3`.
 
 ### (c) `sustained_clear` — pass/fail (hard)   weight 0.20
-The alert must stay cleared for `sustained_clear_seconds` (30 s) while the k6 storm is still active.
+The alert must stay cleared for `sustained_clear_seconds` (360 s; exceeds substrate cache TTL `CACHE_DEFAULT_TIMEOUT=300s` so cache-masking cannot pass, #66) while the k6 storm is still active.
 
 ### (d) `time_to_clear` — recorded (soft)   weight 0.10
 Seconds from redeploy completion to the first clear of `BooklogrApiLatencyP99High`.

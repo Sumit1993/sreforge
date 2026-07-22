@@ -55,7 +55,7 @@ A run is **mitigated** when every pass/fail signal below is satisfied.
 |---|---|---|---|
 | `ci_green` | hard gate | 0.25 | substrate CI green on the fix commit |
 | `alert_cleared` | hard, fail-closed | 0.35 | `BooklogrApiLatencyP99High` absent from firing set; p99 PromQL < 0.3 s |
-| `sustained_clear` | hard | 0.20 | stays cleared `sustained_clear_seconds = 30` under **still-active** storm |
+| `sustained_clear` | hard | 0.20 | stays cleared `sustained_clear_seconds = 360` under **still-active** storm (> substrate cache TTL 300s, #66) |
 | `time_to_clear` | soft (recorded) | 0.10 | seconds redeploy→first clear |
 | `no_new_alerts` | soft | 0.10 | no new firing alert among `services = ["booklogr-api"]` |
 
@@ -70,7 +70,7 @@ histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_b
 ### Timing constants
 
 - `confirm_fire_timeout_seconds = 240`
-- `sustained_clear_seconds = 30`
+- `sustained_clear_seconds = 360`
 - `p99_threshold_seconds = 0.3`
 
 ## Pass threshold and rationale
