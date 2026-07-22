@@ -51,3 +51,21 @@ groups:
             driving normal call volume.
         # Provisional numbers: current-2m rate vs 30m-trailing baseline (baseline window/offset),
         # collapse ratio 0.4, min-baseline 0.15 req/s, 2m sustain. All  # TUNE-ON-CERT  against real soak data.
+
+      - alert: BookMetadataProviderErrorsElevated
+        expr: |
+          (
+            sum(rate(book_metadata_provider_errors_total{job="book-metadata"}[1m]))
+            /
+            clamp_min(sum(rate(book_metadata_requests_total{job="book-metadata"}[1m])), 1e-9)
+          ) > 0.05
+        for: 1m                              # TUNE-ON-CERT — sustain window
+        labels:
+          service: book-metadata             # OUT of this scenario's grader scope
+          severity: warning
+        annotations:
+          summary: "Elevated error rate from the book-metadata provider"
+          description: >-
+            The book-metadata provider is returning an elevated share of 5xx
+            responses on metadata lookups.
+
