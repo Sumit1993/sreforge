@@ -67,3 +67,62 @@ fault_delivery_arm_runtime_notrace() {
   mkdir -p "$(dirname "$env_file")"
   printf '%s=%s\n' "$runtime_var" "$runtime_value" > "$env_file"
 }
+
+# fault_delivery_arm_deploy_recent_compound <work-dir> <anchor-ref> (patch msg author_name author_email date)...
+#   Mode for compound deploys: resets origin/main to <anchor-ref>, then applies
+#   and commits an ordered list of 5-tuples (patch, message, author-name, author-email, date).
+#   Guarantees strictly monotonic commit dates (anchor-parent < commit-1 < commit-2 ...).
+fault_delivery_arm_deploy_recent_compound() {
+  local work="$1" anchor_ref="$2"
+  shift 2
+  git -C "$work" fetch origin --prune --quiet
+  git -C "$work" push -f origin "${anchor_ref}:main"
+  git -C "$work" checkout -B main "$anchor_ref"
+  git -C "$work" reset --hard "$anchor_ref"
+  git -C "$work" clean -fd
+
+  local prev_ts
+  prev_ts=$(git -C "$work" log -1 --format=%ct "$anchor_ref") || {
+    echo "FATAL: cannot resolve anchor ref '$anchor_ref' for monotonic date guard" >&2
+    return 1
+  }
+
+  while [ $# -ge 5 ]; do
+    local patch_file="$1" msg="$2" author_name="$3" author_email="$4" date_str="$5"
+    shift 5
+
+    local ts
+    if [ -z "$date_str" ] || [ "$date_str" = "now" ]; then
+      ts=$(date +%s)
+    else
+      ts=$(date -d "$date_str" +%s 2>/dev/null || echo "")
+      if [ -z "$ts" ]; then
+        echo "FATAL: Unable to parse commit date '$date_str'" >&2
+        return 1
+      fi
+    fi
+
+    if [ "$ts" -le "$prev_ts" ]; then
+      echo "FATAL: Non-monotonic commit dates: commit date '$date_str' ($ts) is not strictly after previous timestamp ($prev_ts)" >&2
+      return 1
+    fi
+    prev_ts="$ts"
+
+    git -C "$work" apply --whitespace=nowarn "$patch_file"
+    git -C "$work" add -A
+
+    if [ -n "$date_str" ] && [ "$date_str" != "now" ]; then
+      GIT_AUTHOR_NAME="$author_name" GIT_AUTHOR_EMAIL="$author_email" \
+      GIT_COMMITTER_NAME="$author_name" GIT_COMMITTER_EMAIL="$author_email" \
+      GIT_AUTHOR_DATE="@$ts" GIT_COMMITTER_DATE="@$ts" \
+        git -C "$work" commit -m "$msg" >/dev/null
+    else
+      GIT_AUTHOR_NAME="$author_name" GIT_AUTHOR_EMAIL="$author_email" \
+      GIT_COMMITTER_NAME="$author_name" GIT_COMMITTER_EMAIL="$author_email" \
+        git -C "$work" commit -m "$msg" >/dev/null
+    fi
+  done
+
+  git -C "$work" push -f origin HEAD:main
+}
+
