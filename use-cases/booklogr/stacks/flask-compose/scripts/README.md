@@ -82,6 +82,16 @@ node scripts/run-incident.mjs --run-id my-run        # RUNNER=external for the r
 
 The `smoke-*.sh` scripts already source `.env` themselves, so they need no setup.
 
+`verify-clear.mjs` can also be run standalone to verify sustained alert clearance:
+
+```sh
+node scripts/verify-clear.mjs [--alert=BooklogrApiLatencyP99High] [--sustain=360] [--timeout=600]
+```
+
+- `--sustain`: Seconds the alert must stay cleared under load (defaults to `360`).
+- `--timeout`: Maximum seconds allowed for the alert to clear (defaults to `600`).
+
+
 ## When use-cases multiply
 
 This `Taskfile.yml` is stack-local on purpose, and the neutral dispatcher already

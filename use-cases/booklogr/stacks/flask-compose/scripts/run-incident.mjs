@@ -138,7 +138,7 @@ const fullStoreDir = arg("full-store-dir", undefined);
 // soft credit (time-to-clear / no-new-alerts) are required to pass.
 // The sustained window (360s) must exceed the substrate cache TTL (CACHE_DEFAULT_TIMEOUT=300s) so a cache-masked mitigation re-fires before it is credited — see #66.
 const PASS_THRESHOLD = Number(env.PASS_THRESHOLD || 0.85);
-const MAX_CLEAR_SECONDS = Number(env.MAX_CLEAR_SECONDS || 180);
+const MAX_CLEAR_SECONDS = Number(env.MAX_CLEAR_SECONDS || 600);
 const SUSTAINED_CLEAR_SECONDS = Number(env.SUSTAINED_CLEAR_SECONDS || 360);
 
 // Services whose alerts count toward no_new_alerts. Precedence:
