@@ -41,7 +41,7 @@ histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_b
 # the oracle requires the alert to stay cleared for sustained_clear_seconds under still-active load.
 [determinism]
 confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for BooklogrApiLatencyP99High to enter firing state under storm load
-sustained_clear_seconds      = 30    # ARCHETYPE — alert must remain cleared this long (load still active) to score as mitigated
+sustained_clear_seconds      = 360   # ARCHETYPE — must stay cleared this long (load still active) to score as mitigated; > substrate cache TTL 300s so cache-masking cannot pass (#66)
 alert_fired_at               = ""    # populated at runtime by the confirm-fire gate (RFC3339 timestamp of first firing)
 
 # --- paths (relative to this scenario directory) -------------------------------

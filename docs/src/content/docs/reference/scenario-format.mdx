@@ -71,7 +71,7 @@ clear under still-active load to score as mitigated.
 ```toml
 [determinism]
 confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for the alert to fire under load
-sustained_clear_seconds      = 30    # ARCHETYPE — must stay cleared this long, load active
+sustained_clear_seconds      = 360   # ARCHETYPE — must stay cleared this long (exceeds substrate cache TTL 300s, #66), load active
 alert_fired_at               = ""    # populated at runtime by the confirm-fire gate
 ```
 

@@ -8,7 +8,7 @@
 // actually works under the still-active fault.
 //
 //   node scripts/verify-clear.mjs [--alert=BooklogrApiLatencyP99High]
-//                                 [--sustain=30] [--timeout=180]
+//                                 [--sustain=360] [--timeout=600]
 //                                 [--interval=3] [--prom=URL]
 //
 // Exit 0 = cleared & sustained (PASS); exit 1 = still firing at timeout (FAIL).
@@ -17,8 +17,8 @@ import { PROM, P99_EXPR, PRIMARY_ALERT, getAlerts, firing, firingNames, querySca
 
 const a = parseArgs();
 const ALERT = a.alert || PRIMARY_ALERT;
-const SUSTAIN_S = Number(a.sustain) || 30;
-const TIMEOUT_S = Number(a.timeout) || 180;
+const SUSTAIN_S = Number(a.sustain) || 360;
+const TIMEOUT_S = Number(a.timeout) || 600;
 const INTERVAL_S = Number(a.interval) || 3;
 const prom = a.prom || PROM;
 

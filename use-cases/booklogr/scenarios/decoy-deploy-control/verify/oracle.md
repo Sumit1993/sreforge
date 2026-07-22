@@ -108,10 +108,10 @@ signals).
 
 ### (c) `sustained_clear` — pass/fail (hard)   weight 0.20
 
-The alert must **stay cleared for `sustained_clear_seconds`** (30 s) while the
+The alert must **stay cleared for `sustained_clear_seconds`** (360 s) while the
 k6 storm is **still running**. A brief dip below threshold does not count — the
 oracle requires continuous clearance across the full window
-(`maxClearTimeSeconds = 180`, `sustainedClearSeconds = 30`). This is the core
+(`maxClearTimeSeconds = 180`, `sustainedClearSeconds = 360`; exceeds substrate cache TTL `CACHE_DEFAULT_TIMEOUT=300s` so cache-masking cannot pass, #66). This is the core
 of the ADR-0004 anti-cheat: sustained clearance under active load can only come
 from a working fix.
 
