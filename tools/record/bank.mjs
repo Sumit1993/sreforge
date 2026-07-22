@@ -140,7 +140,7 @@ async function main() {
     process.exit(1);
   }
 
-  const isSreforgeRunsRemote = /github\.com[:/]Sumit1993\/sreforge-runs(\.git)?$/.test(remoteUrl);
+  const isSreforgeRunsRemote = /^(https:\/\/github\.com\/|git@github\.com:)Sumit1993\/sreforge-runs(\.git)?$/.test(remoteUrl);
   if (!isSreforgeRunsRemote) {
     console.error(`FATAL: --store points at '${remoteUrl}', not sreforge-runs. Refusing to bank records into a non-private store.`);
     process.exit(1);
@@ -370,9 +370,9 @@ async function main() {
 
   // Commit and Push if changes were made
   if (!values["dry-run"] && (bankedCount > 0 || bankedEvidenceCount > 0 || indexChanged)) {
-    const gitStatus = execFileSync("git", ["-C", storePath, "status", "--porcelain"], { encoding: "utf8" }).trim();
+    const gitStatus = execFileSync("git", ["-C", storePath, "status", "--porcelain", "--", "records", "evidence", "index.json"], { encoding: "utf8" }).trim();
     if (gitStatus.length > 0) {
-      execFileSync("git", ["-C", storePath, "add", "-A"]);
+      execFileSync("git", ["-C", storePath, "add", "--", "records", "evidence", "index.json"]);
       execFileSync("git", ["-C", storePath, "commit", "-m", "chore(record): bank full records and evidence"]);
       if (!values["no-push"]) {
         execFileSync("git", ["-C", storePath, "push"]);

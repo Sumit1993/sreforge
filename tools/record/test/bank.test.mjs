@@ -207,3 +207,47 @@ test("6. pruned skip — a pruned record (no transcript) is skipped", () => {
   const idx = JSON.parse(readFileSync(join(storeDir, "index.json"), "utf8"));
   assert.equal(idx.length, 0);
 });
+
+test("7. anchored remote check — ssh remote passes, prefix-spoofed remote is rejected", () => {
+  const sshStoreDir = initFakeStore("git@github.com:Sumit1993/sreforge-runs.git");
+  const workDir = createTempDir("sreforge-test-rec-");
+  const recPath = join(workDir, "full_record.json");
+  writeFileSync(recPath, JSON.stringify(fixtureFullRecord, null, 2));
+
+  const sshOut = execFileSync("node", [SCRIPT, recPath, "--store", sshStoreDir, "--dry-run"], { encoding: "utf8" });
+  assert.match(sshOut, /Would bank records\/[a-f0-9]{64}\.json/);
+
+  const spoofedStoreDir = initFakeStore("https://evil.com/github.com/Sumit1993/sreforge-runs.git");
+  assert.throws(
+    () => {
+      execFileSync("node", [SCRIPT, recPath, "--store", spoofedStoreDir, "--dry-run"], { encoding: "utf8" });
+    },
+    (err) => {
+      assert.ok(err.stderr.includes("FATAL: --store points at 'https://evil.com/github.com/Sumit1993/sreforge-runs.git', not sreforge-runs. Refusing to bank records into a non-private store."));
+      return true;
+    }
+  );
+});
+
+test("8. scoped git add — stray pre-existing content in store is not staged or committed", () => {
+  const storeDir = initFakeStore();
+  const workDir = createTempDir("sreforge-test-rec-");
+  const recPath = join(workDir, "full_record.json");
+  writeFileSync(recPath, JSON.stringify(fixtureFullRecord, null, 2));
+
+  // Create a stray untracked file in the store directory
+  const strayFile = join(storeDir, "stray_untracked.txt");
+  writeFileSync(strayFile, "untracked stray content");
+
+  execFileSync("node", [SCRIPT, recPath, "--store", storeDir, "--no-push"], { encoding: "utf8" });
+
+  // Verify the banking commit exists and does NOT include stray_untracked.txt
+  const commitLog = execFileSync("git", ["-C", storeDir, "log", "-1", "--name-only"], { encoding: "utf8" });
+  assert.ok(commitLog.includes("chore(record): bank full records and evidence"));
+  assert.ok(!commitLog.includes("stray_untracked.txt"));
+
+  // Verify stray file remains untracked in git status
+  const status = execFileSync("git", ["-C", storeDir, "status", "--porcelain"], { encoding: "utf8" });
+  assert.ok(status.includes("?? stray_untracked.txt"));
+});
+
