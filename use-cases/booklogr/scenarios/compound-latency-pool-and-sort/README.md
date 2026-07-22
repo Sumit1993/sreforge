@@ -15,7 +15,7 @@ Every single-fault scenario on `booklogr` is saturated by standard agent heurist
 | **Armed** | on | on | ≫ 0.3 s (both bottlenecks stacked) | **FIRING** |
 | Revert Cause 2 only (revert the *recent* hot diff) | on | off | **> 0.3 s** — Cause 1 alone is sufficient (proven at RATE≥25) | **STILL FIRING** |
 | Revert Cause 1 only (revert the *older* config commit) | off | on | **> 0.3 s** — Cause 2 alone is sufficient (proven at RATE=50) | **STILL FIRING** |
-| Revert both | off | off | healthy baseline (well under 0.1 s) | **CLEAR** |
+| Revert both | off | off | healthy baseline (measured 0.247 s at cold-arm, threshold 0.3 s) | **CLEAR** |
 
 ## CERTIFICATION PENDING (ADR-0026)
 
