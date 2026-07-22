@@ -361,15 +361,19 @@ for (const file of [
 	"alert_fired_at.json",
 ]) {
 	const src = join(runWs, file);
-	if (fs.existsSync(src)) {
-		try {
-			fs.copyFileSync(src, join(recordPath, file));
-		} catch (e) {
-			console.error(
-				`[run-incident] FATAL: Could not copy ${file} to run record: ${e.message}`,
-			);
-			process.exit(1);
-		}
+	if (!fs.existsSync(src)) {
+		console.error(
+			`[run-incident] FATAL: required evidence ${file} missing from run workspace`,
+		);
+		process.exit(1);
+	}
+	try {
+		fs.copyFileSync(src, join(recordPath, file));
+	} catch (e) {
+		console.error(
+			`[run-incident] FATAL: Could not copy ${file} to run record: ${e.message}`,
+		);
+		process.exit(1);
 	}
 }
 
