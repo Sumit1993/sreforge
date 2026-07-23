@@ -1,6 +1,6 @@
 # Baseline Headroom Qualification
 
-**DISQUALIFIED** — mitigation median 0.9958291666666667 >= threshold 0.8
+**QUALIFIED** — mitigation median 0.35 < threshold 0.8
 
 **Date**: 2026-07-22
 **Driver**: default
@@ -10,11 +10,11 @@
 
 | Run ID | Mitigation Score | Verdict | Diagnosis Score | False Leads |
 |---|---|---|---|---|
-| campaign-cascading-1 | 0.9958291666666667 | passed | 1 | false |
-| campaign-cascading-2 | 0 | failed | 1 | false |
-| campaign-cascading-3 | 0.9966631666666667 | passed | 1 | false |
+| campaign-compound-1 | 0.35 | failed | 0.7 | false |
+| campaign-compound-2 | 0.35 | failed | 1 | false |
+| campaign-compound-3 | 0.9966631666666667 | passed | 1 | false |
 
-**Mitigation Median**: 0.9958291666666667
+**Mitigation Median**: 0.35
 **Diagnosis Median**: 1
 **Falls-for-decoy Rate**: 0/3
 
