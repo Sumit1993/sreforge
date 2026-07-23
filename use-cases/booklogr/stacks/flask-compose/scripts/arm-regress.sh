@@ -179,7 +179,6 @@ fi
 # entrypoint migrates a clean DB from scratch. Deterministic (ADR-0010): the
 # decision is a pure function of (live DB revision, incoming migration files).
 # The volume persists across arms by design (ADR-0021); this reconciles it.
-DB_WAS_RESET=0
 MIG_DIR="$WORK/migrations/versions"
 
 # Read the live DB head revision. Any failure (DB down, table absent, fresh
@@ -202,7 +201,6 @@ if [ -n "$db_rev" ]; then
       echo "           (down -v drops the volume), then re-arm. Refusing to continue (fail-closed)." >&2
       exit 1
     fi
-    DB_WAS_RESET=1
     echo "==> booklogr-db volume reset; the redeploy below will migrate a fresh DB."
   fi
 fi
@@ -242,16 +240,15 @@ if [ "$healthy" -ne 1 ]; then
 fi
 echo "==> booklogr-api is healthy (regressed, load quiesced — not yet firing)"
 
-# Seed the DB post-deploy if the scenario defines SEED_COUNT AND (the DB volume
-# was reset by #79 reconciliation OR the delivery mode seeds on arm, i.e.
-# arm-deploy-recent). Seeding after healthcheck ensures the DB schema is fully
-# migrated and avoids running seed scripts against a potentially poisoned DB.
+# Seed the DB post-deploy whenever the scenario defines SEED_COUNT. Seeding
+# after healthcheck ensures the DB schema is fully migrated and avoids running
+# seed scripts against a potentially poisoned DB. seed-library.sh is itself
+# idempotent (only inserts the shortfall to reach SEED_COUNT), so it's safe to
+# call unconditionally — this used to be gated to DB-reset / arm-deploy-recent
+# deliveries only, which skipped mode-3 (arm-runtime-notrace) entirely: a cold
+# session's empty library never got seeded and a decoy's DB-heavy physics
+# (calibrated against a seeded library) could never fire its alert (#96).
 if [ -n "${SEED_COUNT:-}" ]; then
-  if [ "${DB_WAS_RESET:-0}" = "1" ]; then
-    echo "==> Seeding library after DB reset (#79)..."
-    bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
-  elif [ "$DELIVERY_MODE" = "arm-deploy-recent" ] || [ "$DELIVERY_MODE" = "arm-deploy-recent-compound" ]; then
-    echo "==> Seeding library for delivery mode '$DELIVERY_MODE'..."
-    bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
-  fi
+  echo "==> Seeding library (target $SEED_COUNT)..."
+  bash "$SCRIPTS/seed-library.sh" "$SEED_COUNT"
 fi
