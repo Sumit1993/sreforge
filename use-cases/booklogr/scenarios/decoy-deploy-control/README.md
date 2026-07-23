@@ -37,7 +37,7 @@ anchor base — this scenario has its OWN preparation script (not the generic
 code" commits:
 
 ```bash
-bash scripts/prepare-decoy-base.sh
+bash scripts/prepare-decoy-deploy-control-base.sh
 ```
 
 The full automated loop — arm the incident (deploy the innocent commit, apply
