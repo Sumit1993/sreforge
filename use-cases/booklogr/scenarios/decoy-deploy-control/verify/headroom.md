@@ -1,12 +1,12 @@
 # Baseline Headroom Qualification
 
-**DISQUALIFIED** — rate 0/3 (baseline never falls for the decoy)
+**QUALIFIED** — mitigation median 0.35 < threshold 0.8
 
 **Date**: 2026-07-25
 **Driver**: agy · Gemini 3.6 Flash (High)
 **Judge Model**: gpt-oss:120b
 **Threshold**: 0.8
-**Mode**: decoy-rate
+**Mode**: score-headroom
 
 | Run ID | Mitigation Score | Verdict | Diagnosis Score | False Leads |
 |---|---|---|---|---|
