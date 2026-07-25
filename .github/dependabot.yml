@@ -36,6 +36,13 @@ updates:
     commit-message:
       prefix: ci
     groups:
+      # Without update-types the wildcard also groups MAJOR Action bumps, which
+      # would park a breaking update inside the group PR and — since the group's
+      # reported update-type is the highest change in it — block the whole group
+      # from auto-merging. Majors open individually instead, as with npm.
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
