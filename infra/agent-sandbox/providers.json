@@ -5,7 +5,7 @@
     "openai": { "egress": ["api.openai.com"] },
     "google": { "egress": ["generativelanguage.googleapis.com"] },
     "ollama-cloud": { "egress": ["ollama.com"] },
-    "antigravity": { "egress": ["*.googleapis.com", "*.google.com", "*.codeium.com", "*.windsurf.com", "*.antigravity.google"] },
+    "antigravity": { "egress": ["*.googleapis.com", "*.google.com", "*.googleusercontent.com", "*.codeium.com", "*.windsurf.com", "*.antigravity.google"] },
     "local": { "egress": [] }
   }
 }
