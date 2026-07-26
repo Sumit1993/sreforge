@@ -195,7 +195,10 @@ export function findRecordAndDiagnosis(useCase, scenarioId, runId) {
 }
 
 export function defaultExecutor({ useCase, rid, agentCmd, scenario }) {
-	const env = { ...process.env, SCENARIO_ID: basename(resolve(scenario)) };
+	const env = {
+		...process.env,
+		SCENARIO_ID: basename(resolveScenarioDir(scenario)),
+	};
 	if (agentCmd) env.AGENT_CMD = agentCmd;
 
 	const res = spawnSync("pnpm", ["forge", "auto", useCase, "--run-id", rid], {
@@ -215,7 +218,10 @@ export function runCampaign({
 }) {
 	const runIds = [];
 	const failedRunIds = [];
-	const scenarioShort = basename(resolve(scenario));
+	// Same normalization as scoreSubcommand: `--scenario` may name the directory
+	// or its scenario.toml. Without this a .toml path yields SCENARIO_ID
+	// "scenario.toml" and run ids like "headroom-scenario.toml-1".
+	const scenarioShort = basename(resolveScenarioDir(scenario));
 
 	for (let i = 1; i <= runs; i++) {
 		const rid = `${idPrefix}-${scenarioShort}-${i}`;
@@ -318,7 +324,14 @@ export function parseArgs(argv) {
 		else if (a === "--driver") o.driver = argv[++i];
 		else if (a === "--judge") o.judge = true;
 		else if (a === "--threshold") o.threshold = parseFloat(argv[++i]);
-		else if (a === "--mode") o.mode = argv[++i];
+		else if (a === "--mode") {
+			const m = argv[++i];
+			if (!QUALIFICATION_MODES.includes(m))
+				fail(
+					`unknown --mode "${m}" (expected one of ${QUALIFICATION_MODES.join(", ")})`,
+				);
+			o.mode = m;
+		}
 		else if (a === "--date") o.date = argv[++i];
 		else fail(`unknown flag: ${a}`);
 	}

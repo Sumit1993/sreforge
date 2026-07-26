@@ -14,6 +14,7 @@ import {
 	evaluateVerdict,
 	generateHeadroomMd,
 	HeadroomError,
+	parseArgs,
 	readScenarioMode,
 	REPO_ROOT,
 	runCampaign,
@@ -357,4 +358,29 @@ test("all 7 shipped scenario manifests parse without warnings", () => {
 		assert.ok(!seen, `${n}: manifest emitted a parse warning`);
 		assert.equal(out, "score-headroom", `${n}: unexpected mode`);
 	}
+});
+
+test("runCampaign: a direct scenario.toml path still yields the scenario id", () => {
+	const calls = [];
+	const { runIds } = runCampaign({
+		scenario: "/path/to/scenario-xyz/scenario.toml",
+		runs: 1,
+		useCase: "booklogr",
+		idPrefix: "hr",
+		executor: (a) => {
+			calls.push(a);
+			return 0;
+		},
+	});
+	// Without normalization this is "hr-scenario.toml-1".
+	assert.deepEqual(runIds, ["hr-scenario-xyz-1"]);
+});
+
+test("parseArgs: an unknown --mode is rejected, not silently defaulted", () => {
+	assert.throws(
+		() => parseArgs(["score", "--mode", "score-headrom"]),
+		(e) => e instanceof HeadroomError && /unknown --mode/.test(e.message),
+	);
+	assert.equal(parseArgs(["score", "--mode", "decoy-rate"]).mode, "decoy-rate");
+	assert.equal(parseArgs(["score"]).mode, null);
 });
