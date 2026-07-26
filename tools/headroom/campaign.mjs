@@ -250,7 +250,11 @@ export function readScenarioMode(scenarioPath) {
 		return "score-headroom";
 	}
 	const content = readFileSync(targetPath, "utf8");
-	const match = content.match(
+	// Section-scoped, matching how tools/rules-lint/lint.mjs reads this manifest:
+	// isolate the [verify] block first, then look inside it. A bare file-wide
+	// match would pick up a `qualification_mode` sitting under any other section.
+	const verifyBlock = content.match(/^\[verify\]\s*([\s\S]*?)(?=\n\[|$)/m)?.[1];
+	const match = verifyBlock?.match(
 		/^\s*qualification[_-]mode\s*=\s*["']([^"']+)["']/m,
 	);
 	if (match?.[1]) {

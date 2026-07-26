@@ -261,6 +261,16 @@ test("readScenarioMode: mode read from scenario.toml", () => {
 	assert.equal(mode, "score-headroom");
 });
 
+test("readScenarioMode: qualification_mode outside [verify] is ignored", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[identity]\nqualification_mode = "decoy-rate"\n\n[verify]\noracle = "mitigation"\nqualification_mode = "score-headroom"\n`,
+		"utf8",
+	);
+	assert.equal(readScenarioMode(outDir), "score-headroom");
+});
+
 test("readScenarioMode: missing qualification_mode field falls back to score-headroom with warning", () => {
 	const outDir = tmp();
 	writeFileSync(
