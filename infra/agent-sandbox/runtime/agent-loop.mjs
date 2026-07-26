@@ -17,11 +17,14 @@
 // provider failure — the transcript is written on every exit path.
 // =============================================================================
 import { execFileSync } from "node:child_process";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 
 const env = process.env;
 
-const OLLAMA_HOST = (env.OLLAMA_HOST || "https://ollama.com").replace(/\/+$/, "");
+const OLLAMA_HOST = (env.OLLAMA_HOST || "https://ollama.com").replace(
+	/\/+$/,
+	"",
+);
 const DEFAULT_MODEL = "qwen3-coder:480b-cloud";
 // DECISION: an OLLAMA_MODEL pin from the env (stack .env, forwarded by the
 // host driver) still wins over this default — operators rely on it — but the
@@ -29,230 +32,378 @@ const DEFAULT_MODEL = "qwen3-coder:480b-cloud";
 const MODEL = env.OLLAMA_MODEL || DEFAULT_MODEL;
 const KEY = env.OLLAMA_API_KEY;
 if (env.OLLAMA_MODEL && env.OLLAMA_MODEL !== DEFAULT_MODEL) {
-  console.error(
-    `WARNING: OLLAMA_MODEL env pin "${env.OLLAMA_MODEL}" overrides the driver default "${DEFAULT_MODEL}" — the pin wins, but confirm this is intentional.`
-  );
+	console.error(
+		`WARNING: OLLAMA_MODEL env pin "${env.OLLAMA_MODEL}" overrides the driver default "${DEFAULT_MODEL}" — the pin wins, but confirm this is intentional.`,
+	);
 }
 const MAX_STEPS = Number(env.MAX_STEPS || 30);
-// Request-size knobs, env-tunable: some provider tiers 500 on large chat
-// payloads (observed on Ollama Cloud ~steps 10-12 as the window fills), so a
-// throttled tier can trade context for reliability per run.
-const OUT_MAX = Number(env.AGENT_OUT_MAX || 3000); // cap per tool output fed back
-const WINDOW = Number(env.AGENT_WINDOW || 22); // sliding window: system + kickoff + most-recent
+let OUT_MAX = Number(env.AGENT_OUT_MAX || 3000); // cap per tool output fed back
+let WINDOW = Number(env.AGENT_WINDOW || 22); // sliding window: system + kickoff + most-recent
+const DEGRADE_THRESHOLD = Number(env.AGENT_DEGRADE_THRESHOLD || 2); // consecutive 500s to trigger degradation
+const WINDOW_FLOOR = Number(env.AGENT_WINDOW_FLOOR || 6); // minimum AGENT_WINDOW floor
+const OUT_MAX_FLOOR = Number(env.AGENT_OUT_MAX_FLOOR || 500); // minimum AGENT_OUT_MAX floor
+const MAX_DEGRADATIONS = Number(env.AGENT_MAX_DEGRADATIONS || 3); // max degradation steps
 
-if (!KEY) {
-  console.error("FATAL: OLLAMA_API_KEY is required (injected by the host driver).");
-  process.exit(1);
+let consecutive500s = 0;
+let degradationCount = 0;
+
+export function computeDegradation({
+	currentWindow,
+	currentOutMax,
+	windowFloor,
+	outMaxFloor,
+	consecutive500s,
+	degradationCount,
+	maxDegradations,
+	degradeThreshold,
+}) {
+	if (consecutive500s < degradeThreshold) {
+		return { shouldDegrade: false, reason: "below_threshold" };
+	}
+	if (degradationCount >= maxDegradations) {
+		return { shouldDegrade: false, reason: "max_degradations_reached" };
+	}
+	const canDegradeWindow = currentWindow > windowFloor;
+	const canDegradeOutMax = currentOutMax > outMaxFloor;
+	if (!canDegradeWindow && !canDegradeOutMax) {
+		return { shouldDegrade: false, reason: "at_floors" };
+	}
+
+	const newWindow = Math.max(windowFloor, Math.floor(currentWindow / 2));
+	const newOutMax = Math.max(outMaxFloor, Math.floor(currentOutMax / 2));
+
+	return {
+		shouldDegrade: true,
+		newWindow,
+		newOutMax,
+		degradationStep: degradationCount + 1,
+	};
+}
+
+import { pathToFileURL } from "node:url";
+
+export const isMainModule =
+	process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (!KEY && isMainModule) {
+	console.error(
+		"FATAL: OLLAMA_API_KEY is required (injected by the host driver).",
+	);
+	process.exit(1);
 }
 
 // ---- local shell execution (no docker — we ARE in the box) ------------------
 function localShell(command) {
-  try {
-    const out = execFileSync("sh", ["-c", command], {
-      encoding: "utf8",
-      cwd: "/workspace",
-      stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: 64 * 1024 * 1024,
-      timeout: Number(env.AGENT_SHELL_TIMEOUT_MS || 120000),
-    });
-    return { exit: 0, out };
-  } catch (e) {
-    return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
-  }
+	try {
+		const out = execFileSync("sh", ["-c", command], {
+			encoding: "utf8",
+			cwd: "/workspace",
+			stdio: ["ignore", "pipe", "pipe"],
+			maxBuffer: 64 * 1024 * 1024,
+			timeout: Number(env.AGENT_SHELL_TIMEOUT_MS || 120000),
+		});
+		return { exit: 0, out };
+	} catch (e) {
+		return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
+	}
 }
 function localShellArgv(args) {
-  try {
-    const out = execFileSync(args[0], args.slice(1), {
-      encoding: "utf8",
-      cwd: "/workspace",
-      stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: 64 * 1024 * 1024,
-      timeout: Number(env.AGENT_SHELL_TIMEOUT_MS || 120000),
-    });
-    return { exit: 0, out };
-  } catch (e) {
-    return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
-  }
+	try {
+		const out = execFileSync(args[0], args.slice(1), {
+			encoding: "utf8",
+			cwd: "/workspace",
+			stdio: ["ignore", "pipe", "pipe"],
+			maxBuffer: 64 * 1024 * 1024,
+			timeout: Number(env.AGENT_SHELL_TIMEOUT_MS || 120000),
+		});
+		return { exit: 0, out };
+	} catch (e) {
+		return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
+	}
 }
 
 const clip = (s) =>
-  s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n…[truncated ${s.length - OUT_MAX} bytes]` : s;
+	s.length > OUT_MAX
+		? `${s.slice(0, OUT_MAX)}\n…[truncated ${s.length - OUT_MAX} bytes]`
+		: s;
 
 // ---- tool schema (native Ollama /api/chat `tools`) --------------------------
 const tools = [
-  {
-    type: "function",
-    function: {
-      name: "run_shell",
-      description:
-        "Run a shell command on this host (from /workspace). Use it to investigate " +
-        "via curl to the observability endpoints and the app, to read and edit the service code in " +
-        "/workspace, and to run git. Returns combined stdout+stderr and the exit code.",
-      parameters: {
-        type: "object",
-        properties: { command: { type: "string", description: "The shell command to run." } },
-        required: ["command"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "submit",
-      description:
-        "Hand off your fix for grading. Commits your /workspace edits and signals completion. " +
-        "Call this exactly once, when your fix is applied.",
-      parameters: {
-        type: "object",
-        properties: { 
-          note: { type: "string", description: "One-line summary of the fix." },
-          "rca-file": { type: "string", description: "Path to the postmortem file." }
-        },
-      },
-    },
-  },
+	{
+		type: "function",
+		function: {
+			name: "run_shell",
+			description:
+				"Run a shell command on this host (from /workspace). Use it to investigate " +
+				"via curl to the observability endpoints and the app, to read and edit the service code in " +
+				"/workspace, and to run git. Returns combined stdout+stderr and the exit code.",
+			parameters: {
+				type: "object",
+				properties: {
+					command: { type: "string", description: "The shell command to run." },
+				},
+				required: ["command"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "submit",
+			description:
+				"Hand off your fix for grading. Commits your /workspace edits and signals completion. " +
+				"Call this exactly once, when your fix is applied.",
+			parameters: {
+				type: "object",
+				properties: {
+					note: { type: "string", description: "One-line summary of the fix." },
+					"rca-file": {
+						type: "string",
+						description: "Path to the postmortem file.",
+					},
+				},
+			},
+		},
+	},
 ];
 
 // System prompt: the agent IS on the incident host (no "runs inside" indirection).
 const SYSTEM = [
-  "You are an on-call SRE engineer. An incident is affecting a service you operate.",
-  "The alerting stack is the source of truth — start there and let the signals lead you.",
-  "You act ONLY through the run_shell tool, which runs commands on this host.",
-  "Reachable endpoints are in env vars — run `env | grep _URL` to see",
-  "ALERTMANAGER_URL, PROM_URL, GRAFANA_URL and API_URL, then curl them to investigate.",
-  "The service's source is a git checkout at /workspace — read it, find the regression that",
-  "explains the signals, and fix it in place.",
-  "Investigate efficiently: prefer targeted commands (grep -rn, reading specific files, git log)",
-  "over dumping large directory trees; keep each command's output focused.",
-  "When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"",
-  "Keep working until you have submitted.",
+	"You are an on-call SRE engineer. An incident is affecting a service you operate.",
+	"The alerting stack is the source of truth — start there and let the signals lead you.",
+	"You act ONLY through the run_shell tool, which runs commands on this host.",
+	"Reachable endpoints are in env vars — run `env | grep _URL` to see",
+	"ALERTMANAGER_URL, PROM_URL, GRAFANA_URL and API_URL, then curl them to investigate.",
+	"The service's source is a git checkout at /workspace — read it, find the regression that",
+	"explains the signals, and fix it in place.",
+	"Investigate efficiently: prefer targeted commands (grep -rn, reading specific files, git log)",
+	"over dumping large directory trees; keep each command's output focused.",
+	'When you\'ve fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md "one-line summary"',
+	"Keep working until you have submitted.",
 ].join("\n");
 
 // Kickoff: symptom-level only — never name the alert cause (de-tell).
 const KICKOFF = env.T0_BUNDLE
-  ? "This incident context bundle was just delivered to the incident host:\n" +
-    env.T0_BUNDLE +
-    "\nInvestigate from the alerting stack, find the root cause in the code, " +
-    "apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\""
-  : env.WEBHOOK_PAYLOAD
-    ? "This alert notification was just delivered:\n" +
-      env.WEBHOOK_PAYLOAD +
-      "\nInvestigate from the alerting stack, find the root cause in the code, " +
-      "apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\""
-    : "An alert is firing for the service. Investigate from the alerting stack, find the root " +
-      "cause in the code, apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"";
+	? "This incident context bundle was just delivered to the incident host:\n" +
+		env.T0_BUNDLE +
+		"\nInvestigate from the alerting stack, find the root cause in the code, " +
+		'apply a fix in /workspace, and submit. When you\'ve fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md "one-line summary"'
+	: env.WEBHOOK_PAYLOAD
+		? "This alert notification was just delivered:\n" +
+			env.WEBHOOK_PAYLOAD +
+			"\nInvestigate from the alerting stack, find the root cause in the code, " +
+			'apply a fix in /workspace, and submit. When you\'ve fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md "one-line summary"'
+		: "An alert is firing for the service. Investigate from the alerting stack, find the root " +
+			'cause in the code, apply a fix in /workspace, and submit. When you\'ve fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md "one-line summary"';
 
 const messages = [
-  { role: "system", content: SYSTEM },
-  { role: "user", content: KICKOFF },
+	{ role: "system", content: SYSTEM },
+	{ role: "user", content: KICKOFF },
 ];
 
 // Sliding context window: always keep [system, kickoff]; then the most-recent
 // messages up to WINDOW. Never start the tail on an orphan tool result.
 function trimmed() {
-  if (messages.length <= WINDOW) return messages;
-  const head = messages.slice(0, 2);
-  let start = messages.length - (WINDOW - 2);
-  while (start > 2 && messages[start]?.role === "tool") start--;
-  return [...head, ...messages.slice(start)];
+	if (messages.length <= WINDOW) return messages;
+	const head = messages.slice(0, 2);
+	let start = messages.length - (WINDOW - 2);
+	while (start > 2 && messages[start]?.role === "tool") start--;
+	return [...head, ...messages.slice(start)];
 }
 
 // Retry transient provider failures (5xx / 429 / network); 4xx is non-retryable.
 async function chat() {
-  let lastErr;
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    try {
-      const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: MODEL, messages: trimmed(), tools, stream: false }),
-        signal: AbortSignal.timeout(Number(env.CHAT_TIMEOUT_MS || 120000)),
-      });
-      if (res.ok) return res.json();
-      const body = clip(await res.text());
-      if (res.status >= 500 || res.status === 429) throw new Error(`Ollama ${res.status}: ${body} (transient)`);
-      throw new Error(`Ollama ${res.status}: ${body}`);
-    } catch (e) {
-      lastErr = e;
-      const retryable = /transient|fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|network|socket|timeout|abort/i.test(e.message);
-      if (attempt >= 5 || !retryable) throw lastErr;
-      const wait = Math.min(3000 * attempt, 15000);
-      console.error(`  (transient: ${e.message}; retry ${attempt}/4 in ${wait / 1000}s)`);
-      await new Promise((r) => setTimeout(r, wait));
-    }
-  }
-  throw lastErr;
+	let lastErr;
+	for (let attempt = 1; attempt <= 5; attempt++) {
+		try {
+			const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${KEY}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					model: MODEL,
+					messages: trimmed(),
+					tools,
+					stream: false,
+				}),
+				signal: AbortSignal.timeout(Number(env.CHAT_TIMEOUT_MS || 120000)),
+			});
+			if (res.ok) {
+				consecutive500s = 0;
+				return res.json();
+			}
+
+			const body = clip(await res.text());
+			if (res.status >= 500) {
+				consecutive500s++;
+				const deg = computeDegradation({
+					currentWindow: WINDOW,
+					currentOutMax: OUT_MAX,
+					windowFloor: WINDOW_FLOOR,
+					outMaxFloor: OUT_MAX_FLOOR,
+					consecutive500s,
+					degradationCount,
+					maxDegradations: MAX_DEGRADATIONS,
+					degradeThreshold: DEGRADE_THRESHOLD,
+				});
+
+				if (deg.shouldDegrade) {
+					const oldWindow = WINDOW;
+					const oldOutMax = OUT_MAX;
+					WINDOW = deg.newWindow;
+					OUT_MAX = deg.newOutMax;
+					degradationCount = deg.degradationStep;
+					consecutive500s = 0;
+
+					console.error(
+						`agent-loop: ⚠️ adaptive degradation step ${degradationCount}/${MAX_DEGRADATIONS} triggered by ${DEGRADE_THRESHOLD} consecutive ${res.status}s: ` +
+							`AGENT_WINDOW ${oldWindow} -> ${WINDOW}, AGENT_OUT_MAX ${oldOutMax} -> ${OUT_MAX}`,
+					);
+				}
+			} else if (res.status !== 429) {
+				consecutive500s = 0;
+			}
+
+			if (res.status >= 500 || res.status === 429)
+				throw new Error(`Ollama ${res.status}: ${body} (transient)`);
+			throw new Error(`Ollama ${res.status}: ${body}`);
+		} catch (e) {
+			lastErr = e;
+			const retryable =
+				/transient|fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|network|socket|timeout|abort/i.test(
+					e.message,
+				);
+			if (attempt >= 5 || !retryable) throw lastErr;
+			const wait = Math.min(3000 * attempt, 15000);
+			console.error(
+				`  (transient: ${e.message}; retry ${attempt}/4 in ${wait / 1000}s)`,
+			);
+			await new Promise((r) => setTimeout(r, wait));
+		}
+	}
+	throw lastErr;
 }
 
 // ---- transcript (JSON to .sreforge/; the diff capture excludes .sreforge/) ---
 // Written on every exit path — including a permanent chat() failure, where the
-// history up to the failure is exactly what's needed to debug it.
+// history up to the failure is exactly what's needed to debug it. Best-effort.
 const transcriptPath = "/workspace/.sreforge/agent-transcript.json";
 function saveTranscript() {
-  mkdirSync("/workspace/.sreforge", { recursive: true });
-  writeFileSync(transcriptPath, JSON.stringify({ model: MODEL, submitted, messages }, null, 2));
+	try {
+		mkdirSync("/workspace/.sreforge", { recursive: true });
+		writeFileSync(
+			transcriptPath,
+			JSON.stringify({ model: MODEL, submitted, messages }, null, 2),
+		);
+	} catch (e) {
+		console.error(`agent-loop: WARN — failed to save transcript: ${e.message}`);
+	}
 }
 
-// ---- the loop ---------------------------------------------------------------
-console.log(`agent-loop: model=${MODEL} host=${OLLAMA_HOST} steps<=${MAX_STEPS}\n`);
-let submitted = false;
-for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
-  let data;
-  try {
-    data = await chat();
-  } catch (e) {
-    console.error(`step ${step}: ${e.message}`);
-    saveTranscript();
-    console.error(`agent-loop: transcript → ${transcriptPath}`);
-    process.exit(1);
-  }
-  const msg = data.message || {};
-  messages.push(msg);
-  if (msg.content && msg.content.trim()) console.log(`[${step}] 🧠 ${msg.content.trim()}`);
+export async function runLoop() {
+	console.log(
+		`agent-loop: model=${MODEL} host=${OLLAMA_HOST} steps<=${MAX_STEPS}\n`,
+	);
+	let submitted = false;
+	for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
+		let data;
+		try {
+			data = await chat();
+		} catch (e) {
+			console.error(`step ${step}: ${e.message}`);
+			saveTranscript();
+			console.error(`agent-loop: transcript → ${transcriptPath}`);
+			process.exit(1);
+		}
+		const msg = data.message || {};
+		messages.push(msg);
+		if (msg.content?.trim()) console.log(`[${step}] 🧠 ${msg.content.trim()}`);
 
-  const calls = msg.tool_calls || [];
-  if (calls.length === 0) {
-    messages.push({ role: "user", content: "Continue: call run_shell to investigate/fix, or submit when done." });
-    continue;
-  }
-  for (const c of calls) {
-    const name = c.function?.name;
-    let args = c.function?.arguments;
-    if (typeof args === "string") {
-      try { args = JSON.parse(args); } catch { args = {}; }
-    }
-    args = args || {};
-    if (name === "run_shell") {
-      const cmd = String(args.command || "");
-      console.log(`[${step}] $ ${cmd}`);
-      const r = localShell(cmd);
-      console.log(clip(r.out).trimEnd());
-      messages.push({ role: "tool", tool_name: "run_shell", content: clip(`(exit ${r.exit})\n${r.out}`) });
-    } else if (name === "submit") {
-      const note = String(args.note || "fix").replace(/[^\w .,:;/-]/g, " ").slice(0, 200);
-      let rcaFile = args["rca-file"] ? String(args["rca-file"]) : "";
-      let submitArgs = ["submit"];
-      if (rcaFile) {
-        if (/^[A-Za-z0-9._/-]+$/.test(rcaFile) && !rcaFile.startsWith("/") && !rcaFile.includes("..")) {
-          submitArgs.push("--rca", rcaFile);
-        } else {
-          console.warn(`[${step}] ⚠ warning: rejected invalid RCA path "${rcaFile}", submitting without RCA`);
-          rcaFile = "";
-        }
-      }
-      submitArgs.push(note);
-      console.log(`[${step}] ✅ submit: ${note}${rcaFile ? ` (rca: ${rcaFile})` : ""}`);
-      // submit is on PATH (/usr/local/bin/submit) — run it directly
-      const r = localShellArgv(submitArgs);
-      console.log(r.out.trimEnd());
-      messages.push({ role: "tool", tool_name: "submit", content: clip(`(exit ${r.exit})\n${r.out}`) });
-      submitted = r.exit === 0;
-    } else {
-      messages.push({ role: "tool", tool_name: name || "unknown", content: `unknown tool: ${name}` });
-    }
-  }
+		const calls = msg.tool_calls || [];
+		if (calls.length === 0) {
+			messages.push({
+				role: "user",
+				content:
+					"Continue: call run_shell to investigate/fix, or submit when done.",
+			});
+			continue;
+		}
+		for (const c of calls) {
+			const name = c.function?.name;
+			let args = c.function?.arguments;
+			if (typeof args === "string") {
+				try {
+					args = JSON.parse(args);
+				} catch {
+					args = {};
+				}
+			}
+			args = args || {};
+			if (name === "run_shell") {
+				const cmd = String(args.command || "");
+				console.log(`[${step}] $ ${cmd}`);
+				const r = localShell(cmd);
+				console.log(clip(r.out).trimEnd());
+				messages.push({
+					role: "tool",
+					tool_name: "run_shell",
+					content: clip(`(exit ${r.exit})\n${r.out}`),
+				});
+			} else if (name === "submit") {
+				const note = String(args.note || "fix")
+					.replace(/[^\w .,:;/-]/g, " ")
+					.slice(0, 200);
+				let rcaFile = args["rca-file"] ? String(args["rca-file"]) : "";
+				const submitArgs = ["submit"];
+				if (rcaFile) {
+					if (
+						/^[A-Za-z0-9._/-]+$/.test(rcaFile) &&
+						!rcaFile.startsWith("/") &&
+						!rcaFile.includes("..")
+					) {
+						submitArgs.push("--rca", rcaFile);
+					} else {
+						console.warn(
+							`[${step}] ⚠ warning: rejected invalid RCA path "${rcaFile}", submitting without RCA`,
+						);
+						rcaFile = "";
+					}
+				}
+				submitArgs.push(note);
+				console.log(
+					`[${step}] ✅ submit: ${note}${rcaFile ? ` (rca: ${rcaFile})` : ""}`,
+				);
+				// submit is on PATH (/usr/local/bin/submit) — run it directly
+				const r = localShellArgv(submitArgs);
+				console.log(r.out.trimEnd());
+				messages.push({
+					role: "tool",
+					tool_name: "submit",
+					content: clip(`(exit ${r.exit})\n${r.out}`),
+				});
+				submitted = r.exit === 0;
+			} else {
+				messages.push({
+					role: "tool",
+					tool_name: name || "unknown",
+					content: `unknown tool: ${name}`,
+				});
+			}
+		}
+	}
+
+	saveTranscript();
+	console.log(
+		`\nagent-loop: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${transcriptPath}`,
+	);
+	process.exit(submitted ? 0 : 2);
 }
 
-saveTranscript();
-console.log(`\nagent-loop: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${transcriptPath}`);
-process.exit(submitted ? 0 : 2);
+if (isMainModule) {
+	runLoop().catch((err) => {
+		console.error(`agent-loop: FATAL: ${err.message}`);
+		process.exit(1);
+	});
+}

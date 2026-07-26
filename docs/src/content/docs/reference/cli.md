@@ -35,8 +35,8 @@ Each phase verb maps to a task in the stack's `Taskfile.yml`:
 | `arm` | Inject the fault and confirm the target alert fires | Yes |
 | `agent` | Bring up the sealed agent sandbox | No |
 | `mcp` | Start the optional read-only Grafana MCP telemetry seam | No |
-| `auto` | Automated incident cycle: alert push → agent → grade (ADR-0025) | Yes |
-| `run` | Drive a graded run (scripted, or `RUNNER=external`) | Yes |
+| `auto` | Automated incident cycle: alert push → agent → grade (ADR-0025); runs runner pre-flight check (`confirm-runner.mjs`), aborts with exit code 86 if runner is missing/unregistered | Yes |
+| `run` | Drive a graded run (scripted, or `RUNNER=external`, `id=<run-id>`); runs runner pre-flight check | Yes |
 | `verify` | Behavioural verification + boundary / de-tell probes | No |
 | `down` | Tear down the deploy + load planes | No |
 | `status` | Fast per-plane runtime view (forge plane, deploy N/M with offenders named, agent workspace, alert state, p99) | No |
@@ -71,9 +71,12 @@ composite, they flow to each scenario-aware phase (`arm`, `run`, `auto`,
 
 Scenario-aware verbs (`arm`, `auto`, `run`, `smoke`, `agent-up`, `incident`, `e2e`) accept `SCENARIO_ID` specified either via environment variable (`SCENARIO_ID=<id>`) or trailing task argument (`SCENARIO_ID=<id>`). If omitted, it defaults to `latency-cache-stampede`. Any other verb invoked with `SCENARIO_ID` fails loudly. Scenario IDs must be valid lowercase slugs matching `/^[a-z0-9][a-z0-9-]*$/`; invalid slugs are rejected before task execution.
 
+The `run` and `auto` verbs accept `id=<run-id>` to pin the banked run record ID.
+
 ```sh
 pnpm forge up booklogr                      # single phase
 pnpm forge run booklogr RUNNER=external id=r1   # args → the run task
+pnpm forge auto booklogr id=r1              # automated cycle with pinned run ID
 pnpm forge incident booklogr                # composite: arm → run → verify
 pnpm forge smoke booklogr SCENARIO_ID=cascading-upstream-failure
 ```

@@ -54,7 +54,7 @@ downloads the Task binary) is permitted under pnpm's default script blocking.
 | **setup** | once | `import-substrate.sh`, `inject-regression.sh` | | |
 | **bring-up** | per session | `up.sh` | | |
 | **quiesce** | pre-arm | `quiesce.sh` | `confirm-quiesced.mjs` | |
-| **arm** | per run | `arm-incident.sh` | `confirm-fire.mjs` | |
+| **arm** | per run | `arm-incident.sh` | `confirm-fire.mjs`, `confirm-runner.mjs` | |
 | **agent** | per run | `prepare-agent-workspace.sh` | | |
 | **run** | per run | `run-incident.mjs` | `warm-cache.sh` (readiness gate) | |
 | **verify** | any time | `verify-boundary.sh`, `verify-alert-pickup.sh`, `verify-detell.sh`, `verify-clear.mjs` | | |
