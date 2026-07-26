@@ -25,13 +25,13 @@ node tools/headroom/campaign.mjs score --scenario <id> --run-ids rid1,rid2,rid3 
 
 ## Modes & Target Scenarios
 
-Target scenarios for this qualification include:
-- `use-cases/booklogr/scenarios/db-pool-exhaustion-deploy`
-  - **Mode:** `score-headroom` (default)
-  - Fails if the mitigation median `>= 0.8`.
+The governing qualification mode is declared per-scenario in `scenario.toml` under `[verify].qualification_mode` (defaulting to `score-headroom` for all scenarios).
+
+- `score-headroom` (governing metric across all scenarios):
+  - Evaluates qualification based on whether mitigation median is `< 0.8` (QUALIFIED) or `>= 0.8` (DISQUALIFIED).
   - Example: `node tools/headroom/campaign.mjs run --scenario use-cases/booklogr/scenarios/db-pool-exhaustion-deploy`
 
-- `use-cases/booklogr/scenarios/decoy-deploy-control`
-  - **Mode:** `decoy-rate`
-  - Fails if the false-leads rate is `0/m` or if there are no diagnoses available.
+- `decoy-rate` (informational statistic):
+  - Reported in `verify/headroom.md` as `Falls-for-decoy Rate: x/y`, but does not gate qualification.
+  - Can be passed explicitly via `--mode decoy-rate` for opt-in legacy evaluation.
   - Example: `node tools/headroom/campaign.mjs run --scenario use-cases/booklogr/scenarios/decoy-deploy-control --mode decoy-rate`
