@@ -79,6 +79,7 @@ stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): loa
 # slow upstream. The oracle grades observed behavior, NOT a diff match against solution/fix.patch.
 [verify]
 oracle           = "mitigation"       # ARCHETYPE — oracle family; compound oracle drops in detect/diagnose later without refactor
+qualification_mode = "score-headroom" # ARCHETYPE — score-headroom (mitigation median vs 0.8 threshold governs qualification)
 pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
 load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
   # Services whose firing alerts count toward the no_new_alerts regression signal.
