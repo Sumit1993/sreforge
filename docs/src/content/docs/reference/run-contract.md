@@ -38,7 +38,7 @@ run. The example uses `booklogr`.
   "eval_only": {
     "alert_to_clear":          "BooklogrApiLatencyP99High",
     "max_clear_time_seconds":  600,
-    "sustained_clear_seconds": 60
+    "sustained_clear_seconds": 360
   }
 }
 ```

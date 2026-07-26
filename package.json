@@ -17,6 +17,8 @@
     "certify:hash": "node tools/certify/surface-hash.mjs",
     "certify:validate": "node tools/certify/validate-manifest.mjs",
     "test:certify": "node --test tools/certify/test/*.test.mjs",
+    "rules-lint": "node tools/rules-lint/lint.mjs",
+    "test:rules-lint": "node --test tools/rules-lint/test/*.test.mjs",
     "test:transcript": "node --test tools/transcript/test/*.test.mjs",
     "test:record": "node --test tools/record/test/*.test.mjs",
     "test:bank": "node --test tools/record/test/bank.test.mjs",
@@ -26,7 +28,8 @@
     "test:rca-judge": "node --test tools/rca-judge/test/*.test.mjs",
     "headroom": "node tools/headroom/campaign.mjs",
     "test:headroom": "node --test tools/headroom/test/*.test.mjs",
-    "test:trigger-bus": "node --test core/test/trigger-bus.test.mjs core/test/t0-bundle.test.mjs use-cases/booklogr/stacks/flask-compose/scripts/test/lib-storm.test.mjs"
+    "test:trigger-bus": "node --test core/test/trigger-bus.test.mjs core/test/t0-bundle.test.mjs use-cases/booklogr/stacks/flask-compose/scripts/test/lib-storm.test.mjs",
+    "test:quiesce": "node --test use-cases/booklogr/stacks/flask-compose/scripts/test/confirm-quiesced.test.mjs"
   },
   "devDependencies": {
     "@go-task/cli": "^3.51.1",

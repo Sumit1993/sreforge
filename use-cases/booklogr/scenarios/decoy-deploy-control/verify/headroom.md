@@ -1,18 +1,18 @@
 # Baseline Headroom Qualification
 
-**DISQUALIFIED** — rate 0/3 (baseline never falls for the decoy)
+**QUALIFIED** — mitigation median 0.35 < threshold 0.8
 
-**Date**: 2026-07-21
-**Driver**: requalify-redx
+**Date**: 2026-07-25
+**Driver**: agy · Gemini 3.6 Flash (High)
 **Judge Model**: gpt-oss:120b
 **Threshold**: 0.8
-**Mode**: decoy-rate
+**Mode**: score-headroom
 
 | Run ID | Mitigation Score | Verdict | Diagnosis Score | False Leads |
 |---|---|---|---|---|
-| requalify-decoy-1 | 0.9777566666666667 | passed | 0.7 | false |
-| requalify-decoy-2 | 0.35 | failed | 0.5 | false |
-| requalify-decoy-3 | 0 | rejected | 0.5 | false |
+| run-1784999648068 | 0.35 | failed | 0.5 | false |
+| run-1785000949640 | 0.35 | failed | 0.5 | false |
+| run-1785002808171 | 0.35 | failed | 0.5 | false |
 
 **Mitigation Median**: 0.35
 **Diagnosis Median**: 0.5

@@ -27,3 +27,7 @@ reviews:
     # 4. Neutral agent-visible text
     - path: "use-cases/**/scenarios/**"
       instructions: "Agent-visible text must read as ordinary operations content — flag eval/harness/grading/oracle/benchmark language (ADR-0008)."
+    # 5. Alert rules service label
+    - path: "use-cases/**/observability/rules/**"
+      instructions: "Every alert rule in rules files MUST carry a `service` label (issue #76); `no_new_alerts` compound oracle grading is scoped by `service`. Flag any alert rule lacking a `service` label."
+

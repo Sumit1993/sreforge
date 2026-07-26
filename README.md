@@ -20,6 +20,7 @@ still-active fault. You cannot bluff a behavioural oracle.
 - **Authored, reproducible incidents.** A determinism gate confirms the incident
   has actually reproduced before the agent is ever handed the page.
 - **Honest, neutral framing.** The agent is never told it's in a harness.
+- **Ambient-realism baseline.** SREForge stack deployments include an ambient-realism baseline representing background infrastructure activity, periodic system telemetry, and standard deployment updates.
 
 ## Taxonomy
 

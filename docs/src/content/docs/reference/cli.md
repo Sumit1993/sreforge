@@ -31,6 +31,7 @@ Each phase verb maps to a task in the stack's `Taskfile.yml`:
 |---|---|---|
 | `setup` | One-time substrate import + scaffolding | No |
 | `up` | Bring up the deployment + observability stack | No |
+| `quiesce` | Quiesce the observability plane before arm (#74) | Yes |
 | `arm` | Inject the fault and confirm the target alert fires | Yes |
 | `agent` | Bring up the sealed agent sandbox | No |
 | `mcp` | Start the optional read-only Grafana MCP telemetry seam | No |
@@ -104,7 +105,8 @@ These are plain Node scripts (no install needed) used during substrate intake:
 | `pnpm detell:grade` | The grading variant |
 | `pnpm certify:hash` | Computes the ADR-0026 `own_hash` and `shared_hash` for a scenario |
 | `pnpm certify:validate` | Validates acceptance manifests against their versioned schema |
-| `pnpm test:*` | Runs suite-specific tests (e.g., `test:certify`, `test:core`) |
+| `pnpm rules-lint` | Lints Prometheus alert rules under `observability/rules/*.yml` for mandatory `service` labels |
+| `pnpm test:*` | Runs suite-specific tests (e.g., `test:certify`, `test:rules-lint`, `test:core`) |
 | `node tools/record/migrate-run-records.mjs` | Migrates older run records to the canonical snake_case `run-record.v1` schema |
 | `node tools/transcript/write-handoff.mjs` | Driver contract script to hand off agent transcript/RCA to the engine |
 

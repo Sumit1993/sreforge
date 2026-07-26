@@ -150,8 +150,15 @@ export function defineChecks(config) {
 		deployServices,
 		prometheusUrl,
 		alertmanagerUrl,
-		deployUpHint,
+		useCase,
+		quiesceHint: customQuiesceHint,
 	} = config;
+
+	const quiesceHint =
+		customQuiesceHint ??
+		(useCase
+			? `pnpm forge quiesce ${useCase}`
+			: "pnpm forge quiesce <use-case>");
 
 	const safeFetch = async (url, options = {}) => {
 		try {
@@ -473,6 +480,87 @@ export function defineChecks(config) {
 				return {
 					status: "warn",
 					detail: "alertmanager down (status quo routes to null receiver)",
+				};
+			},
+		},
+		{
+			id: "observability-quiescence",
+			plane: "deploy",
+			run: async () => {
+				const res = await safeFetch(`${prometheusUrl}/api/v1/alerts`);
+				if (res.status !== 200 || res.json?.status !== "success") {
+					return {
+						status: "warn",
+						detail: "prometheus unreachable (cannot query quiescence)",
+					};
+				}
+				const alerts = res.json?.data?.alerts;
+				if (!Array.isArray(alerts)) {
+					return {
+						status: "warn",
+						detail: "prometheus returned malformed alerts payload",
+					};
+				}
+				const firing = alerts.filter(
+					(a) => a && typeof a === "object" && a.state === "firing",
+				).length;
+				const pending = alerts.filter(
+					(a) => a && typeof a === "object" && a.state === "pending",
+				).length;
+				if (firing === 0 && pending === 0) {
+					return { status: "pass", detail: "0 firing / 0 pending" };
+				}
+				return {
+					status: "warn",
+					detail: `${firing} firing / ${pending} pending — run \`${quiesceHint}\` before arm`,
+				};
+			},
+		},
+		{
+			id: "ambient-furniture",
+			plane: "deploy",
+			run: async () => {
+				const enabled = process.env.AMBIENT_FURNITURE !== "0";
+				const rulesFile = config.ambientRulesPath || null;
+				const rulesPresent = rulesFile ? existsSync(rulesFile) : false;
+				let commitPresent = false;
+				const substratePath = config.substratePath || null;
+				const author = config.ambientCommitAuthor;
+				const subject = config.ambientCommitSubject;
+				const expectedPattern =
+					author && subject ? `${author}: ${subject}` : null;
+				if (substratePath && expectedPattern) {
+					try {
+						const gitLog = execFileSync(
+							"git",
+							["-C", substratePath, "log", "-n", "5", "--format=%an: %s"],
+							{
+								encoding: "utf8",
+								stdio: ["ignore", "pipe", "ignore"],
+								timeout: 5000,
+							},
+						);
+						if (gitLog.includes(expectedPattern)) {
+							commitPresent = true;
+						}
+					} catch {}
+				}
+
+				const statusStr = enabled
+					? "ENABLED (AMBIENT_FURNITURE=1)"
+					: "DISABLED (AMBIENT_FURNITURE=0)";
+				const alertName = config.ambientAlertName || "ambient-alert";
+				const alertService = config.ambientAlertService || "ambient-service";
+				const ruleStr = rulesPresent
+					? `${alertName} (service: ${alertService})`
+					: "ABSENT";
+				const commitStr = commitPresent && expectedPattern
+					? `PRESENT (${expectedPattern})`
+					: "ABSENT";
+
+				return {
+					status: "pass",
+					detail: `Ambient furniture status: ${statusStr} | Ambient alert rule: ${ruleStr} | Recent deploy commit: ${commitStr}`,
 				};
 			},
 		},

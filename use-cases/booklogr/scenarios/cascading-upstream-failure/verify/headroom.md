@@ -1,20 +1,20 @@
 # Baseline Headroom Qualification
 
-**DISQUALIFIED** — mitigation median 0.9916561111111112 >= threshold 0.8
+**DISQUALIFIED** — mitigation median 0.9958291666666667 >= threshold 0.8
 
-**Date**: 2026-07-21
-**Driver**: requal2-gemini31
+**Date**: 2026-07-22
+**Driver**: default
 **Judge Model**: gpt-oss:120b
 **Threshold**: 0.8
-**Mode**: mitigation
+**Mode**: score-headroom
 
 | Run ID | Mitigation Score | Verdict | Diagnosis Score | False Leads |
 |---|---|---|---|---|
-| requal2-cascading-1 | 0.9916561111111112 | passed | 1 | false |
-| requal2-cascading-2 | 0.9888750000000001 | passed | 1 | false |
-| requal2-cascading-3 | 0.9916577777777779 | passed | 1 | false |
+| campaign-cascading-1 | 0.9958291666666667 | passed | 1 | false |
+| campaign-cascading-2 | 0 | failed | 1 | false |
+| campaign-cascading-3 | 0.9966631666666667 | passed | 1 | false |
 
-**Mitigation Median**: 0.9916561111111112
+**Mitigation Median**: 0.9958291666666667
 **Diagnosis Median**: 1
 **Falls-for-decoy Rate**: 0/3
 

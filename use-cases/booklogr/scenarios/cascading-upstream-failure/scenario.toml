@@ -38,7 +38,7 @@ histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_b
 # --- determinism / timing knobs ------------------------------------------------
 [determinism]
 confirm_fire_timeout_seconds = 240   # TUNE-ON-CERT
-sustained_clear_seconds      = 30
+sustained_clear_seconds      = 360   # ARCHETYPE — must stay cleared this long (load still active) to score as mitigated; > substrate cache TTL 300s so cache-masking cannot pass (#66)
 alert_fired_at               = ""
 
 # --- paths (relative to this scenario directory) -------------------------------

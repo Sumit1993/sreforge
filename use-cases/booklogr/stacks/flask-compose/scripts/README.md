@@ -22,6 +22,7 @@ the repo root, then:
 pnpm forge menu     booklogr   # the phase menu (task --list)
 pnpm forge setup    booklogr   # once:    import substrate + author regression
 pnpm forge up       booklogr   # session: bring up the deploy plane
+pnpm forge quiesce  booklogr   # run:     quiesce observability plane before arm (#74)
 pnpm forge arm      booklogr   # run:     reset to baseline, start storm, confirm alert fires
 pnpm forge agent    booklogr   # run:     clean /workspace clone + bring up the sandbox
 pnpm forge run      booklogr   # run:     drive the incident end-to-end  (append RUNNER=external for the real-agent loop)
@@ -52,6 +53,7 @@ downloads the Task binary) is permitted under pnpm's default script blocking.
 | **build** | on `run` | — | `run-incident.mjs` builds via `core/` | — |
 | **setup** | once | `import-substrate.sh`, `inject-regression.sh` | | |
 | **bring-up** | per session | `up.sh` | | |
+| **quiesce** | pre-arm | `quiesce.sh` | `confirm-quiesced.mjs` | |
 | **arm** | per run | `arm-incident.sh` | `confirm-fire.mjs` | |
 | **agent** | per run | `prepare-agent-workspace.sh` | | |
 | **run** | per run | `run-incident.mjs` | `warm-cache.sh` (readiness gate) | |
@@ -79,6 +81,16 @@ node scripts/run-incident.mjs --run-id my-run        # RUNNER=external for the r
 ```
 
 The `smoke-*.sh` scripts already source `.env` themselves, so they need no setup.
+
+`verify-clear.mjs` can also be run standalone to verify sustained alert clearance:
+
+```sh
+node scripts/verify-clear.mjs --alert=BooklogrApiLatencyP99High --sustain=360 --timeout=600
+```
+
+- `--sustain`: Seconds the alert must stay cleared under load (defaults to `360`).
+- `--timeout`: Maximum seconds allowed for the alert to clear (defaults to `600`).
+
 
 ## When use-cases multiply
 

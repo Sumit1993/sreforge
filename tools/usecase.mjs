@@ -36,6 +36,7 @@ const PHASE_TASK = {
   setup: "setup",
   up: "up",
   arm: "arm",
+  quiesce: "quiesce", //                     quiesce observability plane before arm
   agent: "agent",
   mcp: "mcp", //                             optional MCP telemetry seam (read-only Grafana MCP)
   auto: "auto", //                           ③ automated incident: alert push → agent → grade (ADR-0025)
@@ -144,7 +145,7 @@ if (verb === "forge-up" || verb === "forge-down") {
 
 if (!ref) die(`'${verb}' needs a use-case: pnpm forge ${verb} <use-case>`);
 
-const SCENARIO_VERBS = new Set(["arm", "auto", "run", "smoke", "agent-up", "incident", "e2e"]);
+const SCENARIO_VERBS = new Set(["arm", "quiesce", "auto", "run", "smoke", "agent-up", "incident", "e2e"]);
 const scenarioIds = [];
 if (process.env.SCENARIO_ID !== undefined) {
   scenarioIds.push(process.env.SCENARIO_ID);
