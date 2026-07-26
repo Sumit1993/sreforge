@@ -154,7 +154,18 @@ if (listenerExit !== 0 || !payloadJson) {
 	);
 	process.exit(listenerExit || 1);
 }
-const payload = JSON.parse(payloadJson);
+// Abort through the same diagnostic path as an absent notification: a truncated
+// or malformed capture must not surface as a bare stack trace, and must not let
+// the run proceed to the agent on a payload we could not read.
+let payload;
+try {
+	payload = JSON.parse(payloadJson);
+} catch (e) {
+	console.error(
+		`auto: webhook payload was not valid JSON (${e.message}) — aborting before the agent.`,
+	);
+	process.exit(1);
+}
 let t0BundleJson = "";
 if (payload.schema_version === "storm-capture.v1") {
 	const slackTriage = [];

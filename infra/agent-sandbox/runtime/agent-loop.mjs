@@ -46,6 +46,7 @@ const MAX_DEGRADATIONS = Number(env.AGENT_MAX_DEGRADATIONS || 3); // max degrada
 
 let consecutive500s = 0;
 let degradationCount = 0;
+const degradations = [];
 
 export function computeDegradation({
 	currentWindow,
@@ -256,6 +257,13 @@ async function chat() {
 					OUT_MAX = deg.newOutMax;
 					degradationCount = deg.degradationStep;
 					consecutive500s = 0;
+					degradations.push({
+						step: degradationCount,
+						trigger_status: res.status,
+						consecutive_5xx: DEGRADE_THRESHOLD,
+						window: { from: oldWindow, to: WINDOW },
+						out_max: { from: oldOutMax, to: OUT_MAX },
+					});
 
 					console.error(
 						`agent-loop: ⚠️ adaptive degradation step ${degradationCount}/${MAX_DEGRADATIONS} triggered by ${DEGRADE_THRESHOLD} consecutive ${res.status}s: ` +
@@ -290,12 +298,34 @@ async function chat() {
 // Written on every exit path — including a permanent chat() failure, where the
 // history up to the failure is exactly what's needed to debug it. Best-effort.
 const transcriptPath = "/workspace/.sreforge/agent-transcript.json";
-function saveTranscript() {
+// `submitted` is a parameter, NOT a closure read: it lives inside runLoop(), so
+// referencing it here would throw ReferenceError on every call — and the catch
+// below would swallow it, silently producing no transcript at all.
+// Pure builder so the payload can be unit-tested without a /workspace mount.
+// This exists because the previous shape read `submitted` from a scope it did
+// not live in: the ReferenceError was swallowed by saveTranscript's catch and
+// the transcript silently never appeared. A pure function makes that testable.
+export function buildTranscript(submitted) {
+	return {
+		model: MODEL,
+		submitted,
+		// Effective knobs at exit + every degradation step, so an analyst can tell
+		// a window-22 run from one degraded to the floor. Two runs that degraded
+		// differently are not comparable evidence (ADR-0010).
+		effective_window: WINDOW,
+		effective_out_max: OUT_MAX,
+		degradation_count: degradationCount,
+		degradations,
+		messages,
+	};
+}
+
+function saveTranscript(submitted) {
 	try {
 		mkdirSync("/workspace/.sreforge", { recursive: true });
 		writeFileSync(
 			transcriptPath,
-			JSON.stringify({ model: MODEL, submitted, messages }, null, 2),
+			JSON.stringify(buildTranscript(submitted), null, 2),
 		);
 	} catch (e) {
 		console.error(`agent-loop: WARN — failed to save transcript: ${e.message}`);
@@ -313,7 +343,7 @@ export async function runLoop() {
 			data = await chat();
 		} catch (e) {
 			console.error(`step ${step}: ${e.message}`);
-			saveTranscript();
+			saveTranscript(submitted);
 			console.error(`agent-loop: transcript → ${transcriptPath}`);
 			process.exit(1);
 		}
@@ -394,7 +424,7 @@ export async function runLoop() {
 		}
 	}
 
-	saveTranscript();
+	saveTranscript(submitted);
 	console.log(
 		`\nagent-loop: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${transcriptPath}`,
 	);

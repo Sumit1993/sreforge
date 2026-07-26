@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { computeDegradation } from "../agent-loop.mjs";
+import { describe, it, test } from "node:test";
+import { buildTranscript, computeDegradation } from "../agent-loop.mjs";
 
 describe("adaptive degradation unit tests (#35)", () => {
 	it("1. below threshold -> shouldDegrade: false", () => {
@@ -81,4 +81,21 @@ describe("adaptive degradation unit tests (#35)", () => {
 		assert.equal(res.shouldDegrade, false);
 		assert.equal(res.reason, "at_floors");
 	});
+});
+
+// Regression guard: buildTranscript previously read `submitted` from a scope it
+// did not live in. The ReferenceError was swallowed by saveTranscript's catch,
+// so every run silently produced NO transcript while still printing the path.
+// Calling the builder directly is what makes that failure visible.
+test("buildTranscript: returns a complete payload and does not throw", () => {
+	const t = buildTranscript(true);
+	assert.equal(t.submitted, true);
+	assert.equal(typeof t.model, "string");
+	assert.ok(Array.isArray(t.messages), "messages must be an array");
+	assert.ok(Array.isArray(t.degradations), "degradations must be an array");
+	assert.equal(typeof t.effective_window, "number");
+	assert.equal(typeof t.effective_out_max, "number");
+	assert.equal(typeof t.degradation_count, "number");
+	assert.equal(buildTranscript(false).submitted, false);
+	JSON.stringify(t); // must be serialisable
 });
