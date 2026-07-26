@@ -25,13 +25,13 @@
 // Same-session repeats are DEV-MODE (Prometheus history carries the previous
 // incident — a repeat-scenario tell); official scoring uses a cold session.
 // =============================================================================
-import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  assembleT0Bundle,
-  renderT0Bundle,
+	assembleT0Bundle,
+	renderT0Bundle,
 } from "../../../../../core/dist/context/t0-bundle.js";
 import { parseTriageFeed } from "./lib-storm.mjs";
 
@@ -43,51 +43,55 @@ const env = process.env;
 let runId = env.RUN_ID;
 const runIdIdx = process.argv.indexOf("--run-id");
 if (runIdIdx !== -1 && process.argv.length > runIdIdx + 1) {
-  runId = process.argv[runIdIdx + 1];
+	runId = process.argv[runIdIdx + 1];
 }
 if (!runId) {
-  runId = `run-${Date.now()}`;
+	runId = `run-${Date.now()}`;
 }
 
 const AGENT_CMD = env.AGENT_CMD || "node scripts/agent-ollama.mjs";
 const WEBHOOK_PORT = Number(env.WEBHOOK_PORT || 8080);
 
 const TASK_BIN = (() => {
-  const local = resolve(REPO_ROOT, "node_modules", ".bin", "task");
-  return existsSync(local) ? local : "task";
+	const local = resolve(REPO_ROOT, "node_modules", ".bin", "task");
+	return existsSync(local) ? local : "task";
 })();
 
-// ── preflight: the CI runner must be alive or the graded run will time out.
-try {
-  const out = execFileSync(
-    "docker", ["inspect", "-f", "{{.State.Running}}", "sreforge-runner"],
-    { encoding: "utf8", timeout: 5000 },
-  ).trim();
-  if (out !== "true") throw new Error(`state=${out}`);
-} catch (e) {
-  console.error(
-    `auto: FATAL — sreforge-runner is not running (${e.message}).\n` +
-    `       Recovery: pnpm forge forge-up (docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner)`,
-  );
-  process.exit(1);
+// ── preflight: the CI runner must be running AND registered with Gitea before arm.
+const confirmRunnerRes = spawnSync(
+	process.execPath,
+	[resolve(HERE, "confirm-runner.mjs")],
+	{
+		stdio: "inherit",
+		env,
+	},
+);
+if (confirmRunnerRes.status !== 0) {
+	const code = confirmRunnerRes.status ?? 86;
+	console.error(
+		`auto: runner pre-flight check failed (exit ${code}) — aborting before arming.`,
+	);
+	process.exit(code);
 }
 
 function task(name, extra = []) {
-  console.log(`\nauto ── task ${name} ${extra.join(" ")}`.trimEnd());
-  const res = spawnSync(TASK_BIN, ["--dir", STACK, name, ...extra], {
-    stdio: "inherit",
-    env,
-  });
-  if (res.status !== 0) {
-    console.error(`auto: task ${name} failed (exit ${res.status ?? 1}) — aborting.`);
-    process.exit(res.status ?? 1);
-  }
+	console.log(`\nauto ── task ${name} ${extra.join(" ")}`.trimEnd());
+	const res = spawnSync(TASK_BIN, ["--dir", STACK, name, ...extra], {
+		stdio: "inherit",
+		env,
+	});
+	if (res.status !== 0) {
+		console.error(
+			`auto: task ${name} failed (exit ${res.status ?? 1}) — aborting.`,
+		);
+		process.exit(res.status ?? 1);
+	}
 }
 
 // Forward the run's opt-ins to `task agent` as task vars (PROVIDER=… MCP=…).
 const optIns = ["PROVIDER", "MCP", "EGRESS_ALLOWLIST", "WEBHOOK_STORM_WINDOW_S"]
-  .filter((k) => env[k])
-  .map((k) => `${k}=${env[k]}`);
+	.filter((k) => env[k])
+	.map((k) => `${k}=${env[k]}`);
 
 // ── 1 · arm PHASE 1 (regress) BEFORE the clone. The /workspace clone below reads
 // the LOCAL substrate at its current HEAD, and modes 2/3 apply the fault DURING
@@ -100,10 +104,10 @@ task("arm-regress");
 task("agent", optIns);
 
 // ── 3 · listener up BEFORE the alert fires — the box must be reachable when AM notifies.
-console.log("\nauto ── webhook listener (in-box, :" + WEBHOOK_PORT + ")");
+console.log(`\nauto ── webhook listener (in-box, :${WEBHOOK_PORT})`);
 const listener = spawn("node", [resolve(HERE, "webhook-wait.mjs")], {
-  stdio: ["ignore", "pipe", "inherit"],
-  env,
+	stdio: ["ignore", "pipe", "inherit"],
+	env,
 });
 let payloadJson = "";
 listener.stdout.on("data", (d) => (payloadJson += d));
@@ -112,18 +116,27 @@ const listenerDone = new Promise((res_) => listener.on("close", res_));
 // Wait until the port is actually bound (in-box netstat) so arm cannot race it.
 let bound = false;
 for (let i = 0; i < 20 && !bound; i++) {
-  try {
-    execFileSync(
-      "docker",
-      ["exec", "agent-shell", "sh", "-c", `netstat -tln 2>/dev/null | grep -q ':${WEBHOOK_PORT} '`],
-      { stdio: "ignore" },
-    );
-    bound = true;
-  } catch {
-    await new Promise((r) => setTimeout(r, 500));
-  }
+	try {
+		execFileSync(
+			"docker",
+			[
+				"exec",
+				"agent-shell",
+				"sh",
+				"-c",
+				`netstat -tln 2>/dev/null | grep -q ':${WEBHOOK_PORT} '`,
+			],
+			{ stdio: "ignore" },
+		);
+		bound = true;
+	} catch {
+		await new Promise((r) => setTimeout(r, 500));
+	}
 }
-if (!bound) console.error("auto: WARN — could not confirm the listener bound; continuing.");
+if (!bound)
+	console.error(
+		"auto: WARN — could not confirm the listener bound; continuing.",
+	);
 
 // ── 4 · arm PHASE 2 (fire): re-apply load + confirm-fire. Alertmanager pushes
 // ~group_wait after fire — the listener (now up) catches it.
@@ -132,51 +145,61 @@ task("arm-fire");
 // ── 5 · the push: block on the notification, then hand it to the agent driver.
 const listenerExit = await listenerDone;
 if (listenerExit !== 0 || !payloadJson) {
-  console.error(`auto: no webhook notification (listener exit ${listenerExit}) — aborting before the agent.`);
-  process.exit(listenerExit || 1);
+	console.error(
+		`auto: no webhook notification (listener exit ${listenerExit}) — aborting before the agent.`,
+	);
+	process.exit(listenerExit || 1);
 }
 const payload = JSON.parse(payloadJson);
 let t0BundleJson = "";
 if (payload.schema_version === "storm-capture.v1") {
-  const slackTriage = [];
-  const triageFeedPath = env.TRIAGE_FEED;
-  if (triageFeedPath && existsSync(triageFeedPath)) {
-    try {
-      const feedStr = readFileSync(triageFeedPath, "utf8");
-      slackTriage.push(...parseTriageFeed(feedStr));
-    } catch (e) {
-      console.error(`auto: failed to parse TRIAGE_FEED at ${triageFeedPath}: ${e.message}`);
-    }
-  }
+	const slackTriage = [];
+	const triageFeedPath = env.TRIAGE_FEED;
+	if (triageFeedPath && existsSync(triageFeedPath)) {
+		try {
+			const feedStr = readFileSync(triageFeedPath, "utf8");
+			slackTriage.push(...parseTriageFeed(feedStr));
+		} catch (e) {
+			console.error(
+				`auto: failed to parse TRIAGE_FEED at ${triageFeedPath}: ${e.message}`,
+			);
+		}
+	}
 
-  const signals = (payload.alerts || []).map((a) => {
-    const labels = a.labels || {};
-    return {
-      alertName: labels.alertname || "UnknownAlert",
-      severity: labels.severity,
-      labels,
-      annotations: a.annotations || {},
-      firedAt: a.startsAt || new Date().toISOString(),
-    };
-  });
+	const signals = (payload.alerts || []).map((a) => {
+		const labels = a.labels || {};
+		return {
+			alertName: labels.alertname || "UnknownAlert",
+			severity: labels.severity,
+			labels,
+			annotations: a.annotations || {},
+			firedAt: a.startsAt || new Date().toISOString(),
+		};
+	});
 
-  if (signals.length > 0) {
-    const trigger = {
-      source: "multi-alert",
-      alertName: signals[0].alertName,
-      severity: signals[0].severity,
-      labels: signals[0].labels,
-      annotations: signals[0].annotations,
-      firedAt: signals[0].firedAt,
-      signals,
-    };
-    const bundle = assembleT0Bundle({ runId, trigger, slackTriage });
-    t0BundleJson = renderT0Bundle(bundle);
-  }
+	if (signals.length > 0) {
+		const trigger = {
+			source: "multi-alert",
+			alertName: signals[0].alertName,
+			severity: signals[0].severity,
+			labels: signals[0].labels,
+			annotations: signals[0].annotations,
+			firedAt: signals[0].firedAt,
+			signals,
+		};
+		const bundle = assembleT0Bundle({ runId, trigger, slackTriage });
+		t0BundleJson = renderT0Bundle(bundle);
+	}
 }
 
-const names = [...new Set((payload.alerts || []).map((a) => a?.labels?.alertname).filter(Boolean))];
-console.log(`\nauto ── 🔔 alert push received [${names.join(", ")}] → launching agent`);
+const names = [
+	...new Set(
+		(payload.alerts || []).map((a) => a?.labels?.alertname).filter(Boolean),
+	),
+];
+console.log(
+	`\nauto ── 🔔 alert push received [${names.join(", ")}] → launching agent`,
+);
 console.log(`auto ── agent: ${AGENT_CMD}`);
 
 // SECURITY: the agent must never inherit forge credentials (GITEA_TOKEN etc.).
@@ -186,63 +209,93 @@ console.log(`auto ── agent: ${AGENT_CMD}`);
 // Tuning knobs (AGENT_WINDOW, AGENT_OUT_MAX, …) MUST be listed here (or in
 // AGENT_ENV_ALLOWLIST) or they are silently dropped before reaching the box.
 const AGENT_ENV_DEFAULT = [
-  "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "TERM",
-  "WEBHOOK_PAYLOAD", "T0_BUNDLE", "WEBHOOK_PORT", "AGENT_UID", "AGENT_GID",
-  "AGENT_WINDOW", "AGENT_OUT_MAX", "RUN_ID", "AGY_MODEL",
+	"PATH",
+	"HOME",
+	"USER",
+	"SHELL",
+	"TMPDIR",
+	"LANG",
+	"TERM",
+	"WEBHOOK_PAYLOAD",
+	"T0_BUNDLE",
+	"WEBHOOK_PORT",
+	"AGENT_UID",
+	"AGENT_GID",
+	"AGENT_WINDOW",
+	"AGENT_OUT_MAX",
+	"RUN_ID",
+	"AGY_MODEL",
 ];
 const extraNames = (env.AGENT_ENV_ALLOWLIST || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+	.split(",")
+	.map((s) => s.trim())
+	.filter(Boolean);
 const allowedNames = new Set([...AGENT_ENV_DEFAULT, ...extraNames]);
 
 // Host-side control-plane vars: consumed here / in run-incident.mjs to steer the
 // run, never meant to reach the box. Excluded from the drop-warning so it only
 // flags genuine tuning knobs an operator meant to forward.
 const AGENT_CONTROL_PLANE = new Set([
-  "AGENT_CMD", "AGENT_ENV_ALLOWLIST", "AGENT_MODE", "AGENT_WORKSPACE", "AGENT_LOG",
-  "AGENT_PROM_URL", "AGENT_API_URL", "AGENT_GRAFANA_URL", "AGENT_ALERTMANAGER_URL",
+	"AGENT_CMD",
+	"AGENT_ENV_ALLOWLIST",
+	"AGENT_MODE",
+	"AGENT_WORKSPACE",
+	"AGENT_LOG",
+	"AGENT_PROM_URL",
+	"AGENT_API_URL",
+	"AGENT_GRAFANA_URL",
+	"AGENT_ALERTMANAGER_URL",
 ]);
 
 // Warn (don't silently drop) if an AGENT_*/AGY_* tuning knob is set but not allowlisted.
 for (const k of Object.keys(env)) {
-  if (/AGY|AGENT/.test(k) && !allowedNames.has(k) && !AGENT_CONTROL_PLANE.has(k)) {
-    console.error(
-      `auto: WARN — ${k} is set but not in AGENT_ENV_ALLOWLIST — it will NOT reach the agent box.`,
-    );
-  }
+	if (
+		/AGY|AGENT/.test(k) &&
+		!allowedNames.has(k) &&
+		!AGENT_CONTROL_PLANE.has(k)
+	) {
+		console.error(
+			`auto: WARN — ${k} is set but not in AGENT_ENV_ALLOWLIST — it will NOT reach the agent box.`,
+		);
+	}
 }
 
 const agentEnv = {};
 for (const k of allowedNames) {
-  if (k in env) agentEnv[k] = env[k];
+	if (k in env) agentEnv[k] = env[k];
 }
 agentEnv.WEBHOOK_PAYLOAD = payloadJson;
 if (t0BundleJson) {
-  agentEnv.T0_BUNDLE = t0BundleJson;
+	agentEnv.T0_BUNDLE = t0BundleJson;
 }
 agentEnv.RUN_ID = runId;
 
 // Clear any handoff left by a previous cycle: a stale transcript picked up by
 // this run would be filed as this run's evidence (the run-id check in the
 // recorder is the second line of defence).
-const transcriptPath = resolve(STACK, ".run-workspace", "agent-transcript.json");
+const transcriptPath = resolve(
+	STACK,
+	".run-workspace",
+	"agent-transcript.json",
+);
 if (existsSync(transcriptPath)) {
-  rmSync(transcriptPath);
+	rmSync(transcriptPath);
 }
 const rcaPath = resolve(STACK, ".run-workspace", "agent-rca.json");
 if (existsSync(rcaPath)) {
-  rmSync(rcaPath);
+	rmSync(rcaPath);
 }
 
 const agent = spawnSync("sh", ["-c", AGENT_CMD], {
-  stdio: "inherit",
-  cwd: STACK,
-  env: agentEnv,
+	stdio: "inherit",
+	cwd: STACK,
+	env: agentEnv,
 });
 if (agent.status !== 0) {
-  console.error(`auto: agent driver exited ${agent.status ?? 1} without a submit — nothing to grade.`);
-  process.exit(agent.status ?? 1);
+	console.error(
+		`auto: agent driver exited ${agent.status ?? 1} without a submit — nothing to grade.`,
+	);
+	process.exit(agent.status ?? 1);
 }
 
 // ── 6 · grade (the external runner picks the submit sentinel up immediately).
