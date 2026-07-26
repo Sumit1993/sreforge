@@ -237,6 +237,31 @@ export function runCampaign({
 	return { runIds, failedRunIds };
 }
 
+export function readScenarioMode(scenarioPath) {
+	if (!scenarioPath) return "score-headroom";
+	let targetPath = resolve(scenarioPath);
+	if (!targetPath.endsWith("scenario.toml")) {
+		targetPath = join(targetPath, "scenario.toml");
+	}
+	if (!existsSync(targetPath)) {
+		loud(
+			`WARNING: scenario manifest not found at ${targetPath}, falling back to score-headroom`,
+		);
+		return "score-headroom";
+	}
+	const content = readFileSync(targetPath, "utf8");
+	const match = content.match(
+		/^\s*qualification[_-]mode\s*=\s*["']([^"']+)["']/m,
+	);
+	if (match?.[1]) {
+		return match[1];
+	}
+	loud(
+		`WARNING: qualification_mode field missing in ${targetPath}, falling back to score-headroom`,
+	);
+	return "score-headroom";
+}
+
 export function parseArgs(argv) {
 	const o = {
 		cmd: null,
@@ -249,7 +274,7 @@ export function parseArgs(argv) {
 		driver: null,
 		judge: false,
 		threshold: 0.8,
-		mode: "score-headroom",
+		mode: null,
 		date: null,
 	};
 
@@ -307,7 +332,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 					"scenarios",
 					scenarioShort,
 					"records",
-					`${rid}.json`
+					`${rid}.json`,
 				);
 				fail(`Missing record for run ${rid} at ${expectedPath}`);
 			}
@@ -399,10 +424,12 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 	const diagnosisMedian = computeMedian(diagnosisScores);
 	const decoyRate = computeDecoyRate(diagnoses);
 
+	const effectiveMode = opts.mode || readScenarioMode(opts.scenario);
+
 	const { verdict, reason } = evaluateVerdict({
 		mitigationMedian,
 		decoyRate,
-		mode: opts.mode,
+		mode: effectiveMode,
 		threshold: opts.threshold,
 	});
 
@@ -413,7 +440,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 		driver: opts.driver,
 		judgeModel,
 		threshold: opts.threshold,
-		mode: opts.mode,
+		mode: effectiveMode,
 		verdict,
 		reason,
 		rows,

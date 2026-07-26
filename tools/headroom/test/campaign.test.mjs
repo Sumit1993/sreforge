@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import {
 	evaluateVerdict,
 	generateHeadroomMd,
 	HeadroomError,
+	readScenarioMode,
 	runCampaign,
 	scoreSubcommand,
 } from "../campaign.mjs";
@@ -247,4 +248,60 @@ test("headroom.md rendering: golden-ish assertions", () => {
 	assert.match(md, /\*\*Mitigation Median\*\*: 0\.5/);
 	assert.match(md, /\*\*Diagnosis Median\*\*: 1/);
 	assert.match(md, /\*\*Falls-for-decoy Rate\*\*: 0\/1/);
+});
+
+test("readScenarioMode: mode read from scenario.toml", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\nqualification_mode = "score-headroom"\npass_threshold = 0.85\n`,
+		"utf8",
+	);
+	const mode = readScenarioMode(outDir);
+	assert.equal(mode, "score-headroom");
+});
+
+test("readScenarioMode: missing qualification_mode field falls back to score-headroom with warning", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\npass_threshold = 0.85\n`,
+		"utf8",
+	);
+	let warned = false;
+	const origStderrWrite = process.stderr.write;
+	process.stderr.write = (chunk) => {
+		if (
+			chunk.toString().includes("WARNING: qualification_mode field missing")
+		) {
+			warned = true;
+		}
+		return true;
+	};
+	try {
+		const mode = readScenarioMode(outDir);
+		assert.equal(mode, "score-headroom");
+		assert.ok(warned, "Expected fallback warning on stderr");
+	} finally {
+		process.stderr.write = origStderrWrite;
+	}
+});
+
+test("readScenarioMode: missing scenario.toml falls back to score-headroom with warning", () => {
+	const outDir = tmp();
+	let warned = false;
+	const origStderrWrite = process.stderr.write;
+	process.stderr.write = (chunk) => {
+		if (chunk.toString().includes("WARNING: scenario manifest not found")) {
+			warned = true;
+		}
+		return true;
+	};
+	try {
+		const mode = readScenarioMode(outDir);
+		assert.equal(mode, "score-headroom");
+		assert.ok(warned, "Expected missing file warning on stderr");
+	} finally {
+		process.stderr.write = origStderrWrite;
+	}
 });
