@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,6 +15,7 @@ import {
 	generateHeadroomMd,
 	HeadroomError,
 	readScenarioMode,
+	REPO_ROOT,
 	runCampaign,
 	scoreSubcommand,
 } from "../campaign.mjs";
@@ -250,68 +257,104 @@ test("headroom.md rendering: golden-ish assertions", () => {
 	assert.match(md, /\*\*Falls-for-decoy Rate\*\*: 0\/1/);
 });
 
-test("readScenarioMode: mode read from scenario.toml", () => {
+// These fixtures deliberately use "decoy-rate" as the expected value. Asserting
+// "score-headroom" cannot distinguish a successful parse from the fallback —
+// they are the same string — so such a test passes even when the parser is
+// completely broken.
+test("readScenarioMode: reads the field from the [verify] block", () => {
 	const outDir = tmp();
 	writeFileSync(
 		join(outDir, "scenario.toml"),
-		`[verify]\noracle = "mitigation"\nqualification_mode = "score-headroom"\npass_threshold = 0.85\n`,
+		`[identity]\nid = "x"\n\n[verify]\noracle = "mitigation"   # trailing comment\nqualification_mode = "decoy-rate"\npass_threshold = 0.85\n`,
 		"utf8",
 	);
-	const mode = readScenarioMode(outDir);
-	assert.equal(mode, "score-headroom");
+	assert.equal(readScenarioMode(outDir), "decoy-rate");
+});
+
+test("readScenarioMode: accepts a direct scenario.toml path", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\nqualification_mode = "decoy-rate"\n`,
+		"utf8",
+	);
+	assert.equal(readScenarioMode(join(outDir, "scenario.toml")), "decoy-rate");
 });
 
 test("readScenarioMode: qualification_mode outside [verify] is ignored", () => {
 	const outDir = tmp();
 	writeFileSync(
 		join(outDir, "scenario.toml"),
-		`[identity]\nqualification_mode = "decoy-rate"\n\n[verify]\noracle = "mitigation"\nqualification_mode = "score-headroom"\n`,
+		`[identity]\nqualification_mode = "decoy-rate"\n\n[verify]\noracle = "mitigation"\n`,
 		"utf8",
 	);
 	assert.equal(readScenarioMode(outDir), "score-headroom");
 });
 
-test("readScenarioMode: missing qualification_mode field falls back to score-headroom with warning", () => {
+function captureWarning(needle, fn) {
+	let seen = false;
+	const orig = process.stderr.write;
+	process.stderr.write = (chunk) => {
+		if (chunk.toString().includes(needle)) seen = true;
+		return true;
+	};
+	try {
+		const out = fn();
+		return { out, seen };
+	} finally {
+		process.stderr.write = orig;
+	}
+}
+
+test("readScenarioMode: unknown mode warns and falls back", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\nqualification_mode = "score-headrom"\n`,
+		"utf8",
+	);
+	const { out, seen } = captureWarning("unknown qualification_mode", () =>
+		readScenarioMode(outDir),
+	);
+	assert.equal(out, "score-headroom");
+	assert.ok(seen, "expected an unknown-mode warning on stderr");
+});
+
+test("readScenarioMode: missing field warns and falls back", () => {
 	const outDir = tmp();
 	writeFileSync(
 		join(outDir, "scenario.toml"),
 		`[verify]\noracle = "mitigation"\npass_threshold = 0.85\n`,
 		"utf8",
 	);
-	let warned = false;
-	const origStderrWrite = process.stderr.write;
-	process.stderr.write = (chunk) => {
-		if (
-			chunk.toString().includes("WARNING: qualification_mode field missing")
-		) {
-			warned = true;
-		}
-		return true;
-	};
-	try {
-		const mode = readScenarioMode(outDir);
-		assert.equal(mode, "score-headroom");
-		assert.ok(warned, "Expected fallback warning on stderr");
-	} finally {
-		process.stderr.write = origStderrWrite;
-	}
+	const { out, seen } = captureWarning(
+		"qualification_mode field missing",
+		() => readScenarioMode(outDir),
+	);
+	assert.equal(out, "score-headroom");
+	assert.ok(seen, "expected a missing-field warning on stderr");
 });
 
-test("readScenarioMode: missing scenario.toml falls back to score-headroom with warning", () => {
+test("readScenarioMode: missing manifest warns and falls back", () => {
 	const outDir = tmp();
-	let warned = false;
-	const origStderrWrite = process.stderr.write;
-	process.stderr.write = (chunk) => {
-		if (chunk.toString().includes("WARNING: scenario manifest not found")) {
-			warned = true;
-		}
-		return true;
-	};
-	try {
-		const mode = readScenarioMode(outDir);
-		assert.equal(mode, "score-headroom");
-		assert.ok(warned, "Expected missing file warning on stderr");
-	} finally {
-		process.stderr.write = origStderrWrite;
+	const { out, seen } = captureWarning("scenario manifest not found", () =>
+		readScenarioMode(outDir),
+	);
+	assert.equal(out, "score-headroom");
+	assert.ok(seen, "expected a missing-manifest warning on stderr");
+});
+
+test("all 7 shipped scenario manifests parse without warnings", () => {
+	const dir = join(REPO_ROOT, "use-cases", "booklogr", "scenarios");
+	const names = readdirSync(dir, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.map((d) => d.name);
+	assert.ok(names.length >= 7, `expected >=7 scenarios, saw ${names.length}`);
+	for (const n of names) {
+		const { out, seen } = captureWarning("WARNING", () =>
+			readScenarioMode(join(dir, n)),
+		);
+		assert.ok(!seen, `${n}: manifest emitted a parse warning`);
+		assert.equal(out, "score-headroom", `${n}: unexpected mode`);
 	}
 });

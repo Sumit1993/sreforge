@@ -237,12 +237,21 @@ export function runCampaign({
 	return { runIds, failedRunIds };
 }
 
+// The only qualification modes the tool understands. Anything else — a typo in a
+// manifest, a stale `--mode` in a script — must be rejected loudly rather than
+// silently landing in evaluateVerdict's score-headroom branch, which is exactly
+// the class of "config that quietly does not do what it says" that #111 is about.
+export const QUALIFICATION_MODES = ["score-headroom", "decoy-rate"];
+
+// Accept either a scenario directory or a direct path to its scenario.toml.
+export function resolveScenarioDir(scenarioPath) {
+	const p = resolve(scenarioPath);
+	return p.endsWith("scenario.toml") ? dirname(p) : p;
+}
+
 export function readScenarioMode(scenarioPath) {
 	if (!scenarioPath) return "score-headroom";
-	let targetPath = resolve(scenarioPath);
-	if (!targetPath.endsWith("scenario.toml")) {
-		targetPath = join(targetPath, "scenario.toml");
-	}
+	const targetPath = join(resolveScenarioDir(scenarioPath), "scenario.toml");
 	if (!existsSync(targetPath)) {
 		loud(
 			`WARNING: scenario manifest not found at ${targetPath}, falling back to score-headroom`,
@@ -253,12 +262,25 @@ export function readScenarioMode(scenarioPath) {
 	// Section-scoped, matching how tools/rules-lint/lint.mjs reads this manifest:
 	// isolate the [verify] block first, then look inside it. A bare file-wide
 	// match would pick up a `qualification_mode` sitting under any other section.
-	const verifyBlock = content.match(/^\[verify\]\s*([\s\S]*?)(?=\n\[|$)/m)?.[1];
+	// NOTE: deliberately no `m` flag. With `m`, `$` matches at every line end and
+	// the lazy capture terminates after the first line of the block — silently
+	// hiding every field below it. `(?:^|\n)` gives the start-of-line anchor
+	// instead, and `$` stays end-of-string.
+	const verifyBlock = content.match(
+		/(?:^|\n)\[verify\][^\n]*\n([\s\S]*?)(?=\n\[|$)/,
+	)?.[1];
 	const match = verifyBlock?.match(
 		/^\s*qualification[_-]mode\s*=\s*["']([^"']+)["']/m,
 	);
 	if (match?.[1]) {
-		return match[1];
+		const mode = match[1];
+		if (!QUALIFICATION_MODES.includes(mode)) {
+			loud(
+				`WARNING: unknown qualification_mode "${mode}" in ${targetPath} (expected one of ${QUALIFICATION_MODES.join(", ")}), falling back to score-headroom`,
+			);
+			return "score-headroom";
+		}
+		return mode;
 	}
 	loud(
 		`WARNING: qualification_mode field missing in ${targetPath}, falling back to score-headroom`,
@@ -307,9 +329,14 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 	if (!opts.scenario) fail("--scenario <id> is required");
 	if (!opts.runIds || opts.runIds.length === 0)
 		fail("--run-ids <rid1,rid2,...> is required");
-	const useCaseMatch = resolve(opts.scenario).match(/use-cases\/([^/]+)/);
+	// Normalize once: `--scenario` may name the scenario directory or its
+	// scenario.toml. Every consumer below (record lookup, verify/ output path)
+	// wants the directory, so collapse the two spellings here rather than
+	// leaving each call site to guess.
+	const scenarioPath = resolveScenarioDir(opts.scenario);
+	const useCaseMatch = scenarioPath.match(/use-cases\/([^/]+)/);
 	const useCase = opts.useCase || (useCaseMatch ? useCaseMatch[1] : "booklogr");
-	const scenarioShort = basename(resolve(opts.scenario));
+	const scenarioShort = basename(scenarioPath);
 
 	const rows = [];
 	const mitigationScores = [];
@@ -353,7 +380,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 					"--run-dir",
 					runDir,
 					"--scenario",
-					resolve(opts.scenario),
+					scenarioPath,
 				],
 				{ stdio: "inherit", env: process.env },
 			);
@@ -428,7 +455,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 	const diagnosisMedian = computeMedian(diagnosisScores);
 	const decoyRate = computeDecoyRate(diagnoses);
 
-	const effectiveMode = opts.mode || readScenarioMode(opts.scenario);
+	const effectiveMode = opts.mode || readScenarioMode(scenarioPath);
 
 	const { verdict, reason } = evaluateVerdict({
 		mitigationMedian,
@@ -453,7 +480,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 		decoyRate,
 	});
 
-	const scenarioVerify = join(resolve(opts.scenario), "verify");
+	const scenarioVerify = join(scenarioPath, "verify");
 	if (!existsSync(scenarioVerify))
 		mkdirSync(scenarioVerify, { recursive: true });
 	writeFileSync(join(scenarioVerify, "headroom.md"), md, "utf8");
