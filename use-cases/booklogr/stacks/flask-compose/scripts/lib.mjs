@@ -32,6 +32,26 @@ export function firingNames(alerts) {
 	];
 }
 
+export function pendingNames(alerts) {
+	return [
+		...new Set(
+			alerts
+				.filter((a) => a.state === "pending")
+				.map((a) => a.labels?.alertname),
+		),
+	];
+}
+
+export async function getTargets(prom = PROM) {
+	const res = await fetch(`${prom}/api/v1/targets`);
+	if (!res.ok) throw new Error(`prometheus /targets ${res.status}`);
+	const json = await res.json();
+	return json?.data?.activeTargets ?? [];
+}
+
+export const BASELINE_EXPR =
+	'sum(rate(flask_http_request_duration_seconds_count{job="booklogr-api"}[1m]))';
+
 // Instant PromQL query -> first scalar value (number) or null.
 export async function queryScalar(expr, prom = PROM) {
 	const res = await fetch(

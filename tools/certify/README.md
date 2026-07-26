@@ -5,7 +5,7 @@ Merging a new scenario (or use-case) to main requires checked-in, hash-tied
 evidence that the full acceptance practice ran — **CI validates the evidence,
 the operator's machine pays for producing it** (ADR-0026).
 
-This directory ships the core of ADR-0026 (**shared hash** and **manifest schemas**). The `certify` composite verb, the run-record format, the private `sreforge-runs` store, the backfill, and the required CI check build on top of these.
+This directory ships the core of ADR-0026 (**shared hash** and **manifest schemas**). The `certify` composite verb, the run-record format, the private `sreforge-runs` store (synced via `tools/record/bank.mjs`), the backfill, and the required CI check build on top of these.
 
 Everything here is **dependency-free** (`node:crypto` + a scoped JSON-Schema
 validator) so both `pnpm forge certify` and the offline CI check run with no

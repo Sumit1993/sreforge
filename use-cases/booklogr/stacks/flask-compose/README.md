@@ -2,7 +2,15 @@
 
 The harness-side overlay that turns the imported **booklogr** substrate into a
 lived-in, observable deployment with a local Git forge (CI/CD) and a load
-driver over booklogr's Flask/Postgres stack (ADR-0014/ADR-0015).
+driver over booklogr's Flask/Postgres stack (ADR-0014/ADR-0015). SREForge stack deployments include an ambient-realism baseline representing background infrastructure activity, periodic system telemetry, and standard deployment updates.
+
+### Ambient Realism Controls
+
+- `AMBIENT_FURNITURE=0`: Disables ambient-realism elements globally across the stack.
+- `AMBIENT_FURNITURE_OPT_OUT=1`: Opts out of ambient furniture loading during scenario arming.
+- `AMBIENT_FURNITURE_COMMIT_OPT_OUT=1`: Disables background deploy commits while leaving ambient alert rules active.
+
+When `AMBIENT_FURNITURE=0` is set, ambient rules and commits are omitted regardless of individual opt-out variables. `AMBIENT_FURNITURE_OPT_OUT` and `AMBIENT_FURNITURE_COMMIT_OPT_OUT` provide targeted overrides for debugging or specific scenario constraints.
 
 > The booklogr app itself is **not** in this tree. It's imported into the local
 > Gitea forge and checked out (gitignored) at `substrate/booklogr` as the build
@@ -29,10 +37,14 @@ load/                  k6 constant-arrival-rate storm (mounted into the load pla
 scripts/
   import-substrate.sh  mirror-push upstream → Gitea, commit instrumentation + CI
   up.sh / down.sh      bring up / tear down the app stack (+ load plane)
-  arm-incident.sh      regress + storm + confirm-fire (ADR-0010)
+  quiesce.sh           quiesce observability plane before arm (stop load, wipe carryover, warm-up, assert) (#74)
+  arm-incident.sh      regress + storm + confirm-fire (ADR-0010); runs quiesce gate (#74), reconciles DB revision (#79)
+  confirm-quiesced.mjs evidence poll of 0 firing/pending alerts, targets up, baseline present (#74)
   confirm-fire.mjs     poll until BooklogrApiLatencyP99High fires (ADR-0010)
   verify-clear.mjs     sustained-clear oracle under still-active load (ADR-0004)
   status.mjs / lib.mjs current p99 + alert state; shared helpers
+
+> arm runs the pre-arm quiesce gate (#74) to guarantee deterministic t=0 observability state, reconciles the persisted DB revision and drops `booklogr_pgdata` when a prior migration-touching scenario left it at a foreign Alembic revision (#79); `down -v` still owns full teardown.
 ```
 
 > The Gitea forge is no longer in this stack: it is **shared** infra at

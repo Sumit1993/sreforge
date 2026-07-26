@@ -14,7 +14,30 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote
 
+import threading
+
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
+
 PORT = int(os.environ.get("PORT", "8080"))
+
+# Harness observability over this provider. Single-process ThreadingHTTPServer, so
+# the default (non-multiprocess) registry is fine and thread-safe. /metrics and
+# /health are deliberately NOT counted as metadata requests.
+REQUESTS = Counter(
+    "book_metadata_requests_total", "Metadata requests served, by endpoint.", ["endpoint"]
+)
+PROVIDER_ERRORS = Counter(
+    "book_metadata_provider_errors_total", "Provider errors returned by endpoint.", ["endpoint"]
+)
+INFLIGHT = Gauge(
+    "book_metadata_inflight_requests", "Metadata requests currently being served."
+)
+DURATION = Histogram(
+    "book_metadata_request_duration_seconds", "Wall-clock duration of a metadata request handler."
+)
+
+_search_counter = 0
+_search_counter_lock = threading.Lock()
 
 # A small local catalogue. Real-looking titles/authors/page-counts so responses
 # read like a genuine metadata provider's rather than placeholders.
@@ -86,43 +109,72 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _metrics(self):
+        body = generate_latest()
+        self.send_response(200)
+        self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         path = urlparse(self.path).path
+        # Scrape + liveness paths: not metadata traffic, so not counted or slowed.
+        if path == "/metrics":
+            return self._metrics()
         if path == "/health":
             return self._json(200, {"ok": True})
 
-        time.sleep(random.uniform(1.1, 1.3))
-
         parts = [p for p in path.split("/") if p]
-        if len(parts) >= 3 and parts[:2] == ["v1", "edition"]:
-            isbn = unquote(parts[2])
-            title, authors, pages = CATALOGUE[_idx_from_isbn(isbn)]
-            s = _seed(isbn)
-            return self._json(200, {
-                "title": title,
-                "author_names": authors,
-                "work_ids": ["/works/OL{}W".format(s % 9000000 + 1000000)],
-                "number_of_pages": pages,
-            })
-        if len(parts) >= 3 and parts[:2] == ["v1", "work"]:
-            wid = unquote(parts[2])
-            return self._json(200, {"description": DESCRIPTIONS[_seed(wid) % len(DESCRIPTIONS)]})
-        if len(parts) >= 3 and parts[:2] == ["v1", "search"]:
-            q = unquote(parts[2]).strip().lower()
-            matched = [(i, b) for i, b in enumerate(CATALOGUE) if q and q in b[0].lower()]
-            if not matched:
-                s = _seed(q)
-                matched = [((s + i) % len(CATALOGUE), CATALOGUE[(s + i) % len(CATALOGUE)]) for i in range(5)]
-            out = []
-            for idx, (title, authors, _pages) in matched:
-                out.append({
-                    "isbn_13": [_isbn13(idx, title)],
-                    "isbn_10": [],
+        endpoint = parts[1] if len(parts) >= 2 and parts[0] == "v1" else "other"
+        REQUESTS.labels(endpoint=endpoint).inc()
+        INFLIGHT.inc()
+        _started = time.perf_counter()
+        try:
+            rate = float(os.environ.get("SEARCH_STUB_5XX_RATE", "0"))
+            if rate > 0 and len(parts) >= 3 and parts[:2] == ["v1", "search"]:
+                with _search_counter_lock:
+                    global _search_counter
+                    _search_counter += 1
+                    req_idx = _search_counter
+                if (req_idx % 25) < int(round(rate * 25)):
+                    PROVIDER_ERRORS.labels(endpoint="search").inc()
+                    return self._json(503, {"message": "Service Temporarily Unavailable"})
+
+            time.sleep(random.uniform(1.1, 1.3))
+
+            if len(parts) >= 3 and parts[:2] == ["v1", "edition"]:
+                isbn = unquote(parts[2])
+                title, authors, pages = CATALOGUE[_idx_from_isbn(isbn)]
+                s = _seed(isbn)
+                return self._json(200, {
                     "title": title,
                     "author_names": authors,
+                    "work_ids": ["/works/OL{}W".format(s % 9000000 + 1000000)],
+                    "number_of_pages": pages,
                 })
-            return self._json(200, out)
-        return self._json(404, {"message": "Not found"})
+            if len(parts) >= 3 and parts[:2] == ["v1", "work"]:
+                wid = unquote(parts[2])
+                return self._json(200, {"description": DESCRIPTIONS[_seed(wid) % len(DESCRIPTIONS)]})
+            if len(parts) >= 3 and parts[:2] == ["v1", "search"]:
+                q = unquote(parts[2]).strip().lower()
+                matched = [(i, b) for i, b in enumerate(CATALOGUE) if q and q in b[0].lower()]
+                if not matched:
+                    s = _seed(q)
+                    matched = [((s + i) % len(CATALOGUE), CATALOGUE[(s + i) % len(CATALOGUE)]) for i in range(5)]
+                out = []
+                for idx, (title, authors, _pages) in matched:
+                    out.append({
+                        "isbn_13": [_isbn13(idx, title)],
+                        "isbn_10": [],
+                        "title": title,
+                        "author_names": authors,
+                    })
+                return self._json(200, out)
+            return self._json(404, {"message": "Not found"})
+        finally:
+            INFLIGHT.dec()
+            DURATION.observe(time.perf_counter() - _started)
 
     def log_message(self, *args):
         pass  # quiet

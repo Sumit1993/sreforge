@@ -20,6 +20,7 @@ still-active fault. You cannot bluff a behavioural oracle.
 - **Authored, reproducible incidents.** A determinism gate confirms the incident
   has actually reproduced before the agent is ever handed the page.
 - **Honest, neutral framing.** The agent is never told it's in a harness.
+- **Ambient-realism baseline.** SREForge stack deployments include an ambient-realism baseline representing background infrastructure activity, periodic system telemetry, and standard deployment updates.
 
 ## Taxonomy
 
@@ -53,6 +54,7 @@ use-cases/
       latency-cache-stampede/          # the authored incident (scenario.toml, solution, oracle)
       db-pool-exhaustion-deploy/       # second scenario
       decoy-deploy-control/            # third scenario
+      worker-cpu-starvation/           # fourth scenario (multi-alert storm; certification-pending)
 mage/                                  # pointer to the external knowledge-base hub
 ```
 
@@ -61,10 +63,11 @@ The durable design knowledge lives in an external **mage** hub
 
 ## Scenarios and selection
 
-The `booklogr` use-case ships three scenarios (each with a `README.md` in its `scenarios/<id>/` directory):
+The `booklogr` use-case ships four scenarios (each with a `README.md` in its `scenarios/<id>/` directory):
 - `latency-cache-stampede`: A disabled search cache + storm causes p99 latency alerts.
 - `db-pool-exhaustion-deploy`: A bad config deploy exhausts connection pools.
 - `decoy-deploy-control`: A control scenario.
+- `worker-cpu-starvation`: A full-library re-sort on the hot read path CPU-starves the workers, producing a multi-service alert storm (booklogr-api latency + book-metadata traffic collapse). **Certification-pending** (ADR-0026) — authored but not yet certified.
 
 Select a scenario by passing the **`SCENARIO_ID=<id>`** variable to `pnpm forge` tasks. If omitted, the stack's Taskfile defaults it to `latency-cache-stampede`.
 

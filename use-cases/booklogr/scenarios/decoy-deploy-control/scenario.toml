@@ -45,7 +45,7 @@ histogram_quantile(0.99, sum by (le) (rate(flask_http_request_duration_seconds_b
 # the oracle requires the alert to stay cleared for sustained_clear_seconds under still-active load.
 [determinism]
 confirm_fire_timeout_seconds = 240   # ARCHETYPE — max wait for BooklogrApiLatencyP99High to enter firing state under storm load
-sustained_clear_seconds      = 30    # ARCHETYPE — alert must remain cleared this long (load still active) to score as mitigated
+sustained_clear_seconds      = 360   # ARCHETYPE — must stay cleared this long (load still active) to score as mitigated; > substrate cache TTL 300s so cache-masking cannot pass (#66)
 alert_fired_at               = ""    # populated at runtime by the confirm-fire gate (RFC3339 timestamp of first firing)
 
 # --- paths (relative to this scenario directory) -------------------------------
@@ -93,6 +93,10 @@ stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): loa
 oracle           = "mitigation"       # ARCHETYPE — oracle family; compound oracle drops in detect/diagnose later without refactor
 pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
 load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
+  # Services whose firing alerts count toward the no_new_alerts regression signal.
+  # Book-metadata is NOT a signal in this scenario — its alert is out of scope so a
+  # cross-service false-positive can never dock this grade (PR #71 smoke finding).
+  services = ["booklogr-api"]   # BINDING — grader scope for no_new_alerts
 
 # Signal weights (must sum to 1.0). Three HARD signals (ci_green + alert_cleared + sustained_clear = 0.80)
 # plus soft credit. A fix that clears the alert briefly but does NOT sustain under active storm scores

@@ -27,21 +27,22 @@ actual lifecycle work per the stack's `Taskfile.yml`.
 
 Each phase verb maps to a task in the stack's `Taskfile.yml`:
 
-| Verb | Purpose |
-|---|---|
-| `setup` | One-time substrate import + scaffolding |
-| `up` | Bring up the deployment + observability stack |
-| `arm` | Inject the fault and confirm the target alert fires |
-| `agent` | Bring up the sealed agent sandbox |
-| `mcp` | Start the optional read-only Grafana MCP telemetry seam |
-| `auto` | Automated incident cycle: alert push → agent → grade (ADR-0025) |
-| `run` | Drive a graded run (scripted, or `RUNNER=external`) |
-| `verify` | Behavioural verification + boundary / de-tell probes |
-| `down` | Tear down the deploy + load planes |
-| `status` | Fast per-plane runtime view (forge plane, deploy N/M with offenders named, agent workspace, alert state, p99) |
-| `doctor` | Preflight misconfiguration + bootstrap checks, all planes, per-line PASS/FAIL/WARN with fix hints, exit non-zero on any FAIL |
-| `console` | Harness-side operator console (status + deep-links) |
-| `smoke` | Quick positive/negative smoke checks |
+| Verb | Purpose | Accepts `SCENARIO_ID` |
+|---|---|---|
+| `setup` | One-time substrate import + scaffolding | No |
+| `up` | Bring up the deployment + observability stack | No |
+| `quiesce` | Quiesce the observability plane before arm (#74) | Yes |
+| `arm` | Inject the fault and confirm the target alert fires | Yes |
+| `agent` | Bring up the sealed agent sandbox | No |
+| `mcp` | Start the optional read-only Grafana MCP telemetry seam | No |
+| `auto` | Automated incident cycle: alert push → agent → grade (ADR-0025) | Yes |
+| `run` | Drive a graded run (scripted, or `RUNNER=external`) | Yes |
+| `verify` | Behavioural verification + boundary / de-tell probes | No |
+| `down` | Tear down the deploy + load planes | No |
+| `status` | Fast per-plane runtime view (forge plane, deploy N/M with offenders named, agent workspace, alert state, p99) | No |
+| `doctor` | Preflight misconfiguration + bootstrap checks, all planes, per-line PASS/FAIL/WARN with fix hints, exit non-zero on any FAIL | No |
+| `console` | Harness-side operator console (status + deep-links) | No |
+| `smoke` | Quick positive/negative smoke checks | Yes |
 
 ## Cross-use-case verbs
 
@@ -54,22 +55,27 @@ Each phase verb maps to a task in the stack's `Taskfile.yml`:
 
 Composites expand to an ordered sequence of phase verbs:
 
-| Composite | Expands to |
-|---|---|
-| `fresh` | `setup → up` |
-| `agent-up` | `arm → agent` |
-| `incident` | `arm → run → verify` |
-| `e2e` | `setup → up → arm → run → verify → down` |
+| Composite | Expands to | Accepts `SCENARIO_ID` |
+|---|---|---|
+| `fresh` | `setup → up` | No |
+| `agent-up` | `arm → agent` | Yes |
+| `incident` | `arm → run → verify` | Yes |
+| `e2e` | `setup → up → arm → run → verify → down` | Yes |
 
 ## Arguments
 
 Trailing task args are passed through to the underlying task. **Inside a
-composite, they flow only to the `run` phase.**
+composite, they flow to each scenario-aware phase (`arm`, `run`, `auto`,
+`smoke`); other phases receive none.** For example, `agent-up` forwards
+`SCENARIO_ID=<id>` to its `arm` phase.
+
+Scenario-aware verbs (`arm`, `auto`, `run`, `smoke`, `agent-up`, `incident`, `e2e`) accept `SCENARIO_ID` specified either via environment variable (`SCENARIO_ID=<id>`) or trailing task argument (`SCENARIO_ID=<id>`). If omitted, it defaults to `latency-cache-stampede`. Any other verb invoked with `SCENARIO_ID` fails loudly. Scenario IDs must be valid lowercase slugs matching `/^[a-z0-9][a-z0-9-]*$/`; invalid slugs are rejected before task execution.
 
 ```sh
 pnpm forge up booklogr                      # single phase
 pnpm forge run booklogr RUNNER=external id=r1   # args → the run task
 pnpm forge incident booklogr                # composite: arm → run → verify
+pnpm forge smoke booklogr SCENARIO_ID=cascading-upstream-failure
 ```
 
 ## Stack resolution
@@ -99,7 +105,8 @@ These are plain Node scripts (no install needed) used during substrate intake:
 | `pnpm detell:grade` | The grading variant |
 | `pnpm certify:hash` | Computes the ADR-0026 `own_hash` and `shared_hash` for a scenario |
 | `pnpm certify:validate` | Validates acceptance manifests against their versioned schema |
-| `pnpm test:*` | Runs suite-specific tests (e.g., `test:certify`, `test:core`) |
+| `pnpm rules-lint` | Lints Prometheus alert rules under `observability/rules/*.yml` for mandatory `service` labels |
+| `pnpm test:*` | Runs suite-specific tests (e.g., `test:certify`, `test:rules-lint`, `test:core`) |
 | `node tools/record/migrate-run-records.mjs` | Migrates older run records to the canonical snake_case `run-record.v1` schema |
 | `node tools/transcript/write-handoff.mjs` | Driver contract script to hand off agent transcript/RCA to the engine |
 

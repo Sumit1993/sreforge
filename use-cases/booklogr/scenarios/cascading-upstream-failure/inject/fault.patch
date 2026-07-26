@@ -1,0 +1,36 @@
+diff --git a/migrations/versions/e2a9d4c1b6f8_drop_unused_books_title_index.py b/migrations/versions/e2a9d4c1b6f8_drop_unused_books_title_index.py
+new file mode 100644
+--- /dev/null
++++ b/migrations/versions/e2a9d4c1b6f8_drop_unused_books_title_index.py
+@@ -0,0 +1,31 @@
++"""Drop unused books title index
++
++Revision ID: e2a9d4c1b6f8
++Revises: b7c3e1f9a2d4
++Create Date: 2025-08-19 09:41:07.000000
++
++"""
++from alembic import op
++import sqlalchemy as sa
++
++
++# revision identifiers, used by Alembic.
++revision = 'e2a9d4c1b6f8'
++down_revision = 'b7c3e1f9a2d4'
++branch_labels = None
++depends_on = None
++
++
++def upgrade():
++    # Schema cleanup: remove an index believed to be unused after the
++    # listing-query refactor.
++    op.drop_index('ix_books_owner_lower_title', table_name='books')
++
++
++def downgrade():
++    op.create_index(
++        'ix_books_owner_lower_title',
++        'books',
++        ['owner_id', sa.text('lower(title)')],
++        unique=False,
++    )
