@@ -45,6 +45,10 @@ const runIdIdx = process.argv.indexOf("--run-id");
 if (runIdIdx !== -1 && process.argv.length > runIdIdx + 1) {
 	runId = process.argv[runIdIdx + 1];
 }
+const idArg = process.argv.find((a) => a.startsWith("id="));
+if (idArg) {
+	runId = idArg.slice(3);
+}
 if (!runId) {
 	runId = `run-${Date.now()}`;
 }
@@ -223,6 +227,10 @@ const AGENT_ENV_DEFAULT = [
 	"AGENT_GID",
 	"AGENT_WINDOW",
 	"AGENT_OUT_MAX",
+	"AGENT_DEGRADE_THRESHOLD",
+	"AGENT_WINDOW_FLOOR",
+	"AGENT_OUT_MAX_FLOOR",
+	"AGENT_MAX_DEGRADATIONS",
 	"RUN_ID",
 	"AGY_MODEL",
 ];

@@ -194,11 +194,14 @@ export function findRecordAndDiagnosis(useCase, scenarioId, runId) {
 	};
 }
 
-export function defaultExecutor({ useCase, rid, agentCmd, scenario }) {
+export function defaultExecutor(
+	{ useCase, rid, agentCmd, scenario },
+	spawnSyncFn = spawnSync,
+) {
 	const env = { ...process.env, SCENARIO_ID: basename(resolve(scenario)) };
 	if (agentCmd) env.AGENT_CMD = agentCmd;
 
-	const res = spawnSync("pnpm", ["forge", "auto", useCase, "--run-id", rid], {
+	const res = spawnSyncFn("pnpm", ["forge", "auto", useCase, `id=${rid}`], {
 		stdio: "inherit",
 		env,
 	});
@@ -307,7 +310,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 					"scenarios",
 					scenarioShort,
 					"records",
-					`${rid}.json`
+					`${rid}.json`,
 				);
 				fail(`Missing record for run ${rid} at ${expectedPath}`);
 			}

@@ -167,7 +167,10 @@ tasks:
     # payload as its kickoff; grading is the existing external-runner tail.
     # No resident agent, no daemon — see scripts/auto-incident.mjs.
     deps: [build-core]
+    vars:
+      RUN_ID: '{{.id | default ""}}'
     env:
+      RUN_ID: '{{.RUN_ID}}'
       PROVIDER: '{{.PROVIDER | default ""}}'
       MCP: '{{.MCP | default ""}}'
       EGRESS_ALLOWLIST: '{{.EGRESS_ALLOWLIST | default ""}}'
