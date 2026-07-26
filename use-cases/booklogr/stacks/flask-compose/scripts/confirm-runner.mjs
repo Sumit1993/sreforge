@@ -82,17 +82,29 @@ export function classifyRunnerStatus({
 		reason: logRegistered ? "ok" : "runner_not_registered",
 		usedFallback: true,
 		warning: logRegistered
-			? "WARNING: Could not authoritatively confirm runner registration via Gitea API (unreachable). Relying on non-authoritative container log fallback."
+			? `WARNING: could not authoritatively confirm runner registration via the Gitea API (${apiError?.message || "no runner list returned"}). Falling back to the NON-AUTHORITATIVE container log, which cannot distinguish a stale registration from a live one.`
 			: null,
 	};
 }
 
 export async function fetchGiteaRunners({
 	giteaUrl = process.env.GITEA_URL || "http://localhost:3000",
-	adminUser = process.env.GITEA_ADMIN_USER || "sreforge",
-	adminPassword = process.env.GITEA_ADMIN_PASSWORD || "change-me-locally",
+	adminUser = process.env.GITEA_ADMIN_USER,
+	adminPassword = process.env.GITEA_ADMIN_PASSWORD,
 	fetchFn = fetch,
 } = {}) {
+	// No credential defaults on purpose. A placeholder password would authenticate
+	// as a 401, which is indistinguishable from "API down" and would silently drop
+	// this gate back to the log-tail heuristic it exists to replace — reached by a
+	// config mistake and reported as a network blip.
+	if (!adminUser || !adminPassword) {
+		return {
+			payload: null,
+			error: new Error(
+				"GITEA_ADMIN_USER/GITEA_ADMIN_PASSWORD are not set — cannot authenticate to the Gitea admin API",
+			),
+		};
+	}
 	const baseUrl = giteaUrl.replace(/\/+$/, "");
 	const endpoint = `${baseUrl}/api/v1/admin/actions/runners`;
 	const credentials = Buffer.from(`${adminUser}:${adminPassword}`).toString(

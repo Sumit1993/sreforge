@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { classifyRunnerStatus, UNUSED_EXIT_CODE } from "../confirm-runner.mjs";
+import { describe, it, test } from "node:test";
+import {
+	classifyRunnerStatus,
+	fetchGiteaRunners,
+	UNUSED_EXIT_CODE,
+} from "../confirm-runner.mjs";
 
 const REAL_FORGE_PAYLOAD = {
 	runners: [
@@ -174,4 +178,28 @@ describe("confirm-runner gate classification tests (#106)", () => {
 	it("9. Distinct exit code is 86", () => {
 		assert.equal(UNUSED_EXIT_CODE, 86);
 	});
+});
+
+test("fetchGiteaRunners: absent admin credentials are a named error, not a silent 401", async () => {
+	const { payload, error } = await fetchGiteaRunners({
+		adminUser: undefined,
+		adminPassword: undefined,
+		fetchFn: () => {
+			throw new Error("fetch must not be attempted without credentials");
+		},
+	});
+	assert.equal(payload, null);
+	assert.match(error.message, /GITEA_ADMIN_USER\/GITEA_ADMIN_PASSWORD are not set/);
+});
+
+test("classify: the fallback warning names the actual cause", () => {
+	const r = classifyRunnerStatus({
+		containerRunning: true,
+		apiError: new Error("GITEA_ADMIN_USER/GITEA_ADMIN_PASSWORD are not set"),
+		logText: "declare successfully",
+	});
+	assert.equal(r.ok, true);
+	assert.equal(r.usedFallback, true);
+	assert.match(r.warning, /GITEA_ADMIN_USER/);
+	assert.match(r.warning, /stale registration/);
 });
