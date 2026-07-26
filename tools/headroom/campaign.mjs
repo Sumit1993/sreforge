@@ -243,11 +243,17 @@ export function runCampaign({
 	return { runIds, failedRunIds };
 }
 
-// The only qualification modes the tool understands. Anything else — a typo in a
-// manifest, a stale `--mode` in a script — must be rejected loudly rather than
-// silently landing in evaluateVerdict's score-headroom branch, which is exactly
-// the class of "config that quietly does not do what it says" that #111 is about.
+// Modes the `--mode` operator override accepts. Anything else — a typo, a stale
+// flag in a script — is rejected loudly rather than silently landing in
+// evaluateVerdict's score-headroom branch, which is exactly the class of "config
+// that quietly does not do what it says" that #111 exists to remove.
 export const QUALIFICATION_MODES = ["score-headroom", "decoy-rate"];
+
+// Modes a MANIFEST may select — deliberately narrower. #111 demoted decoy-rate to
+// an informational statistic, so a scenario author must not be able to re-promote
+// it to a gating verdict by editing scenario.toml, with no operator involved.
+// decoy-rate remains reachable, but only as a deliberate `--mode` override.
+export const MANIFEST_QUALIFICATION_MODES = ["score-headroom"];
 
 // Accept either a scenario directory or a direct path to its scenario.toml.
 export function resolveScenarioDir(scenarioPath) {
@@ -280,9 +286,11 @@ export function readScenarioMode(scenarioPath) {
 	);
 	if (match?.[1]) {
 		const mode = match[1];
-		if (!QUALIFICATION_MODES.includes(mode)) {
+		if (!MANIFEST_QUALIFICATION_MODES.includes(mode)) {
 			loud(
-				`WARNING: unknown qualification_mode "${mode}" in ${targetPath} (expected one of ${QUALIFICATION_MODES.join(", ")}), falling back to score-headroom`,
+				mode === "decoy-rate"
+					? `WARNING: qualification_mode "decoy-rate" in ${targetPath} is not gating (#111 demoted it to an informational statistic); falling back to score-headroom. Pass --mode decoy-rate explicitly for a legacy scoring.`
+					: `WARNING: unknown qualification_mode "${mode}" in ${targetPath} (a manifest may only declare ${MANIFEST_QUALIFICATION_MODES.join(", ")}), falling back to score-headroom`,
 			);
 			return "score-headroom";
 		}

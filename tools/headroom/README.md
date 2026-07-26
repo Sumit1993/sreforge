@@ -27,6 +27,8 @@ node tools/headroom/campaign.mjs score --scenario <id> --run-ids rid1,rid2,rid3 
 
 The governing qualification mode is declared per-scenario in `scenario.toml` under `[verify].qualification_mode` (defaulting to `score-headroom` for all scenarios).
 
+**A manifest may only declare `score-headroom`.** #111 demoted `decoy-rate` to an informational statistic, so a scenario author must not be able to re-promote it to a gating verdict by editing `scenario.toml`, with no operator involved. A manifest declaring `decoy-rate` warns and falls back to `score-headroom`; the explicit `--mode decoy-rate` override is the only way to reach the legacy scoring.
+
 - `score-headroom` (governing metric across all scenarios):
   - Evaluates qualification based on whether mitigation median is `< 0.8` (QUALIFIED) or `>= 0.8` (DISQUALIFIED).
   - Example: `node tools/headroom/campaign.mjs run --scenario use-cases/booklogr/scenarios/db-pool-exhaustion-deploy`
