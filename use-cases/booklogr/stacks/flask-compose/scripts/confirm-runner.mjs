@@ -3,13 +3,15 @@
 // confirm-runner gate (#106) for the booklogr stack.
 //
 // Verifies that sreforge-runner container is BOTH running AND registered with
-// Gitea before arming. Registration is confirmed by checking for the runner's
-// registration output line ("declare successfully" or "Runner registered successfully").
+// Gitea before arming. Gitea REST API is the primary authority on registration
+// (requiring at least one online, non-disabled runner). Container log matching
+// is demoted to a fallback when the Gitea API is unreachable.
 //
 // Exit 0 = running and registered; exit 86 = not running or not registered.
 
 import { execFileSync } from "node:child_process";
-import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import path, { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const RUNNER_CONTAINER = "sreforge-runner";
@@ -17,32 +19,117 @@ export const RECOVERY_CMD =
 	"docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner";
 export const UNUSED_EXIT_CODE = 86;
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+export function loadDotenv() {
+	const envPath = resolve(HERE, "..", ".env");
+	if (!existsSync(envPath)) return;
+	for (const line of readFileSync(envPath, "utf8").split("\n")) {
+		const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+		if (!m || m[1] in process.env) continue;
+		process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+	}
+}
+
 export function classifyRunnerStatus({
 	containerRunning = false,
+	apiPayload = null,
+	apiError = null,
 	logText = "",
 }) {
 	const running = Boolean(containerRunning);
-	const registered =
-		running &&
-		(/declare successfully/i.test(logText) ||
-			/runner registered successfully/i.test(logText));
+	if (!running) {
+		return {
+			ok: false,
+			running: false,
+			registered: false,
+			reason: "runner_not_running",
+			usedFallback: false,
+			warning: null,
+		};
+	}
+
+	const runners = Array.isArray(apiPayload)
+		? apiPayload
+		: Array.isArray(apiPayload?.runners)
+			? apiPayload.runners
+			: null;
+
+	const apiReachable = !apiError && runners !== null;
+
+	if (apiReachable) {
+		const registered = runners.some(
+			(r) => r && r.status === "online" && r.disabled !== true,
+		);
+		return {
+			ok: registered,
+			running: true,
+			registered,
+			reason: registered ? "ok" : "runner_not_registered",
+			usedFallback: false,
+			warning: null,
+		};
+	}
+
+	const logRegistered =
+		/declare successfully/i.test(logText) ||
+		/runner registered successfully/i.test(logText);
 
 	return {
-		ok: running && registered,
-		running,
-		registered,
-		reason: !running
-			? "runner_not_running"
-			: !registered
-				? "runner_not_registered"
-				: "ok",
+		ok: logRegistered,
+		running: true,
+		registered: logRegistered,
+		reason: logRegistered ? "ok" : "runner_not_registered",
+		usedFallback: true,
+		warning: logRegistered
+			? "WARNING: Could not authoritatively confirm runner registration via Gitea API (unreachable). Relying on non-authoritative container log fallback."
+			: null,
 	};
 }
 
-export function checkRunner({
+export async function fetchGiteaRunners({
+	giteaUrl = process.env.GITEA_URL || "http://localhost:3000",
+	adminUser = process.env.GITEA_ADMIN_USER || "sreforge",
+	adminPassword = process.env.GITEA_ADMIN_PASSWORD || "change-me-locally",
+	fetchFn = fetch,
+} = {}) {
+	const baseUrl = giteaUrl.replace(/\/+$/, "");
+	const endpoint = `${baseUrl}/api/v1/admin/actions/runners`;
+	const credentials = Buffer.from(`${adminUser}:${adminPassword}`).toString(
+		"base64",
+	);
+
+	try {
+		const res = await fetchFn(endpoint, {
+			method: "GET",
+			headers: {
+				Authorization: `Basic ${credentials}`,
+				Accept: "application/json",
+			},
+			signal: AbortSignal.timeout(5000),
+		});
+
+		if (!res.ok) {
+			return {
+				payload: null,
+				error: new Error(`Gitea API returned HTTP ${res.status}`),
+			};
+		}
+
+		const data = await res.json();
+		return { payload: data, error: null };
+	} catch (err) {
+		return { payload: null, error: err };
+	}
+}
+
+export async function checkRunner({
 	container = RUNNER_CONTAINER,
 	exec = execFileSync,
+	fetchFn = fetch,
 } = {}) {
+	loadDotenv();
+
 	let containerRunning = false;
 	try {
 		const out = exec(
@@ -59,8 +146,17 @@ export function checkRunner({
 		containerRunning = false;
 	}
 
-	let logText = "";
+	let apiPayload = null;
+	let apiError = null;
+
 	if (containerRunning) {
+		const fetchRes = await fetchGiteaRunners({ fetchFn });
+		apiPayload = fetchRes.payload;
+		apiError = fetchRes.error;
+	}
+
+	let logText = "";
+	if (containerRunning && apiError) {
 		try {
 			logText = exec("docker", ["logs", "--tail", "200", container], {
 				encoding: "utf8",
@@ -72,11 +168,21 @@ export function checkRunner({
 		}
 	}
 
-	return classifyRunnerStatus({ containerRunning, logText });
+	return classifyRunnerStatus({
+		containerRunning,
+		apiPayload,
+		apiError,
+		logText,
+	});
 }
 
 export async function main() {
-	const res = checkRunner();
+	const res = await checkRunner();
+
+	if (res.warning) {
+		process.stderr.write(`[confirm-runner] ${res.warning}\n`);
+	}
+
 	if (res.ok) {
 		process.stderr.write(
 			`[confirm-runner] ${RUNNER_CONTAINER} is running and registered with gitea\n`,

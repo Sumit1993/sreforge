@@ -91,6 +91,11 @@ node scripts/verify-clear.mjs --alert=BooklogrApiLatencyP99High --sustain=360 --
 - `--sustain`: Seconds the alert must stay cleared under load (defaults to `360`).
 - `--timeout`: Maximum seconds allowed for the alert to clear (defaults to `600`).
 
+`confirm-runner.mjs` runs pre-flight before incident execution:
+1. Container check (`sreforge-runner` container must be running).
+2. Gitea API registration authority (`GET /api/v1/admin/actions/runners` using `GITEA_ADMIN_USER`/`GITEA_ADMIN_PASSWORD` from `.env`); passes only if at least one runner is `online` and `disabled !== true`.
+3. Log matching fallback (`declare successfully` / `runner registered successfully` in container logs) used only when the Gitea API is unreachable, emitting a non-authoritative warning. Exit code is `86` if not running or unregistered.
+
 
 ## When use-cases multiply
 
