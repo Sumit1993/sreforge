@@ -29,7 +29,7 @@ node tools/transcript/write-handoff.mjs \
   --session "cold" \
   --confinement "host-open" \
   --kind "rca" \
-  --raw-json-file "/path/to/rca.json" \
+  --raw-text-file "/path/to/rca.txt" \
   --out ".run-workspace/agent-rca.json"
 ```
 
