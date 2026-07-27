@@ -38,7 +38,7 @@ run. The example uses `booklogr`.
   "eval_only": {
     "alert_to_clear":          "BooklogrApiLatencyP99High",
     "max_clear_time_seconds":  600,
-    "sustained_clear_seconds": 60
+    "sustained_clear_seconds": 360
   }
 }
 ```
@@ -82,6 +82,8 @@ discover it from the alerting stack.)
 
 ### `scenario` — run metadata
 
+`id` identifies the target scenario (defaults to `latency-cache-stampede`). `SCENARIO_ID` propagation accepts values via environment variable (`SCENARIO_ID=<id>`) or trailing task argument (`SCENARIO_ID=<id>`) on scenario-aware verbs, threading the ID to smoke and arm scripts. Invalid scenario slugs (not matching `/^[a-z0-9][a-z0-9-]*$/`) are rejected before script execution.
+
 `profile` is `incident` or `patch`. **`alert_fired_at`** is populated by the
 **confirm-fire gate**: setup injects the fault and confirms the alert fired
 *before* the run is handed to the agent; if it never fires, the run aborts or
@@ -106,41 +108,52 @@ submit → CI gate (build + existing tests)
            + no new alerts + time-to-clear
 ```
 
-Multi-signal and fully objective. The diagnosis / RCA LLM-judge (and an `rca`
-submit field) arrive in a later version.
+Multi-signal and fully objective. The RCA channel (`submit --rca`) is reported alongside the record; the RCA LLM-judge arrives in a later version.
 
 ## What a run records (outputs)
 
-Each run produces an immutable **`RunRecord`** (written to the engine's record
-directory) — the audit trail of everything the run did and how it scored:
+Each run produces an artifact set in **`runs/<runId>/`**:
+- `record.json`: The immutable **`run-record.v1`** (canonical snake_case schema `tools/certify/schemas/run-record.v1.schema.json`; camelCase `RunRecord` is merely the in-memory TS type).
+- `diff.patch`: The patch applied by the agent.
+- `transcript.txt`: The engine runner's log.
+- `agent-transcript.json`: The agent-provided conversation trace.
+- `rca.json` / `rca.txt`: The agent's root cause analysis, if provided.
+- `diagnosis.json`: The **`diagnosis.v1`** RCA-judge result, if the [RCA judge](../../concepts/closed-loop-verification/) has graded the run's `rca.txt` against the scenario's authored root-cause truth. Reported *beside* the verdict — its score never feeds `record.json` or the pass decision. Absent is a normal state (no RCA, judge not run, or judge unreachable). Written by `tools/rca-judge/judge.mjs`; never written into or read from `record.json`.
+
+The engine also captures the record into persistent storage via a split (ADR-0026):
+- **Pruned record**: The `record.json` stripped of `trajectory.transcript` and the raw payload (`raw_text`/`raw_json`) of `agent_transcript`, but retaining `agent_transcript`'s identity header (`harness`, `model`, `provider`, `session`, `run_id`, `captured_at`) plus a `full_record_sha256` reference, is committed to `use-cases/<uc>/scenarios/<id>/records/<runId>.json`.
+- **Full record**: The complete run state is archived in a content-addressed private store seam.
+- **Headroom campaign runs**: `tools/headroom` campaign run-ids and their records land in these exact same existing paths (`runs/<runId>/record.json` and pruned copies); the campaign records nothing new.
+
+The `run-record.v1` schema fields include:
 
 | Field | Meaning |
 |---|---|
-| `runId`, `scenarioId`, `profile` | Run + scenario identity |
-| `trigger` | The firing alert that opened the run (name, severity, labels, annotations, `firedAt`) |
-| `trajectory` | What the agent produced: `agentName`, `transcript`, `diff`, `submitted`, `durationMs` |
+| `run_id`, `scenario_id`, `profile` | Run + scenario identity |
+| `trigger` | The firing alert that opened the run (`source`, `alert_name`, `severity`, `labels`, `annotations`, `fired_at`, `signals`) |
+| `trajectory` | What the agent produced: `agent_name`, `diff`, `submitted`, `duration_ms` |
 | `ci`, `deploy` | CI-gate result and the redeploy result (`null` if not reached) |
-| `score` | The oracle's `OracleScore` (see below) |
-| `verdict` | `"pass"` \| `"fail"` \| `"error"` |
-| `timings`, `startedAt`, `finishedAt` | Per-phase timings and ISO bounds |
+| `score` | The oracle's `oracle_score` (see below) |
+| `verdict` | `"passed"` \| `"failed"` \| `"rejected"` \| `"aborted"` \| `"error"` |
+| `timings`, `started_at`, `finished_at` | Per-phase timings and ISO bounds |
 
-The **`OracleScore`** is the graded result the verdict derives from:
+The **`oracle_score`** is the graded result the verdict derives from:
 
 ```json
 {
-  "oracleId": "mitigation",
+  "oracle_id": "mitigation",
   "score": 0.93,
   "passed": true,
   "signals": [
     { "id": "ci_green",      "satisfied": true, "value": 1, "weight": 0.25, "detail": "…" },
     { "id": "alert_cleared", "satisfied": true, "value": 1, "weight": 0.35, "detail": "…" }
   ],
-  "subScores": []
+  "sub_scores": []
 }
 ```
 
 `passed` is `score >= pass_threshold` (`0.85` for this scenario). For a
-[compound oracle](../../concepts/closed-loop-verification/), `subScores` carries
+[compound oracle](../../concepts/closed-loop-verification/), `sub_scores` carries
 the per-phase scores (detect / diagnose / mitigate).
 
 ## The `patch` profile variant

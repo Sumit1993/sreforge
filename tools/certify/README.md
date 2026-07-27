@@ -5,10 +5,7 @@ Merging a new scenario (or use-case) to main requires checked-in, hash-tied
 evidence that the full acceptance practice ran — **CI validates the evidence,
 the operator's machine pays for producing it** (ADR-0026).
 
-This directory currently ships issues **#26 (shared hash)** and **#27 (manifest
-schemas)**. The `certify` composite verb (#34), the run-record format (#31), the
-private `sreforge-runs` store (#28), the backfill (#32), and the required CI
-check (#33) build on top of these — see ADR-0026.
+This directory ships the core of ADR-0026 (**shared hash** and **manifest schemas**). The `certify` composite verb, the run-record format, the private `sreforge-runs` store (synced via `tools/record/bank.mjs`), the backfill, and the required CI check build on top of these.
 
 Everything here is **dependency-free** (`node:crypto` + a scoped JSON-Schema
 validator) so both `pnpm forge certify` and the offline CI check run with no
@@ -23,8 +20,10 @@ install.
 | `lib/json-schema-mini.mjs` | Scoped, dependency-free JSON-Schema validator. |
 | `schemas/scenario-certification.v1.schema.json` | Per-scenario acceptance manifest (`verify/acceptance.json`). |
 | `schemas/substrate-intake.v1.schema.json` | Per-use-case M0 intake manifest (`verify/intake.json`). |
+| `schemas/run-record.v1.schema.json` | The canonical snake_case run record schema. |
 | `examples/*.example.json` | Samples that validate cleanly against each schema. |
 | `test/certify-foundation.test.mjs` | `node:test` — schema validation + hash determinism. |
+| `../record/migrate-run-records.mjs` | Migrates older run records to the `run-record.v1` schema. |
 
 The stack's **global-default shared surface** is declared per stack at
 `use-cases/<uc>/stacks/<stack>/verify/shared-surface.json`.

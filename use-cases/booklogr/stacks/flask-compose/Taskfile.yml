@@ -8,7 +8,7 @@
 #   • change-detection — `build-core` is skipped when core's sources are unchanged
 #   • parallelism      — `verify` runs its three probes concurrently
 #
-# Lifecycle:  setup → up → arm → agent → run → verify → down
+# Lifecycle:  setup → up → quiesce → arm → agent → run → verify → down
 #
 # task is a PINNED devDependency (@go-task/cli in the ROOT package.json) — not a
 # global install — so every dev/CI gets the same version (pnpm-lock.yaml). Get it
@@ -167,24 +167,32 @@ tasks:
     # payload as its kickoff; grading is the existing external-runner tail.
     # No resident agent, no daemon — see scripts/auto-incident.mjs.
     deps: [build-core]
+    vars:
+      RUN_ID: '{{.id | default ""}}'
     env:
+      RUN_ID: '{{.RUN_ID}}'
       PROVIDER: '{{.PROVIDER | default ""}}'
       MCP: '{{.MCP | default ""}}'
       EGRESS_ALLOWLIST: '{{.EGRESS_ALLOWLIST | default ""}}'
       AGENT_CMD: '{{.AGENT_CMD | default ""}}'
       WEBHOOK_TIMEOUT_S: '{{.WEBHOOK_TIMEOUT_S | default ""}}'
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds:
       - node scripts/auto-incident.mjs
 
+  confirm-runner:
+    desc: "[run] verify sreforge-runner is running AND registered with gitea"
+    cmds: [node scripts/confirm-runner.mjs]
+
   # ── run (per run; the engine) ────────────────────────────────────────────────
   run:
-    desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>)"
+    desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>, record-dir overrides)"
     deps: [build-core]
     # Fail fast (~5s) if the CI runner is dead — avoids a 10-min timeout in the
-    # GiteaCiGate. Recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner
+    # GiteaCiGate. Recovery: pnpm forge forge-up (docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner)
     preconditions:
-      - sh: 'docker inspect -f "running:{{ "{{" }}.State.Running{{ "}}" }}" sreforge-runner 2>/dev/null | grep -q "running:true"'
-        msg: "sreforge-runner is not running — recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner"
+      - sh: 'node scripts/confirm-runner.mjs'
+        msg: "sreforge-runner is not running or not registered — recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner"
     vars:
       RUN_ID: '{{.id | default ""}}'
     env:
@@ -264,6 +272,16 @@ tasks:
       - node scripts/verify-mcp.mjs
 
   # ── diagnostics ──────────────────────────────────────────────────────────────
+  doctor:
+    desc: "thorough preflight for misconfiguration + fresh-checkout gaps"
+    cmds: [node scripts/doctor.mjs]
+
+  quiesce:
+    desc: "[run] quiesce the observability plane before arm (stop load, wipe carryover, warm-up, assert 0 firing/pending)"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
+    cmds: [bash scripts/quiesce.sh]
+
   status:
     desc: "one-shot: current p99 + which alerts are firing"
     cmds: [node scripts/status.mjs]
@@ -280,14 +298,24 @@ tasks:
   # ── smoke (CI/e2e; sequential — each re-arms the stack) ──────────────────────
   smoke:
     desc: "run both smoke checks (positive then negative)"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds:
       - task: smoke:positive
+        vars:
+          SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
       - task: smoke:negative
+        vars:
+          SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
   smoke:positive:
     desc: "arm + reference fix → assert verdict passed"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds: [bash scripts/smoke-positive.sh]
   smoke:negative:
     desc: "arm + no-op fix → assert anti-cheat holds (not passed)"
+    env:
+      SCENARIO_ID: '{{.SCENARIO_ID | default "latency-cache-stampede"}}'
     cmds: [bash scripts/smoke-negative.sh]
 
   # ── teardown ─────────────────────────────────────────────────────────────────

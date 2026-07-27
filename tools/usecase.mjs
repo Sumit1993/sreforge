@@ -36,6 +36,7 @@ const PHASE_TASK = {
   setup: "setup",
   up: "up",
   arm: "arm",
+  quiesce: "quiesce", //                     quiesce observability plane before arm
   agent: "agent",
   mcp: "mcp", //                             optional MCP telemetry seam (read-only Grafana MCP)
   auto: "auto", //                           ③ automated incident: alert push → agent → grade (ADR-0025)
@@ -43,6 +44,7 @@ const PHASE_TASK = {
   verify: "verify",
   down: "down",
   status: "status",
+  doctor: "doctor", //                       thorough preflight for misconfiguration
   console: "console", //                     operator console (harness-side status + deep-links)
   smoke: "smoke",
 };
@@ -72,10 +74,13 @@ function usage() {
       `  composites: ${composites}`,
       "  menu:       pnpm forge menu <use-case>   # list a stack's phases",
       "  dashboard:  pnpm forge dashboard         # cross-use-case operator control plane (web, loopback)",
+      "  forge-up:   pnpm forge forge-up          # start forge plane (gitea/runner)",
+      "  forge-down: pnpm forge forge-down        # stop forge plane",
       "",
       "  e.g.  pnpm forge up booklogr",
       "        pnpm forge run booklogr RUNNER=external id=r1",
       "        pnpm forge incident booklogr",
+      "        pnpm forge doctor booklogr",
       "        pnpm forge auto booklogr PROVIDER=ollama-cloud   # ③ automated cycle (ADR-0025)",
       "",
     ].join("\n"),
@@ -123,13 +128,45 @@ if (!verb || verb === "help" || verb === "--help" || verb === "-h") usage();
 // `dashboard` is CROSS-use-case (the operator control plane, ADR-0024) — it takes
 // no use-case; it discovers them all. Handle before the use-case check below.
 if (verb === "dashboard") {
-  const res = spawnSync("node", [resolve(REPO_ROOT, "tools/dashboard/server.mjs")], {
+  const res = spawnSync(process.execPath, [resolve(REPO_ROOT, "tools/dashboard/server.mjs")], {
     cwd: REPO_ROOT, stdio: "inherit", env: process.env,
   });
-  process.exit(res.status ?? 0);
+  if (res.error || res.status == null) process.exit(1);
+  process.exit(res.status);
+}
+if (verb === "forge-up" || verb === "forge-down") {
+  const op = verb === "forge-up" ? "up" : "down";
+  const res = spawnSync(process.execPath, [resolve(REPO_ROOT, "tools/forge-plane/forge-plane.mjs"), op], {
+    cwd: REPO_ROOT, stdio: "inherit", env: process.env,
+  });
+  if (res.error || res.status == null) process.exit(1);
+  process.exit(res.status);
 }
 
 if (!ref) die(`'${verb}' needs a use-case: pnpm forge ${verb} <use-case>`);
+
+const SCENARIO_VERBS = new Set(["arm", "quiesce", "auto", "run", "smoke", "agent-up", "incident", "e2e"]);
+const scenarioIds = [];
+if (process.env.SCENARIO_ID !== undefined) {
+  scenarioIds.push(process.env.SCENARIO_ID);
+}
+for (const arg of rest) {
+  if (arg.startsWith("SCENARIO_ID=")) {
+    scenarioIds.push(arg.slice(12));
+  } else if (arg === "SCENARIO_ID") {
+    scenarioIds.push("");
+  }
+}
+if (scenarioIds.length > 0) {
+  if (!SCENARIO_VERBS.has(verb)) {
+    die(`verb '${verb}' does not accept SCENARIO_ID`);
+  }
+  for (const id of scenarioIds) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+      die(`invalid SCENARIO_ID '${id}' — lowercase slug expected`);
+    }
+  }
+}
 
 const stackDir = resolveStack(ref);
 
@@ -139,7 +176,8 @@ if (verb === "menu" || verb === "list") {
 } else if (COMPOSITES[verb]) {
   // Stop at the first failed phase and surface which one (task 6).
   for (const phase of COMPOSITES[verb]) {
-    const code = runTask(stackDir, PHASE_TASK[phase], phase === "run" ? rest : []);
+    const isScenarioPhase = phase === "arm" || phase === "run" || phase === "auto" || phase === "smoke";
+    const code = runTask(stackDir, PHASE_TASK[phase], phase === "run" || isScenarioPhase ? rest : []);
     if (code !== 0) {
       process.stderr.write(`forge: composite '${verb}' stopped — phase '${phase}' failed (exit ${code})\n`);
       process.exit(code);

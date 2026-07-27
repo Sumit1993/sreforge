@@ -85,7 +85,27 @@ The oracle is structured as a weighted **compound oracle** spanning the SRE
 lifecycle — *detect → diagnose → mitigate*. v1 implements only the **mitigate**
 dimension. A `DiagnosisOracle` (an LLM-judge against a structured root cause,
 using a separate judge model) drops in later as one more weighted sub-oracle with
-no refactor; the submit payload then gains an `rca` field.
+no refactor. (The RCA reporting channel itself exists now via `submit --rca` — ADR-0027 — only the in-loop judge is deferred).
+
+## Diagnosis, reported beside the verdict (not inside it)
+
+A standalone **RCA judge** (`tools/rca-judge/`) grades an agent's written RCA
+(`rca.txt`) against the scenario's authored `## Root cause (harness-internal)`
+truth on three axes — *root-cause-correct*, *evidence-grounded*, and *false-leads*
+(did it blame a cause the truth rules out?) — and banks a `diagnosis.v1` score to
+`runs/<runId>/diagnosis.json`. Two boundaries are load-bearing (ADR-0027):
+
+- **Reported, never gating.** The diagnosis score sits *beside* the mitigation
+  verdict; it does **not** enter `record.json`, the `[verify.weights]`, or the
+  pass decision. An absent `diagnosis.json` is a normal state.
+- **A non-Claude judge, no arithmetic in the judge.** The judge model (pinned via
+  `RCA_JUDGE_MODEL`, a separate model from any under test) emits only booleans + a
+  rationale; all scoring arithmetic happens in harness code. The judge call is
+  best-effort — unreachable or unparseable output writes nothing and never fails a
+  run.
+
+This is the descoped increment ahead of folding the diagnosis in as the compound
+oracle's `diagnose` sub-oracle.
 
 ## Next
 

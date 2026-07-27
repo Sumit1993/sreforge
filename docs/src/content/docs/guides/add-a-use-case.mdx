@@ -41,6 +41,7 @@ engine-level code.
         - inject/         the organic-regression injector + confirm-fire
         - verify/         the Problem / Oracle code (incident profile)
         - solution/       reference fix (held out)
+        - records/        committed pruned run records
 </FileTree>
 
 ## The recipe
@@ -68,7 +69,7 @@ engine-level code.
 
 3. **Stand up a stack.** Add `stacks/<stack>/` with the deployable compose, an
    observability overlay (Prometheus + Alertmanager + alert rules, Grafana), a k6
-   load script, and a `Taskfile.yml` exposing the lifecycle phases (`up`, `arm`,
+   load script, and a `Taskfile.yml` exposing the lifecycle phases (`doctor`, `up`, `arm`,
    `run`, `verify`, `down`, …). The neutral dispatcher discovers it automatically.
 
 4. **Author an organic regression.** Edit a fault into the app's *existing* code

@@ -28,3 +28,8 @@ the hub. Capture the reusable *insight + procedure + pointers*, never a copy.
 **Commit hygiene:** mage never commits for you. It suggests `git` commands; you
 run them.
 <!-- END mage -->
+
+## Scenario and Observability Authoring
+
+Every Prometheus/Alertmanager alert rule under `observability/rules/*.yml` MUST carry a `service` label; enforced offline by `pnpm rules-lint` (CI-required). `no_new_alerts` grading is scoped by `service`; an unlabelled rule silently escapes regression counting.
+

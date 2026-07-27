@@ -23,6 +23,11 @@ pull request with green CI. Keep PRs focused and small where you can.
 - [ ] PR title follows Conventional Commits (`feat:`, `fix:`, `docs:`, ...)
 - [ ] Docs / README updated if behavior changed
 
+## Docs
+
+- [ ] Docs updated for every changed operator/agent-facing surface (or none affected — explain)
+- [ ] New/changed verbs, flags, env vars reflected in cli.md / relevant guide
+
 ## Related issues
 
 <!-- e.g. Closes #123 -->

@@ -50,6 +50,17 @@ export type RunPhase =
 // ---------------------------------------------------------------------------
 
 /**
+ * A single correlated alert signal contributing to a multi-alert trigger.
+ */
+export interface TriggerSignal {
+  alertName: string;
+  severity?: string;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  firedAt: string; // ISO8601
+}
+
+/**
  * A normalized event that opens an incident run. In v1 this is produced from a
  * firing Prometheus alert; in v2 it generalizes to a multi-signal trigger bus.
  */
@@ -66,6 +77,11 @@ export interface Trigger {
   readonly annotations: Readonly<Record<string, string>>;
   /** When the alert started firing (ISO-8601). Set by the confirm-fire gate. */
   readonly firedAt: string;
+  /**
+   * Optional correlated signals for a multi-alert trigger bus. When present,
+   * signals[0] is the primary and the scalar fields above mirror it.
+   */
+  readonly signals?: readonly TriggerSignal[];
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +278,14 @@ export interface MitigationCriteria {
   readonly maxClearTimeSeconds: number;
   /** How long the alert must stay cleared to count as mitigated. */
   readonly sustainedClearSeconds: number;
+  /**
+   * Services whose firing alerts count toward the `no_new_alerts` regression
+   * signal. When set, an alert is a regression only if its `service` label is in
+   * this set. When omitted, the signal is unscoped (every non-target firing alert
+   * counts) — the legacy behavior. The booklogr harness always supplies this,
+   * defaulting to the primary (redeployed) service.
+   */
+  readonly inScopeServices?: readonly string[];
 }
 
 /**

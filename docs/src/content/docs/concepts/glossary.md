@@ -94,7 +94,16 @@ private tests/oracle), never a pre-existing public bug. The source of
 contamination-freeness.
 
 ### `submit`
-The agent's "done, here's my fix" signal. It is an **engine handoff, not a forge
+The agent's "done, here's my fix" signal (optionally passing `--rca`). It is an **engine handoff, not a forge
 push**: the agent commits to a local branch and drops a completion sentinel; the
 engine captures the diff and owns the forge push / PR / CI. The sandbox has no
 forge access.
+
+### Run record
+The canonical artifact emitted per run (the on-disk record is snake_case `run-record.v1`; the in-memory TypeScript `RunRecord` type is camelCase), containing identity, the agent's trajectory, diff, CI/CD results, scores, and timings.
+
+### Pruned record
+A copy of the run record stripped of `trajectory.transcript` and the raw payload (`raw_text`/`raw_json`) of `agent_transcript`, but retaining `agent_transcript`'s identity header (`harness`, `model`, `provider`, `session`, `run_id`, `captured_at`) plus a `full_record_sha256` reference, committed to the scenario's `records/` directory.
+
+### Private full-record store (`sreforge-runs`)
+The private, content-addressed durable store (`Sumit1993/sreforge-runs`) for full, transcript-bearing run records (`records/<sha256>.json`) and raw campaign evidence (`evidence/<campaign-id>/`), keyed by `full_record_sha256` and cataloged in an append-only `index.json`. Governed by ADR-0026 §7 and the public/private boundary rule: *A file may be committed to the public `sreforge` repo **iff** it contains no agent transcript, no raw model output, and no reference-solution content. Anything transcript-bearing goes to `sreforge-runs` and is referenced from public only by `full_record_sha256` + `run_url`. When in doubt, it is private.*

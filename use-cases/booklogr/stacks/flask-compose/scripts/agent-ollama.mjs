@@ -96,6 +96,18 @@ function inBox(command) {
     return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
   }
 }
+function inBoxArgv(args) {
+  try {
+    const out = execFileSync(
+      "docker",
+      ["exec", "-u", U, "-w", "/workspace", CONTAINER, ...args],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 },
+    );
+    return { exit: 0, out };
+  } catch (e) {
+    return { exit: e.status ?? 1, out: `${e.stdout || ""}${e.stderr || ""}` };
+  }
+}
 const clip = (s) =>
   s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n…[truncated ${s.length - OUT_MAX} bytes]` : s;
 
@@ -125,7 +137,10 @@ const tools = [
         "Call this exactly once, when your fix is applied.",
       parameters: {
         type: "object",
-        properties: { note: { type: "string", description: "One-line summary of the fix." } },
+        properties: { 
+          note: { type: "string", description: "One-line summary of the fix." },
+          "rca-file": { type: "string", description: "Path to the postmortem file." }
+        },
       },
     },
   },
@@ -141,20 +156,26 @@ const SYSTEM = [
   "explains the signals, and fix it in place.",
   "Investigate efficiently: prefer targeted commands (grep -rn, reading specific files, git log)",
   "over dumping large directory trees; keep each command's output focused.",
-  "When your fix is applied, call submit. Keep working until you have submitted.",
+  "When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"",
+  "Keep working until you have submitted.",
 ].join("\n");
 
 // ③ automation (ADR-0025): when launched by auto-incident.mjs, the kickoff is
 // the symptom-level Alertmanager notification the BOX received (webhook push) —
 // the same data the agent could pull from ALERTMANAGER_URL itself, so no extra
 // de-tell surface. Manual runs keep the generic kickoff.
-const KICKOFF = env.WEBHOOK_PAYLOAD
-  ? "This alert notification was just delivered to the incident host:\n" +
-    env.WEBHOOK_PAYLOAD +
+const KICKOFF = env.T0_BUNDLE
+  ? "This incident context bundle was just delivered to the incident host:\n" +
+    env.T0_BUNDLE +
     "\nInvestigate from the alerting stack, find the root cause in the code, " +
-    "apply a fix in /workspace, and submit."
-  : "An alert is firing for the service. Investigate from the alerting stack, find the root " +
-    "cause in the code, apply a fix in /workspace, and submit.";
+    "apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\""
+  : env.WEBHOOK_PAYLOAD
+    ? "This alert notification was just delivered to the incident host:\n" +
+      env.WEBHOOK_PAYLOAD +
+      "\nInvestigate from the alerting stack, find the root cause in the code, " +
+      "apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\""
+    : "An alert is firing for the service. Investigate from the alerting stack, find the root " +
+      "cause in the code, apply a fix in /workspace, and submit. When you've fixed it, write a brief postmortem — root cause, evidence you used, what you changed — save it to a file (e.g. postmortem.md) and include it when you submit: submit --rca postmortem.md \"one-line summary\"";
 
 const messages = [
   { role: "system", content: SYSTEM },
@@ -235,8 +256,19 @@ for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
       messages.push({ role: "tool", tool_name: "run_shell", content: clip(`(exit ${r.exit})\n${r.out}`) });
     } else if (name === "submit") {
       const note = String(args.note || "fix").replace(/[^\w .,:;/-]/g, " ").slice(0, 200);
-      console.log(`[${step}] ✅ submit: ${note}`);
-      const r = inBox(`submit "${note}"`);
+      let rcaFile = args["rca-file"] ? String(args["rca-file"]) : "";
+      let submitArgs = ["submit"];
+      if (rcaFile) {
+        if (/^[A-Za-z0-9._/-]+$/.test(rcaFile) && !rcaFile.startsWith("/") && !rcaFile.includes("..")) {
+          submitArgs.push("--rca", rcaFile);
+        } else {
+          console.warn(`[${step}] ⚠ warning: rejected invalid RCA path "${rcaFile}", submitting without RCA`);
+          rcaFile = "";
+        }
+      }
+      submitArgs.push(note);
+      console.log(`[${step}] ✅ submit: ${note}${rcaFile ? ` (rca: ${rcaFile})` : ""}`);
+      const r = inBoxArgv(submitArgs);
       console.log(r.out.trimEnd());
       messages.push({ role: "tool", tool_name: "submit", content: clip(`(exit ${r.exit})\n${r.out}`) });
       submitted = r.exit === 0;
@@ -277,6 +309,33 @@ try {
   ]);
 } catch (err) {
   console.warn(`agent-ollama: WARNING — transcript handoff failed (continuing; the run is still gradeable): ${err.message}`);
+}
+
+try {
+  if (inBox("test -f /workspace/.sreforge/rca.txt").exit === 0) {
+    const catRes = inBox("cat /workspace/.sreforge/rca.txt");
+    if (catRes.exit !== 0 || !catRes.out.trim()) {
+      console.warn("agent-ollama: WARNING — rca read failed or empty, skipping handoff (continuing)");
+    } else {
+      const rcaOut = resolve(logDir, "agent-rca.json");
+      const rcaTmp = resolve(logDir, "rca.txt");
+      writeFileSync(rcaTmp, catRes.out, "utf8");
+      execFileSync("node", [
+        handoffScript,
+        "--kind", "rca",
+        "--out", rcaOut,
+        "--run-id", runId,
+        "--harness", "ollama",
+        "--session", session,
+        "--model", MODEL,
+        "--provider", provider,
+        "--submitted", String(submitted),
+        "--raw-text-file", rcaTmp
+      ]);
+    }
+  }
+} catch (err) {
+  console.warn(`agent-ollama: WARNING — rca handoff failed (continuing; the run is still gradeable): ${err.message}`);
 }
 
 console.log(`\nagent-ollama: ${submitted ? "SUBMITTED ✅" : "did NOT submit ⚠"} — transcript → ${logPath}`);

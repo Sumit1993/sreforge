@@ -1,4 +1,4 @@
-import type { Trigger } from "../types.js";
+import type { Trigger, TriggerSignal } from "../types.js";
 import type { TriggerSource } from "./index.js";
 
 /** Configuration for a {@link PrometheusAlertTrigger}. */
@@ -40,15 +40,7 @@ export class PrometheusAlertTrigger implements TriggerSource {
   }
 
   async poll(): Promise<Trigger | null> {
-    const response = await fetch(`${this.#prometheusUrl}/api/v1/alerts`);
-    if (!response.ok) {
-      throw new Error(
-        `Prometheus /api/v1/alerts returned HTTP ${response.status}`,
-      );
-    }
-
-    const payload: unknown = await response.json();
-    const alerts = extractAlerts(payload);
+    const alerts = await fetchPrometheusAlerts(this.#prometheusUrl);
 
     const firing = alerts.find(
       (alert) =>
@@ -61,6 +53,22 @@ export class PrometheusAlertTrigger implements TriggerSource {
 
     return toTrigger(this.#alertName, firing);
   }
+}
+
+/**
+ * Shared helper to fetch all alerts from Prometheus.
+ */
+export async function fetchPrometheusAlerts(
+  prometheusUrl: string,
+): Promise<readonly PrometheusAlert[]> {
+  const response = await fetch(`${prometheusUrl}/api/v1/alerts`);
+  if (!response.ok) {
+    throw new Error(
+      `Prometheus /api/v1/alerts returned HTTP ${response.status}`,
+    );
+  }
+  const payload: unknown = await response.json();
+  return extractAlerts(payload);
 }
 
 /** Narrows the untyped JSON body into the alert list we understand. */
@@ -81,6 +89,20 @@ function toTrigger(alertName: string, alert: PrometheusAlert): Trigger {
   const labels = alert.labels ?? {};
   return {
     source: "prometheus-alert",
+    alertName,
+    severity: labels.severity,
+    labels: { ...labels },
+    annotations: { ...(alert.annotations ?? {}) },
+    firedAt: alert.activeAt ?? new Date().toISOString(),
+  };
+}
+
+export function toTriggerSignal(
+  alertName: string,
+  alert: PrometheusAlert,
+): TriggerSignal {
+  const labels = alert.labels ?? {};
+  return {
     alertName,
     severity: labels.severity,
     labels: { ...labels },

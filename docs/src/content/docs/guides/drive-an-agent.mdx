@@ -103,12 +103,10 @@ plus a completion sentinel on the shared mount — *not* a forge push.
 `pnpm forge run … RUNNER=external` drives the `ExternalAgentRunner` seam:
 
 ```
-sentinel handoff → diff capture → forge push / PR → CI → merge → redeploy → behavioural verify
+sentinel handoff → diff capture → forge push / PR → CI → merge → redeploy → behavioural verify → record capture
 ```
 
-The agent never deploys and never touches the forge directly — that boundary is
-what keeps the deploy *realism* (real CI, real merge, real redeploy) on the
-harness side of the wall.
+The agent never deploys and never touches the forge directly. **Driver contract**: drivers run outside the box and are responsible for handing off their artifacts to the engine. A driver should call `node tools/transcript/write-handoff.mjs` to write its `agent-transcript.json` (and, via `--kind rca`, its `agent-rca.json`) to `.run-workspace/` so the engine can correlate them with the `runId`. These handoffs are best-effort; the post-submit pipeline completes through record capture regardless.
 
 ## Boundaries and scope
 
@@ -174,12 +172,14 @@ recreated per incident, so nothing carries memory across runs (ADR-0025).
   (default: the reference Ollama driver). It receives the notification JSON in
   `WEBHOOK_PAYLOAD` — the same data the agent could pull from
   `$ALERTMANAGER_URL`, so the push adds no extra hint.
+- **Storm capture and T=0 context:** The listener can capture a configurable time window (`WEBHOOK_STORM_WINDOW_S`) of grouped alerts and combine them with an optional Slack feed (`TRIAGE_FEED`). The merged signals are delivered as a JSON bundle (`T0_BUNDLE`) in addition to the legacy `WEBHOOK_PAYLOAD`.
 - To prove the pipeline without a model (the auto path's `smoke-positive`
   analog, zero egress): `AGENT_CMD='bash scripts/agent-reference.sh'` applies
   the scenario's reference fix in-box and submits.
-- Reasoning runs host-side in this increment; moving the loop *into* the box
-  (a baked runtime) is a separate, deferred increment — the egress allowlist
-  already supports it.
+- **Confinement modes**: three modes position the agent's reasoning loop relative to the sealed `agent-shell` container (see `infra/agent-sandbox/README.md`):
+  1. **host-open**: `AGENT_CMD="node scripts/driver.mjs"`. Unconfined host process; only the shell is sandbox-bound.
+  2. **host-sandboxed**: `AGENT_CMD="bash scripts/agent-agy.sh"`. Host process confined by `srt` (deny-read + egress domain proxy). Requires `AGENT_ENV_ALLOWLIST`, `AGENT_WINDOW` / `AGENT_OUT_MAX`, and WSL NAT networking (scoped to the host-sandboxed driver only; mirrored silently kills srt egress). Required for interactive-auth CLIs like Antigravity.
+  3. **in-box**: `AGENT_CMD="bash scripts/agent-inbox.sh"`. Reasoning runs fully inside the sealed container (no docker, strict iptables egress). Interactive auth is not supported. On repeated provider 500 errors (consecutive failure threshold `AGENT_DEGRADE_THRESHOLD`, default 2), the loop adaptively degrades `AGENT_WINDOW` and `AGENT_OUT_MAX` (halving both down to floors `AGENT_WINDOW_FLOOR` default 6 and `AGENT_OUT_MAX_FLOOR` default 500, up to `AGENT_MAX_DEGRADATIONS` default 3 steps) and logs each step in the transcript before retrying.
 - Back-to-back cycles in one session are **dev-mode**: Prometheus history still
   shows the previous incident and its recovery, which a repeat run could
   recognize. And if the incident never resolved between runs, the re-armed

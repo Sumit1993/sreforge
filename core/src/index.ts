@@ -79,6 +79,7 @@ export {
 } from "./verify/index.js";
 export type {
   AlertProbe,
+  FiringAlert,
   MitigationOracleOptions,
   PrometheusAlertProbeOptions,
   WeightedOracle,
@@ -86,8 +87,25 @@ export type {
 
 // ---- Record ---------------------------------------------------------------
 export type { RunRecorder } from "./record/index.js";
-export { FileRunRecorder } from "./record/index.js";
-export type { FileRunRecorderOptions } from "./record/index.js";
+export {
+  FileRunRecorder,
+  RECORD_VERSION,
+  RECORD_KIND,
+  toDiskRecord,
+  fromDiskRecord,
+  serializeDiskRecord,
+  pruneDiskRecord,
+} from "./record/index.js";
+export type {
+  FileRunRecorderOptions,
+  DiskRunRecord,
+  DiskTrigger,
+  DiskTrajectory,
+  DiskCiResult,
+  DiskDeployResult,
+  DiskOracleSignal,
+  DiskOracleScore,
+} from "./record/index.js";
 
 // ---- Cleanup --------------------------------------------------------------
 export type { Cleanup } from "./cleanup/index.js";

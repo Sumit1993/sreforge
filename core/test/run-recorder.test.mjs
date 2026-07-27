@@ -89,6 +89,12 @@ test("ingests the handoff when the run id matches", async () => {
     "agent output goes here",
   );
   assert.ok(!existsSync(join(runDir, "transcript-error.txt")));
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.record_version, "1.0.0");
+  assert.equal(written.kind, "run-record");
+  assert.equal(written.run_id, RUN_ID);
+  assert.equal(written.agent_transcript.raw_text, "agent output goes here");
 });
 
 test("refuses the handoff when the run id does not match", async () => {
@@ -135,7 +141,206 @@ test("a malformed handoff never costs us the graded record", async () => {
 
   const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
   assert.equal(written.verdict, "passed", "the verdict must survive a bad transcript");
+  assert.equal(written.agent_transcript, undefined);
   assert.ok(existsSync(join(runDir, "diff.patch")));
   assert.ok(existsSync(join(runDir, "transcript.txt")));
   assert.ok(!existsSync(join(runDir, "agent-transcript.json")));
+});
+
+test("writes pruned and full records when configured", async () => {
+  const base = tmp();
+  const prunedDir = tmp();
+  const fullDir = tmp();
+  
+  const handoff = makeHandoff(tmp(), RUN_ID);
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+    prunedRecordDir: prunedDir,
+    fullRecordStoreDir: fullDir,
+  }).record(makeRecord());
+
+  const fullBytes = readFileSync(join(runDir, "record.json"));
+  
+  const prunedPath = join(prunedDir, `${RUN_ID}.json`);
+  assert.ok(existsSync(prunedPath), "pruned record must be written");
+  const pruned = JSON.parse(readFileSync(prunedPath, "utf8"));
+  assert.equal(pruned.trajectory.transcript, undefined);
+  assert.deepEqual(pruned.agent_transcript, {
+    schema_version: "agent-transcript.v1",
+    run_id: RUN_ID,
+    harness: "agy",
+    session: "cold",
+    captured_at: "2026-07-19T10:04:00Z",
+  });
+  assert.ok(pruned.full_record_sha256, "pruned record must have sha256");
+
+  const fullPath = join(fullDir, `${pruned.full_record_sha256}.json`);
+  assert.ok(existsSync(fullPath), "full record must be written at content-addressed path");
+  const storedFullBytes = readFileSync(fullPath);
+  assert.equal(storedFullBytes.toString("utf8"), fullBytes.toString("utf8"), "full record must match exactly");
+});
+
+test("mismatched handoff with pruned and full record configured", async () => {
+  const base = tmp();
+  const prunedDir = tmp();
+  const fullDir = tmp();
+  
+  const handoff = makeHandoff(tmp(), "some-other-run");
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+    prunedRecordDir: prunedDir,
+    fullRecordStoreDir: fullDir,
+  }).record(makeRecord());
+
+  assert.ok(existsSync(join(runDir, "record.json")));
+  assert.ok(existsSync(join(runDir, "transcript-error.txt")));
+  assert.ok(!existsSync(join(runDir, "agent-transcript.json")));
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.agent_transcript, undefined);
+
+  const prunedPath = join(prunedDir, `${RUN_ID}.json`);
+  assert.ok(existsSync(prunedPath), "pruned record must be written");
+  const pruned = JSON.parse(readFileSync(prunedPath, "utf8"));
+  assert.equal(pruned.agent_transcript, undefined);
+  assert.ok(pruned.full_record_sha256, "pruned record must have sha256");
+
+  const fullPath = join(fullDir, `${pruned.full_record_sha256}.json`);
+  assert.ok(existsSync(fullPath), "full record must be written at content-addressed path");
+});
+
+
+function makeRcaHandoff(dir, runId) {
+  const p = join(dir, "agent-rca.json");
+  writeFileSync(
+    p,
+    JSON.stringify({
+      schema_version: "agent-rca.v1",
+      run_id: runId,
+      harness: "agy",
+      session: "cold",
+      captured_at: "2026-07-19T10:04:00Z",
+      raw_text: "rca output goes here",
+    }),
+  );
+  return p;
+}
+
+test("ingests the rca when the run id matches", async () => {
+  const base = tmp();
+  const rcaHandoff = makeRcaHandoff(tmp(), RUN_ID);
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    rcaHandoffPath: rcaHandoff,
+  }).record(makeRecord());
+
+  const ingestedJson = join(runDir, "rca.json");
+  assert.ok(existsSync(ingestedJson), "rca.json should be written");
+  assert.equal(
+    JSON.parse(readFileSync(ingestedJson, "utf8")).raw_text,
+    "rca output goes here",
+  );
+  const ingestedTxt = join(runDir, "rca.txt");
+  assert.ok(existsSync(ingestedTxt), "rca.txt should be written");
+  assert.equal(readFileSync(ingestedTxt, "utf8"), "rca output goes here");
+  assert.ok(!existsSync(join(runDir, "rca-error.txt")));
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.rca, undefined, "record.json must not contain an rca field");
+});
+
+test("refuses the rca when the run id does not match", async () => {
+  const base = tmp();
+  const rcaHandoff = makeRcaHandoff(tmp(), "some-other-run");
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    rcaHandoffPath: rcaHandoff,
+  }).record(makeRecord());
+
+  assert.ok(!existsSync(join(runDir, "rca.json")), "mismatched rca must NOT be filed");
+  assert.ok(!existsSync(join(runDir, "rca.txt")), "mismatched rca must NOT be filed");
+  
+  const err = readFileSync(join(runDir, "rca-error.txt"), "utf8");
+  assert.match(err, /some-other-run/);
+  assert.match(err, new RegExp(RUN_ID));
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.rca, undefined, "record.json must not contain an rca field");
+});
+
+test("a malformed rca handoff never affects record.json or transcript", async () => {
+  const base = tmp();
+  const dir = tmp();
+  const rcaHandoff = join(dir, "agent-rca.json");
+  writeFileSync(rcaHandoff, "{ this is not json");
+  
+  const handoff = makeHandoff(tmp(), RUN_ID);
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    transcriptHandoffPath: handoff,
+    rcaHandoffPath: rcaHandoff,
+  }).record(makeRecord());
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.verdict, "passed", "the verdict must survive a bad rca");
+  assert.equal(written.rca, undefined);
+  assert.equal(written.agent_transcript.raw_text, "agent output goes here", "transcript ingestion unaffected");
+  assert.ok(existsSync(join(runDir, "agent-transcript.json")));
+  assert.ok(!existsSync(join(runDir, "rca.json")));
+  assert.ok(!existsSync(join(runDir, "rca.txt")));
+});
+
+test("refuses the rca when raw_text is not a string", async () => {
+  const base = tmp();
+  const dir = tmp();
+  const rcaHandoff = join(dir, "agent-rca.json");
+  writeFileSync(
+    rcaHandoff,
+    JSON.stringify({
+      schema_version: "agent-rca.v1",
+      run_id: RUN_ID,
+      raw_text: { some: "object" },
+    }),
+  );
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    rcaHandoffPath: rcaHandoff,
+  }).record(makeRecord());
+
+  assert.ok(!existsSync(join(runDir, "rca.json")), "invalid rca must NOT be filed");
+  assert.ok(!existsSync(join(runDir, "rca.txt")), "invalid rca must NOT be filed");
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.verdict, "passed");
+});
+
+test("refuses the rca when schema_version is wrong", async () => {
+  const base = tmp();
+  const dir = tmp();
+  const rcaHandoff = join(dir, "agent-rca.json");
+  writeFileSync(
+    rcaHandoff,
+    JSON.stringify({
+      schema_version: "wrong-version",
+      run_id: RUN_ID,
+      raw_text: "text",
+    }),
+  );
+
+  const runDir = await new FileRunRecorder({
+    baseDir: base,
+    rcaHandoffPath: rcaHandoff,
+  }).record(makeRecord());
+
+  assert.ok(!existsSync(join(runDir, "rca.json")), "invalid rca must NOT be filed");
+  assert.ok(!existsSync(join(runDir, "rca.txt")), "invalid rca must NOT be filed");
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.verdict, "passed");
 });

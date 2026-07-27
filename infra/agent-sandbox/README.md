@@ -17,10 +17,16 @@ The agent gets a shell, the documented HTTP endpoints, and `submit` — nothing 
 
 | env var            | endpoint                    | what it is                          |
 |--------------------|-----------------------------|-------------------------------------|
-| `API_URL`          | `http://booklogr-api:5000`  | the Flask app                       |
-| `PROM_URL`         | `http://prometheus:9090`    | Prometheus query API + alerts       |
-| `ALERTMANAGER_URL` | `http://alertmanager:9093`  | Alertmanager (firing alerts)        |
-| `GRAFANA_URL`      | `http://grafana:3000`       | Grafana dashboards (internal port)  |
+| `API_URL`                 | `http://booklogr-api:5000`  | the Flask app                       |
+| `PROM_URL`                | `http://prometheus:9090`    | Prometheus query API + alerts       |
+| `ALERTMANAGER_URL`        | `http://alertmanager:9093`  | Alertmanager (firing alerts)        |
+| `GRAFANA_URL`             | `http://grafana:3000`       | Grafana dashboards (internal port)  |
+| `AGENT_WINDOW`            | `22`                        | sliding window size (messages)      |
+| `AGENT_OUT_MAX`           | `3000`                      | max bytes per tool output feedback  |
+| `AGENT_DEGRADE_THRESHOLD` | `2`                        | consecutive 500s before degradation |
+| `AGENT_WINDOW_FLOOR`      | `6`                         | floor for context window reduction  |
+| `AGENT_OUT_MAX_FLOOR`     | `500`                       | floor for tool output reduction     |
+| `AGENT_MAX_DEGRADATIONS`  | `3`                         | max degradation steps per run       |
 
 (This stack has no Loki, so no `LOKI_URL`.)
 
@@ -94,12 +100,15 @@ docker socket and no docker CLI**, and the toolset (`curl`/`git`/`jq`) and the
 ## submit — the engine handoff
 
 `submit` (baked at `/usr/local/bin/submit`; `SUBMIT_CMD=submit`) is a handoff, not a
-push. From `/workspace` it commits the agent's edits to a local branch and writes the
-completion sentinel `/workspace/.sreforge/submit.json`. It contacts **no** forge and
-**no** network — it only writes to `/workspace`. The host engine
-(`ExternalAgentRunner`) watches the sentinel, captures the diff, and owns the forge
-push / PR / CI. Select this mode with `AGENT_MODE=external` (or `RUNNER=external`) on
-`run-incident.mjs`; the default remains the scripted runner.
+push. From `/workspace` it commits the agent's edits to a local branch, copies an
+optional postmortem (`--rca <path>`) into the engine-private sentinel dir (best-effort,
+never blocks submission), and writes the completion sentinel
+`/workspace/.sreforge/submit.json`. It contacts **no** forge and **no** network —
+it only writes to `/workspace`. The host engine (`ExternalAgentRunner`) watches the
+sentinel, captures the diff, and owns the forge push / PR / CI. The agent-loop
+kickoff asks for a postmortem on every incident run. Select this mode with
+`AGENT_MODE=external` (or `RUNNER=external`) on `run-incident.mjs`; the default
+remains the scripted runner.
 
 ## Bring it up and exec in
 

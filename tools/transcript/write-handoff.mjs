@@ -1,3 +1,5 @@
+// write-handoff.mjs — Driver contract script to package agent transcripts or RCAs
+// into a standard envelope for the engine, correlated with the runId.
 import { parseArgs } from "node:util";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -7,6 +9,7 @@ function run() {
   try {
     args = parseArgs({
       options: {
+        kind: { type: "string", default: "transcript" },
         out: { type: "string" },
         "run-id": { type: "string" },
         harness: { type: "string" },
@@ -36,6 +39,16 @@ function run() {
     process.exit(1);
   }
 
+  if (values.kind !== "transcript" && values.kind !== "rca") {
+    console.error("Invalid kind value. Must be 'transcript' or 'rca'");
+    process.exit(1);
+  }
+
+  if (values.kind === "rca" && values["raw-json-file"]) {
+    console.error("rca handoff requires --raw-text-file");
+    process.exit(1);
+  }
+
   if (!values["raw-text-file"] && !values["raw-json-file"]) {
     console.error("Must provide either --raw-text-file or --raw-json-file");
     process.exit(1);
@@ -47,7 +60,7 @@ function run() {
   }
 
   const handoff = {
-    schema_version: "agent-transcript.v1",
+    schema_version: values.kind === "rca" ? "agent-rca.v1" : "agent-transcript.v1",
     run_id: values["run-id"],
     harness: values.harness,
     session: values.session,

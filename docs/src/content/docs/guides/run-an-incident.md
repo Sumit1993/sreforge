@@ -22,15 +22,15 @@ poll trigger → assemble context → run agent → CI gate → auto-merge
 |---|---|
 | **trigger** | The scenario has already injected the fault and confirmed the target alert is firing. The conductor polls the trigger source for the normalized `Trigger`. |
 | **context** | Assemble a neutral, honest brief from the trigger plus the `AgentContext` (service endpoints, run-workspace path/service, the submit command). No mention of a harness. |
-| **run** | Hand the brief to the agent. It investigates, edits the run workspace in place, and calls `submit`. It never merges or deploys. |
+| **run** | Hand the brief to the agent. It investigates, edits the run workspace in place, and calls `submit` (a postmortem attachment is standard practice, but the `--rca` flag is optional). It never merges or deploys. |
 | **CI gate** | Build + the substrate's existing tests against the run workspace. Red → no deploy, the alert persists, the run is rejected (CI output becomes feedback). |
 | **auto-merge → CD redeploy** | On green, commit the fix to the run workspace and rebuild + swap the affected service's container. |
 | **verify** | With the fault stimulus still active, the mitigation oracle scores multi-signal: CI green + the alert clears + stays cleared for the sustained window + time-to-clear + no new alerts. |
-| **record** | Persist trigger + trajectory + diff + score + verdict + timings. |
+| **record** | Persists record + agent transcript + RCA; outputs land in `runs/<runId>/`, pruned copy under the scenario's `records/`. |
 | **cleanup** | Always runs; restores the baseline (regressed) image for the next run. |
 
 The confirm-fire gate (proving the alert actually fired *before* the agent
-starts) is the **scenario's** responsibility, not the engine's. See
+starts) is the **scenario's** responsibility, not the engine's. (Arming is explicitly split into two halves: `arm-regress` applies the fault, and `arm-fire` blocks until the alert fires). See
 [Closed-loop verification](../../concepts/closed-loop-verification/) for why both
 the confirm-fire gate and the sustained-clear check matter.
 
@@ -53,6 +53,8 @@ verb list and argument handling.
 
 ## A typical session
 
+Run `pnpm forge doctor <use-case>` before a session and `pnpm forge forge-up` when the runner is down.
+
 ```sh
 # Cold bring-up (once)
 pnpm forge fresh booklogr
@@ -61,6 +63,7 @@ pnpm forge fresh booklogr
 #   Alertmanager  http://localhost:9093
 #   Prometheus    http://localhost:9090
 #   Grafana       http://localhost:3002
+#   Dashboard     pnpm forge dashboard (global operator control plane)
 
 # One graded run with the scripted reference fix
 pnpm forge incident booklogr
@@ -79,8 +82,9 @@ pnpm forge menu booklogr
 
 ## Determinism guarantees
 
-Two checks make verification reliable:
+Three checks make verification reliable:
 
+- **Pre-arm quiesce gate** — before every arm, the harness stops active load, recreates Prometheus and Alertmanager containers to wipe carryover TSDB/alert state (#74), optionally lays a fixed warm-up baseline, and asserts 0 firing AND 0 pending alerts with healthy scrape targets.
 - **Confirm-fire before handoff** — setup injects the fault *and* confirms the
   target alert entered the firing state before the run proceeds. If it never
   fires, the run aborts or retries; a non-incident is never handed to an agent.
