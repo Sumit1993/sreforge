@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
 	classifyPoll,
 	isOutOfScopeAlert,
@@ -443,6 +446,30 @@ describe("confirm-quiesced classification and loop tests", () => {
 		const none = readScenarioServices("");
 		assert.equal(none.services, null);
 		assert.match(none.reason, /no SCENARIO_ID/);
+	});
+
+	it("23. every shipped scenario resolves a scope — none silently falls back", () => {
+		// A scenario that fails to resolve `[verify] services` reverts to the strict
+		// global gate, which is where #95 lives. Silent per-scenario regression to the
+		// buggy behaviour is the failure mode this pins.
+		const scenariosDir = fileURLToPath(
+			new URL("../../../../scenarios", import.meta.url),
+		);
+		const ids = readdirSync(scenariosDir, { withFileTypes: true })
+			.filter(
+				(e) =>
+					e.isDirectory() &&
+					existsSync(join(scenariosDir, e.name, "scenario.toml")),
+			)
+			.map((e) => e.name);
+
+		assert.ok(ids.length >= 7, `expected >=7 scenarios, found ${ids.length}`);
+		const unscoped = ids.filter((id) => !readScenarioServices(id).services);
+		assert.deepEqual(
+			unscoped,
+			[],
+			`these scenarios would fall back to the unscoped gate: ${unscoped.join(", ")}`,
+		);
 	});
 
 	it("16. the loop settles through a permanently-firing ambient alert", async () => {
