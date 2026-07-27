@@ -56,7 +56,7 @@ downloads the Task binary) is permitted under pnpm's default script blocking.
 | **quiesce** | pre-arm | `quiesce.sh` | `confirm-quiesced.mjs` | |
 | **arm** | per run | `arm-incident.sh` | `confirm-fire.mjs` | |
 | **agent** | per run | `prepare-agent-workspace.sh` | | |
-| **run** | per run | `run-incident.mjs` | `warm-cache.sh` (readiness gate) | |
+| **run** | per run | `run-incident.mjs` | `confirm-runner.mjs` (pre-flight), `warm-cache.sh` (readiness gate) | |
 | **verify** | any time | `verify-boundary.sh`, `verify-alert-pickup.sh`, `verify-detell.sh`, `verify-clear.mjs` | | |
 | **teardown** | end | `down.sh` | | |
 | **smoke** | CI/e2e | `smoke-positive.sh`, `smoke-negative.sh` | (each re-arms, then runs) | |
@@ -90,6 +90,11 @@ node scripts/verify-clear.mjs --alert=BooklogrApiLatencyP99High --sustain=360 --
 
 - `--sustain`: Seconds the alert must stay cleared under load (defaults to `360`).
 - `--timeout`: Maximum seconds allowed for the alert to clear (defaults to `600`).
+
+`confirm-runner.mjs` runs pre-flight before incident execution:
+1. Container check (`sreforge-runner` container must be running).
+2. Gitea API registration authority (`GET /api/v1/admin/actions/runners` using `GITEA_ADMIN_USER`/`GITEA_ADMIN_PASSWORD` from `.env`); passes only if at least one runner is `online` and `disabled !== true`.
+3. Log matching fallback (`declare successfully` / `runner registered successfully` in container logs) used only when the Gitea API is unreachable, emitting a non-authoritative warning. Exit code is `86` if not running or unregistered.
 
 
 ## When use-cases multiply

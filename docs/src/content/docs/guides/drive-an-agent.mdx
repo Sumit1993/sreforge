@@ -179,7 +179,7 @@ recreated per incident, so nothing carries memory across runs (ADR-0025).
 - **Confinement modes**: three modes position the agent's reasoning loop relative to the sealed `agent-shell` container (see `infra/agent-sandbox/README.md`):
   1. **host-open**: `AGENT_CMD="node scripts/driver.mjs"`. Unconfined host process; only the shell is sandbox-bound.
   2. **host-sandboxed**: `AGENT_CMD="bash scripts/agent-agy.sh"`. Host process confined by `srt` (deny-read + egress domain proxy). Requires `AGENT_ENV_ALLOWLIST`, `AGENT_WINDOW` / `AGENT_OUT_MAX`, and WSL NAT networking (scoped to the host-sandboxed driver only; mirrored silently kills srt egress). Required for interactive-auth CLIs like Antigravity.
-  3. **in-box**: `AGENT_CMD="bash scripts/agent-inbox.sh"`. Reasoning runs fully inside the sealed container (no docker, strict iptables egress). Interactive auth is not supported.
+  3. **in-box**: `AGENT_CMD="bash scripts/agent-inbox.sh"`. Reasoning runs fully inside the sealed container (no docker, strict iptables egress). Interactive auth is not supported. On repeated provider 500 errors (consecutive failure threshold `AGENT_DEGRADE_THRESHOLD`, default 2), the loop adaptively degrades `AGENT_WINDOW` and `AGENT_OUT_MAX` (halving both down to floors `AGENT_WINDOW_FLOOR` default 6 and `AGENT_OUT_MAX_FLOOR` default 500, up to `AGENT_MAX_DEGRADATIONS` default 3 steps) and logs each step in the transcript before retrying.
 - Back-to-back cycles in one session are **dev-mode**: Prometheus history still
   shows the previous incident and its recovery, which a repeat run could
   recognize. And if the incident never resolved between runs, the re-armed
