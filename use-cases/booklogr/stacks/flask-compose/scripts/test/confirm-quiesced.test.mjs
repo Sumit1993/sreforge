@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { classifyPoll, parseRequireBaseline, runQuiesceLoop } from "../confirm-quiesced.mjs";
+import {
+	classifyPoll,
+	parseRequireBaseline,
+	runQuiesceLoop,
+} from "../confirm-quiesced.mjs";
 
 describe("confirm-quiesced classification and loop tests", () => {
 	const healthyTargets = [
@@ -208,5 +212,144 @@ describe("confirm-quiesced classification and loop tests", () => {
 
 		assert.equal(parseRequireBaseline(undefined, 0), 0);
 		assert.equal(parseRequireBaseline(undefined, 1), 1);
+	});
+
+	// ── #121: ambient furniture must not gate quiesce ──────────────────────────
+	// EdgeClientRequestJitter reduces to `time() % 120 < 60`, so it is firing half
+	// of all wall-clock time no matter what the stack is doing. Before these cases
+	// the gate could only settle during its 60s down-phase.
+	const ambientFiring = {
+		state: "firing",
+		labels: {
+			alertname: "EdgeClientRequestJitter",
+			service: "edge-client",
+			role: "ambient",
+		},
+	};
+
+	it("10. a firing role:ambient alert alone still counts as quiesced", () => {
+		const res = classifyPoll({
+			alerts: [ambientFiring],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+		});
+		assert.equal(res.clean, true);
+		assert.deepEqual(res.firing, []);
+		assert.deepEqual(res.pending, []);
+		// Exempted, not invisible — the operator must be able to see it was ignored.
+		assert.deepEqual(res.ambient, ["EdgeClientRequestJitter"]);
+	});
+
+	it("11. a pending role:ambient alert alone still counts as quiesced", () => {
+		const res = classifyPoll({
+			alerts: [{ ...ambientFiring, state: "pending" }],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+		});
+		assert.equal(res.clean, true);
+		assert.deepEqual(res.pending, []);
+		assert.deepEqual(res.ambient, ["EdgeClientRequestJitter"]);
+	});
+
+	it("12. ambient exemption does not mask a real firing alert", () => {
+		const res = classifyPoll({
+			alerts: [
+				ambientFiring,
+				{
+					state: "firing",
+					labels: {
+						alertname: "BooklogrApiHighErrorRate",
+						service: "booklogr-api",
+					},
+				},
+			],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+		});
+		assert.equal(res.clean, false);
+		assert.deepEqual(res.firing, ["BooklogrApiHighErrorRate"]);
+		assert.deepEqual(res.ambient, ["EdgeClientRequestJitter"]);
+	});
+
+	it("13. ambient exemption does not mask a real PENDING alert (the #95 shape)", () => {
+		const res = classifyPoll({
+			alerts: [
+				ambientFiring,
+				{
+					state: "pending",
+					labels: {
+						alertname: "BookMetadataTrafficStalled",
+						service: "book-metadata",
+					},
+				},
+			],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+		});
+		assert.equal(res.clean, false);
+		assert.deepEqual(res.pending, ["BookMetadataTrafficStalled"]);
+	});
+
+	it("14. only role:ambient is exempt — another role value still gates", () => {
+		const res = classifyPoll({
+			alerts: [
+				{
+					state: "firing",
+					labels: {
+						alertname: "SomeOtherRule",
+						service: "booklogr-api",
+						role: "diagnosis",
+					},
+				},
+			],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+		});
+		assert.equal(res.clean, false);
+		assert.deepEqual(res.firing, ["SomeOtherRule"]);
+		assert.deepEqual(res.ambient, []);
+	});
+
+	it("15. an inactive ambient alert is not reported as exempt", () => {
+		const res = classifyPoll({
+			alerts: [{ ...ambientFiring, state: "inactive" }],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+		});
+		assert.equal(res.clean, true);
+		assert.deepEqual(res.ambient, []);
+	});
+
+	it("16. the loop settles through a permanently-firing ambient alert", async () => {
+		// The regression guard for #121: a metronome that never stops must not stop
+		// the streak. Pre-fix this fetchPoll would reset cleanStreak on every poll
+		// and run to QUIESCE_TIMEOUT.
+		let polls = 0;
+		const res = await runQuiesceLoop({
+			fetchPoll: async () => {
+				polls++;
+				return {
+					alerts: [ambientFiring],
+					targets: healthyTargets,
+					baseline: 1.5,
+				};
+			},
+			deadlineS: 60,
+			intervalS: 0,
+			settle: 3,
+			requireBaseline: 1,
+			sleepFn: async () => {},
+			logStderr: false,
+			logStdout: false,
+		});
+		assert.equal(res.ok, true);
+		assert.equal(res.state, "quiesced");
+		assert.equal(polls, 3);
 	});
 });

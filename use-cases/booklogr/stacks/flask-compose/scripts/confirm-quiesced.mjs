@@ -5,8 +5,16 @@
 // 0 firing alerts, 0 pending alerts, all scrape targets healthy, and baseline
 // metrics present (when require-baseline is set).
 //
+// Alerts labelled `role: ambient` are EXEMPT from the firing/pending assertion
+// (#121) — they are deliberate furniture and are never quiet. They are still
+// reported, so the exemption is visible rather than silent.
+//
 //   node scripts/confirm-quiesced.mjs [--deadline=120] [--interval=3] [--settle=3]
 //                                     [--require-baseline=0|1] [--prom=URL]
+//
+// Every flag also has an env form, which is what the `arm` path uses since it
+// does not forward flags: QUIESCE_DEADLINE_S, QUIESCE_POLL_INTERVAL_S,
+// QUIESCE_SETTLE_CHECKS, QUIESCE_REQUIRE_BASELINE, QUIESCE_WARMUP_S, PROM_URL.
 //
 // Exit 0 = quiesced; exit 1 = timed out or container not running.
 
@@ -26,6 +34,25 @@ import {
 	sleep,
 } from "./lib.mjs";
 
+// Alerts labelled `role: ambient` are deliberate background furniture (#121) and
+// are never quiet by construction — EdgeClientRequestJitter reduces to
+// `time() % 120 < 60`, so it is firing half of all wall-clock time regardless of
+// what the stack is doing. Gating on them makes quiesce a race against a clock:
+// the gate can only pass during the 60s down-phase and has to fit its whole
+// settle streak inside it. Measured on the 2026-07-26/27 campaign, tightening a
+// driver's gate to "every rule inactive" raised its failure rate from 33% to 57%
+// for exactly this reason.
+//
+// Exempting by LABEL rather than by alert name is the point: a stack can add
+// ambient furniture without every gate and every external driver having to learn
+// a new hardcoded name. rules-lint enforces that the ambient service's rules
+// carry this label, so the two cannot drift apart.
+export const AMBIENT_ROLE = "ambient";
+
+export function isAmbientAlert(alert) {
+	return alert?.labels?.role === AMBIENT_ROLE;
+}
+
 export function parseRequireBaseline(val, fallback = 0) {
 	if (val === undefined || val === null) return fallback;
 	if (typeof val === "boolean") return val ? 1 : 0;
@@ -42,8 +69,19 @@ export function classifyPoll({
 	baseline = null,
 	requireBaseline = 0,
 }) {
-	const firing = firingNames(alerts);
-	const pending = pendingNames(alerts);
+	// Ambient furniture is filtered out before the assertion, not after: it must
+	// affect neither `clean` nor the reported firing/pending lists, or a timeout
+	// diagnostic would name a rule the operator cannot do anything about.
+	const gated = alerts.filter((a) => !isAmbientAlert(a));
+	const ambient = [
+		...new Set(
+			alerts
+				.filter((a) => isAmbientAlert(a) && a.state !== "inactive")
+				.map((a) => a.labels?.alertname),
+		),
+	];
+	const firing = firingNames(gated);
+	const pending = pendingNames(gated);
 	const targetsDown = targets
 		.filter((t) => t.health !== "up")
 		.map((t) => t.labels?.job ?? t.scrapeUrl);
@@ -62,6 +100,7 @@ export function classifyPoll({
 		targetsDown,
 		baselinePresent,
 		baselineOk,
+		ambient,
 	};
 }
 
@@ -87,6 +126,7 @@ export async function runQuiesceLoop({
 		targetsDown: [],
 		baselinePresent: false,
 		baselineOk: !requireBaseline,
+		ambient: [],
 	};
 
 	while (nowFn() < deadlineMs) {
@@ -120,7 +160,8 @@ export async function runQuiesceLoop({
 			if (cleanStreak >= settle) {
 				if (logStderr) {
 					process.stderr.write(
-						`[confirm-quiesced] QUIESCED after ${elapsed}s (${settle} consecutive clean checks)\n`,
+						`[confirm-quiesced] QUIESCED after ${elapsed}s (${settle} consecutive clean checks)` +
+							`${lastRes.ambient?.length ? ` — ambient exempt: ${lastRes.ambient.join(",")}` : ""}\n`,
 					);
 				}
 				const result = {
@@ -136,14 +177,14 @@ export async function runQuiesceLoop({
 			}
 			if (logStderr) {
 				process.stderr.write(
-					`[confirm-quiesced] not settled (streak ${cleanStreak}/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"}\n`,
+					`[confirm-quiesced] not settled (streak ${cleanStreak}/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"} ambient_exempt=[${(lastRes.ambient ?? []).join(",")}]\n`,
 				);
 			}
 		} else {
 			cleanStreak = 0;
 			if (logStderr) {
 				process.stderr.write(
-					`[confirm-quiesced] not settled (streak 0/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"}\n`,
+					`[confirm-quiesced] not settled (streak 0/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"} ambient_exempt=[${(lastRes.ambient ?? []).join(",")}]\n`,
 				);
 			}
 		}
@@ -155,8 +196,15 @@ export async function runQuiesceLoop({
 		const errStr = lastFetchError
 			? ` (prometheus_unreachable: true, fetch_error: ${lastFetchError})`
 			: "";
+		// Name the exempted ambient alerts in the timeout line. They did not cause
+		// the timeout, but an operator reading this needs to know they were seen and
+		// deliberately ignored — otherwise the next debugging session re-discovers
+		// the metronome from scratch, which is what #121 was filed about.
+		const ambientStr = lastRes.ambient?.length
+			? ` (ambient, exempt: ${lastRes.ambient.join(",")})`
+			: "";
 		process.stderr.write(
-			`[confirm-quiesced] QUIESCE_TIMEOUT after ${deadlineS}s — never settled${errStr}: firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline_present=${lastRes.baselinePresent}\n`,
+			`[confirm-quiesced] QUIESCE_TIMEOUT after ${deadlineS}s — never settled${errStr}: firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline_present=${lastRes.baselinePresent}${ambientStr}\n`,
 		);
 	}
 	const result = {
@@ -170,6 +218,7 @@ export async function runQuiesceLoop({
 			pending: lastRes.pending,
 			targets_down: lastRes.targetsDown,
 			baseline_present: lastRes.baselinePresent,
+			ambient_exempt: lastRes.ambient ?? [],
 		},
 	};
 	if (logStdout) {

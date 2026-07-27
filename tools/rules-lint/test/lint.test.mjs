@@ -8,7 +8,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+	checkAmbientRoleConsistency,
 	checkUnscopedAmbientService,
+	extractAlertLabels,
 	lintContent,
 	lintRules,
 	resolveTargets,
@@ -266,3 +268,100 @@ test("checkUnscopedAmbientService ignores services key in non-verify sections", 
 	}
 });
 
+// ── #121: `role: ambient` and the ambient service must agree ─────────────────
+// confirm-quiesced exempts `role: ambient` alerts from its firing/pending
+// assertion, so the label has to mean exactly one thing in both directions.
+
+const AMBIENT_RULE = `groups:
+  - name: edge_telemetry
+    rules:
+      - alert: EdgeClientRequestJitter
+        expr: vector(time()) % 120 < 60
+        labels:
+          severity: warning
+          service: edge-client
+          role: ambient
+`;
+
+function withRulesFile(content, fn) {
+	const tmpDir = join(tmpdir(), `rules-lint-role-${process.hrtime.bigint()}`);
+	mkdirSync(tmpDir, { recursive: true });
+	const file = join(tmpDir, "rules.yml");
+	writeFileSync(file, content);
+	try {
+		return fn(file);
+	} finally {
+		rmSync(tmpDir, { recursive: true, force: true });
+	}
+}
+
+test("extractAlertLabels reads both service and role from the labels block", () => {
+	const got = extractAlertLabels(AMBIENT_RULE, "rules.yml");
+	assert.equal(got.length, 1);
+	assert.equal(got[0].alert, "EdgeClientRequestJitter");
+	assert.equal(got[0].service, "edge-client");
+	assert.equal(got[0].role, "ambient");
+});
+
+test("extractAlertLabels ignores a role key outside the labels block", () => {
+	// `role:` under annotations must not be read as a label — that would let an
+	// annotation silently exempt a rule from the quiesce gate.
+	const got = extractAlertLabels(
+		`groups:
+  - name: g
+    rules:
+      - alert: A
+        expr: up
+        labels:
+          service: booklogr-api
+        annotations:
+          role: ambient
+`,
+		"rules.yml",
+	);
+	assert.equal(got.length, 1);
+	assert.equal(got[0].service, "booklogr-api");
+	assert.equal(got[0].role, null);
+});
+
+test("checkAmbientRoleConsistency passes on a correctly-labelled ambient rule", () => {
+	withRulesFile(AMBIENT_RULE, (file) => {
+		const res = checkAmbientRoleConsistency([file], "edge-client");
+		assert.equal(res.count, 1);
+		assert.deepEqual(res.errors, []);
+	});
+});
+
+test("checkAmbientRoleConsistency FAILS an ambient-service rule with no role label", () => {
+	withRulesFile(
+		AMBIENT_RULE.replace("          role: ambient\n", ""),
+		(file) => {
+			const res = checkAmbientRoleConsistency([file], "edge-client");
+			assert.equal(res.errors.length, 1);
+			assert.match(res.errors[0], /has no `role: ambient` label/);
+		},
+	);
+});
+
+test("checkAmbientRoleConsistency FAILS a non-ambient rule that claims role: ambient", () => {
+	withRulesFile(
+		AMBIENT_RULE.replace("service: edge-client", "service: booklogr-api"),
+		(file) => {
+			const res = checkAmbientRoleConsistency([file], "edge-client");
+			assert.equal(res.errors.length, 1);
+			assert.match(
+				res.errors[0],
+				/must not exempt itself from the quiesce gate/,
+			);
+		},
+	);
+});
+
+test("checkAmbientRoleConsistency holds on the shipped rules files", () => {
+	const shipped = resolveTargets([
+		"use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml",
+	]);
+	const res = checkAmbientRoleConsistency(shipped, "edge-client");
+	assert.deepEqual(res.errors, []);
+	assert.ok(res.count >= 1, "expected at least one ambient rule in the stack");
+});

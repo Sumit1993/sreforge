@@ -84,12 +84,60 @@ pnpm forge menu booklogr
 
 Three checks make verification reliable:
 
-- **Pre-arm quiesce gate** — before every arm, the harness stops active load, recreates Prometheus and Alertmanager containers to wipe carryover TSDB/alert state (#74), optionally lays a fixed warm-up baseline, and asserts 0 firing AND 0 pending alerts with healthy scrape targets.
+- **Pre-arm quiesce gate** — before every arm, the harness stops active load, recreates Prometheus and Alertmanager containers to wipe carryover TSDB/alert state (#74), optionally lays a fixed warm-up baseline, and asserts 0 firing AND 0 pending alerts with healthy scrape targets. Alerts labelled `role: ambient` are exempt — see below.
 - **Confirm-fire before handoff** — setup injects the fault *and* confirms the
   target alert entered the firing state before the run proceeds. If it never
   fires, the run aborts or retries; a non-incident is never handed to an agent.
 - **Sustained-clear on verify** — the alert must stay cleared for the configured
   window while load is still active. A momentary dip does not count as a pass.
+
+## Running scenarios back-to-back
+
+Everything above is written for a single incident. A batch — a qualification
+campaign, an A/B sweep — hits two things a one-shot run never does.
+
+### Do not gate on a fully-inactive rule set
+
+Some alert rules are **ambient furniture**: deliberate background noise so a
+scenario is not the only thing an agent sees. They are not scenario signals and
+they are never quiet. `EdgeClientRequestJitter` is the current example — it
+reduces to `time() % 120 < 60`, so it fires for 60 seconds out of every 120
+forever, whether or not anything is armed and whether or not the load plane is
+running.
+
+So a driver that waits for *"no alerting rule is non-inactive"* is not waiting
+for a quiet stack, it is racing a clock: it can only pass during the 60-second
+down-phase, and it has to fit its whole settle streak inside that window.
+Tightening a gate to that condition has been measured making things **worse** —
+one external driver's failure rate went from 33% to 57%.
+
+Two supported ways to do it right:
+
+- **Filter by label.** Every ambient rule carries `role: ambient`, so a driver can
+  drop them programmatically rather than by hardcoded name. `rules-lint` enforces
+  the label in both directions, so a new ambient rule cannot forget it and a real
+  scenario signal cannot claim it.
+- **Or just gate on your own alert** — wait for the scenario's `[expected] alert`
+  from its `scenario.toml` to be inactive, and ignore every other rule. This is
+  the narrowest correct gate.
+
+`pnpm forge quiesce <use-case>` already does the right thing here; the built-in
+gate exempts `role: ambient` and reports what it exempted, so an exemption is
+visible in the log rather than silent.
+
+### Give the gate room after a hot run
+
+Immediately after a run that drove real traffic, an alert computed over a rate
+window can still be firing from data that is already historical. That is not a
+stuck system and it settles on its own. The gate's deadline is 120s by default
+and every flag has an env form, which is what to use since `arm` does not forward
+flags:
+
+```sh
+QUIESCE_DEADLINE_S=300 pnpm forge arm booklogr
+```
+
+Erring long costs a wait; erring short throws away the arm.
 
 ## Next
 

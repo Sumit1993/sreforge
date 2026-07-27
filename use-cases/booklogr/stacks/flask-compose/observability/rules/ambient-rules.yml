@@ -1,3 +1,17 @@
+# AMBIENT furniture (#121). These rules are deliberate background noise so a
+# scenario is not the only thing an agent sees. They are NOT scenario signals and
+# NOT mitigation gates.
+#
+# EdgeClientRequestJitter reduces to `time() % 120 < 60` — the `or vector(1)`
+# makes the right-hand side unconditionally true — so it fires 60 seconds out of
+# every 120, forever, armed or not, load plane running or stopped. With `for: 0s`
+# it flips the instant the modulus rolls.
+#
+# Consequence for anything that waits for a quiet plane: a gate of the form "no
+# alerting rule is non-inactive" can only pass during the 60s down-phase and must
+# land a whole settle streak inside it. That is a coin flip against a metronome,
+# not a gate. Every rule here carries `role: ambient` so `confirm-quiesced` and
+# external drivers can exempt them by label instead of by hardcoded name.
 groups:
   - name: edge_telemetry
     rules:
@@ -7,6 +21,7 @@ groups:
         labels:
           severity: warning
           service: edge-client
+          role: ambient             # never quiet by construction — exempt from quiesce (#121)
         annotations:
           summary: "Edge client traffic generator experiencing periodic latency jitter"
           description: "Flapping request jitter detected on edge client traffic generator."

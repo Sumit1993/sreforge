@@ -12,7 +12,7 @@
 // Exit 0 = all valid; 1 = missing label(s); 2 = usage/parse error.
 // =============================================================================
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -258,6 +258,145 @@ export function checkUnscopedAmbientService(
 	return { count, errors };
 }
 
+/**
+ * Extract the `service` and `role` label values for every alert rule in a rules file.
+ * Same line-oriented, labels-block-scoped parse as lintContent — no YAML dependency.
+ * @param {string} content - YAML content
+ * @param {string} file - Filename/path (for error reporting)
+ * @returns {Array<{alert: string, line: number, service: string|null, role: string|null}>}
+ */
+export function extractAlertLabels(content, file = "") {
+	const lines = content.split(/\r?\n/);
+	const out = [];
+	let cur = null;
+
+	const finalize = () => {
+		if (cur) out.push(cur);
+		cur = null;
+	};
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (/^\s*#/.test(line) || /^\s*$/.test(line)) continue;
+
+		if (/^\s*-\s*name:/.test(line)) {
+			finalize();
+			continue;
+		}
+
+		const alertMatch = line.match(/^(\s*)-\s*alert:\s*(\S.*?)\s*$/);
+		if (alertMatch) {
+			finalize();
+			let name = alertMatch[2].trim();
+			if (
+				(name.startsWith('"') && name.endsWith('"')) ||
+				(name.startsWith("'") && name.endsWith("'"))
+			) {
+				name = name.slice(1, -1);
+			}
+			cur = {
+				file,
+				alert: name,
+				line: i + 1,
+				service: null,
+				role: null,
+				indent: alertMatch[1].length,
+				inLabels: false,
+				labelsIndent: null,
+			};
+			continue;
+		}
+
+		if (!cur) continue;
+
+		const lineIndent = (line.match(/^(\s*)/) || ["", ""])[1].length;
+		if (lineIndent <= cur.indent) {
+			finalize();
+			continue;
+		}
+
+		const bare = line.replace(/#.*$/, "").trimEnd();
+
+		if (cur.inLabels) {
+			if (lineIndent <= cur.labelsIndent) {
+				cur.inLabels = false;
+			} else {
+				const svc = bare.match(/^\s*service:\s*(.*)$/);
+				if (svc && isValidServiceValue(svc[1])) {
+					cur.service = svc[1].trim().replace(/^["']|["']$/g, "");
+				}
+				const role = bare.match(/^\s*role:\s*(.*)$/);
+				if (role?.[1]?.trim()) {
+					cur.role = role[1].trim().replace(/^["']|["']$/g, "");
+				}
+			}
+		}
+
+		if (!cur.inLabels && /^\s*labels:\s*$/.test(bare)) {
+			cur.inLabels = true;
+			cur.labelsIndent = lineIndent;
+		}
+	}
+
+	finalize();
+	return out.map(({ alert, line, service, role }) => ({
+		file,
+		alert,
+		line,
+		service,
+		role,
+	}));
+}
+
+/**
+ * Check that `role: ambient` and the ambient service agree with each other (#121).
+ *
+ * `confirm-quiesced` exempts alerts labelled `role: ambient` from its firing/pending
+ * assertion. That exemption is only safe if the label means exactly one thing, so this
+ * enforces the equivalence in BOTH directions:
+ *
+ *   - a rule on the ambient service MUST carry `role: ambient` — otherwise new ambient
+ *     furniture silently re-acquires the power to deadlock the quiesce gate, which is
+ *     the #121 regression;
+ *   - a rule NOT on the ambient service must NOT carry `role: ambient` — otherwise a
+ *     real scenario signal can quietly opt itself out of the gate, which would let a
+ *     run arm on a genuinely dirty plane.
+ *
+ * @param {string[]} filePaths
+ * @param {string} ambientService
+ * @returns {{count: number, errors: string[]}}
+ */
+export function checkAmbientRoleConsistency(
+	filePaths = [],
+	ambientService = "edge-client",
+) {
+	const errors = [];
+	let count = 0;
+
+	for (const filePath of filePaths) {
+		if (!existsSync(filePath)) continue;
+		const rel = relative(REPO_ROOT, filePath) || filePath;
+		for (const a of extractAlertLabels(readFileSync(filePath, "utf8"), rel)) {
+			const isAmbientService = a.service === ambientService;
+			const claimsAmbientRole = a.role === "ambient";
+			if (isAmbientService) count++;
+
+			if (isAmbientService && !claimsAmbientRole) {
+				errors.push(
+					`${rel}:${a.line} alert "${a.alert}" is on the ambient service '${ambientService}' but has no \`role: ambient\` label — confirm-quiesced would gate on it (#121)`,
+				);
+			}
+			if (!isAmbientService && claimsAmbientRole) {
+				errors.push(
+					`${rel}:${a.line} alert "${a.alert}" claims \`role: ambient\` but its service is '${a.service ?? "(none)"}', not '${ambientService}' — a scenario signal must not exempt itself from the quiesce gate (#121)`,
+				);
+			}
+		}
+	}
+
+	return { count, errors };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 if (import.meta.url === `file://${process.argv[1]}`) {
 	let rawArgs = process.argv.slice(2);
@@ -306,6 +445,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 			);
 		}
 	}
+
+	const roleCheck = checkAmbientRoleConsistency(filePaths);
+	if (roleCheck.errors.length > 0) {
+		for (const err of roleCheck.errors) {
+			console.error(`[rules-lint] FAIL: ${err}`);
+		}
+		process.exit(1);
+	}
+	console.log(
+		`[rules-lint] Invariant passed: ${roleCheck.count} ambient rule(s) carry \`role: ambient\`, and no non-ambient rule claims it.`,
+	);
 
 	if (failures.length > 0) {
 		for (const f of failures) {
