@@ -361,3 +361,28 @@ test("ambient-furniture check reports enabled status, rules, and commits using g
 		rmSync(tmpDir, { recursive: true, force: true });
 	}
 });
+
+test("deployUpHint is defined for deploy plane checks", async () => {
+	const checksDefault = defineChecks({
+		deployServices: ["nonexistent-svc"],
+		prometheusUrl: "http://localhost:9090",
+	});
+	const deployPlaneCheck = checksDefault.find((c) => c.id === "deploy-plane");
+	const promCheck = checksDefault.find((c) => c.id === "alerting-prometheus");
+
+	const res1 = await deployPlaneCheck.run();
+	assert.equal(res1.status, "fail");
+	assert.equal(res1.hint, "pnpm forge up <use-case>");
+
+	const res2 = await promCheck.run();
+	assert.equal(res2.status, "fail");
+	assert.equal(res2.hint, "pnpm forge up <use-case>");
+
+	const checksUseCase = defineChecks({
+		deployServices: ["nonexistent-svc"],
+		prometheusUrl: "http://localhost:9090",
+		useCase: "booklogr",
+	});
+	const res3 = await checksUseCase.find((c) => c.id === "deploy-plane").run();
+	assert.equal(res3.hint, "pnpm forge up booklogr");
+});
