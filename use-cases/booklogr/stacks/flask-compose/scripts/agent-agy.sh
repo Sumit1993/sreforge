@@ -127,6 +127,7 @@ node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
   --run-id "${RUN_ID:-run-unknown}" \
   --harness "agy" \
   --session "$SESSION" \
+  --confinement "host-sandboxed" \
   --model "$MODEL" \
   --provider "$PROVIDER" \
   --submitted "$SUBMITTED" \
@@ -141,6 +142,7 @@ if docker exec agent-shell cat /workspace/.sreforge/rca.txt > "$RCA_TMP" 2>/dev/
     --run-id "${RUN_ID:-run-unknown}" \
     --harness "agy" \
     --session "$SESSION" \
+    --confinement "host-sandboxed" \
     --model "$MODEL" \
     --provider "$PROVIDER" \
     --submitted "$SUBMITTED" \

@@ -251,7 +251,7 @@ export function pruneDiskRecord(full: DiskRunRecord): DiskRunRecord {
   const pruned: DiskRunRecord = { ...full };
   if (full.agent_transcript && typeof full.agent_transcript === "object" && !Array.isArray(full.agent_transcript)) {
     const at = full.agent_transcript as Record<string, unknown>;
-    const keys = ["schema_version", "run_id", "harness", "session", "captured_at", "model", "provider", "submitted"];
+    const keys = ["schema_version", "run_id", "harness", "session", "confinement", "captured_at", "model", "provider", "submitted"];
     const header: Record<string, unknown> = {};
     for (const k of keys) {
       if (k in at) {

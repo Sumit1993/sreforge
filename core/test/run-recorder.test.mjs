@@ -62,6 +62,7 @@ function makeHandoff(dir, runId) {
       run_id: runId,
       harness: "agy",
       session: "cold",
+      confinement: "host-sandboxed",
       captured_at: "2026-07-19T10:04:00Z",
       raw_text: "agent output goes here",
     }),
@@ -172,6 +173,7 @@ test("writes pruned and full records when configured", async () => {
     run_id: RUN_ID,
     harness: "agy",
     session: "cold",
+    confinement: "host-sandboxed",
     captured_at: "2026-07-19T10:04:00Z",
   });
   assert.ok(pruned.full_record_sha256, "pruned record must have sha256");

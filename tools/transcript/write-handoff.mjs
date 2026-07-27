@@ -14,6 +14,7 @@ function run() {
         "run-id": { type: "string" },
         harness: { type: "string" },
         session: { type: "string" },
+        confinement: { type: "string" },
         model: { type: "string" },
         provider: { type: "string" },
         submitted: { type: "string" },
@@ -29,13 +30,18 @@ function run() {
 
   const { values } = args;
 
-  if (!values.out || !values["run-id"] || !values.harness || !values.session) {
-    console.error("Missing required arguments. Required: --out, --run-id, --harness, --session");
+  if (!values.out || !values["run-id"] || !values.harness || !values.session || !values.confinement) {
+    console.error("Missing required arguments. Required: --out, --run-id, --harness, --session, --confinement");
     process.exit(1);
   }
 
   if (values.session !== "cold" && values.session !== "warm") {
     console.error("Invalid session value. Must be 'cold' or 'warm'");
+    process.exit(1);
+  }
+
+  if (values.confinement !== "host-open" && values.confinement !== "host-sandboxed" && values.confinement !== "in-box") {
+    console.error("Invalid confinement value. Must be 'host-open', 'host-sandboxed', or 'in-box'");
     process.exit(1);
   }
 
@@ -64,6 +70,7 @@ function run() {
     run_id: values["run-id"],
     harness: values.harness,
     session: values.session,
+    confinement: values.confinement,
     captured_at: new Date().toISOString(),
   };
 

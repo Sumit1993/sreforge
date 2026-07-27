@@ -222,6 +222,11 @@ async function chat() {
 }
 
 // ---- the loop ---------------------------------------------------------------
+console.log("╭──────────────────────────────────────────────────────────────╮");
+console.log("│  confinement: host-open                                     │");
+console.log(`│  provider:    ${env.PROVIDER || "ollama"}`);
+console.log(`│  model:       ${MODEL}`);
+console.log("╰──────────────────────────────────────────────────────────────╯\n");
 console.log(`agent-ollama: model=${MODEL} host=${OLLAMA_HOST} box=${CONTAINER} steps<=${MAX_STEPS}\n`);
 let submitted = false;
 for (let step = 1; step <= MAX_STEPS && !submitted; step++) {
@@ -302,6 +307,7 @@ try {
     "--run-id", runId,
     "--harness", "ollama",
     "--session", session,
+    "--confinement", "host-open",
     "--model", MODEL,
     "--provider", provider,
     "--submitted", String(submitted),
@@ -327,6 +333,7 @@ try {
         "--run-id", runId,
         "--harness", "ollama",
         "--session", session,
+        "--confinement", "host-open",
         "--model", MODEL,
         "--provider", provider,
         "--submitted", String(submitted),

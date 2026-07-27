@@ -73,6 +73,8 @@ test("pruneDiskRecord", () => {
     schema_version: "1.0",
     run_id: "run-123",
     harness: "cli",
+    session: "cold",
+    confinement: "host-sandboxed",
     model: "test-model",
     raw_text: "some raw output",
     raw_json: { foo: "bar" },
@@ -87,6 +89,8 @@ test("pruneDiskRecord", () => {
     schema_version: "1.0",
     run_id: "run-123",
     harness: "cli",
+    session: "cold",
+    confinement: "host-sandboxed",
     model: "test-model"
   });
   assert.equal(pruned.full_record_sha256, expectedSha);

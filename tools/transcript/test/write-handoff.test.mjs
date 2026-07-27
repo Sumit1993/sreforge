@@ -24,16 +24,67 @@ test("missing required arg exits 1", () => {
   assert.match(result.stderr, /Missing required arguments/);
 });
 
+test("missing --confinement exits non-zero", () => {
+  const result = runScript([
+    "--out", "/tmp/out.json",
+    "--run-id", "123",
+    "--harness", "agy",
+    "--session", "cold",
+    "--raw-text-file", "/dev/null"
+  ]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Missing required arguments/);
+  assert.match(result.stderr, /--confinement/);
+});
+
 test("invalid session exits 1", () => {
   const result = runScript([
     "--out", "/tmp/out.json",
     "--run-id", "123",
     "--harness", "agy",
     "--session", "hot",
+    "--confinement", "host-sandboxed",
     "--raw-text-file", "/dev/null"
   ]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Invalid session value/);
+});
+
+test("invalid confinement value exits non-zero and names valid values", () => {
+  const result = runScript([
+    "--out", "/tmp/out.json",
+    "--run-id", "123",
+    "--harness", "agy",
+    "--session", "cold",
+    "--confinement", "bogus",
+    "--raw-text-file", "/dev/null"
+  ]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Invalid confinement value/);
+  assert.match(result.stderr, /host-open/);
+  assert.match(result.stderr, /host-sandboxed/);
+  assert.match(result.stderr, /in-box/);
+});
+
+test("valid --confinement value lands in emitted handoff JSON", () => {
+  const d = mkdtempSync(join(tmpdir(), "sreforge-test-"));
+  const txtPath = join(d, "raw.txt");
+  const outPath = join(d, "out.json");
+  writeFileSync(txtPath, "hello world", "utf8");
+
+  for (const tier of ["host-open", "host-sandboxed", "in-box"]) {
+    const result = runScript([
+      "--out", outPath,
+      "--run-id", "run-tier-test",
+      "--harness", "agy",
+      "--session", "cold",
+      "--confinement", tier,
+      "--raw-text-file", txtPath
+    ]);
+    assert.equal(result.status, 0);
+    const out = JSON.parse(readFileSync(outPath, "utf8"));
+    assert.equal(out.confinement, tier);
+  }
 });
 
 test("raw_text path works", () => {
@@ -47,6 +98,7 @@ test("raw_text path works", () => {
     "--run-id", "run-1",
     "--harness", "agy",
     "--session", "cold",
+    "--confinement", "host-sandboxed",
     "--raw-text-file", txtPath
   ]);
   assert.equal(result.status, 0);
@@ -55,6 +107,7 @@ test("raw_text path works", () => {
   assert.equal(out.run_id, "run-1");
   assert.equal(out.harness, "agy");
   assert.equal(out.session, "cold");
+  assert.equal(out.confinement, "host-sandboxed");
   assert.equal(out.raw_text, "hello world");
   assert.equal(out.raw_json, undefined);
   assert.equal(out.schema_version, "agent-transcript.v1");
@@ -72,6 +125,7 @@ test("raw_json path works", () => {
     "--run-id", "run-2",
     "--harness", "agy",
     "--session", "warm",
+    "--confinement", "in-box",
     "--model", "test-model",
     "--submitted", "true",
     "--raw-json-file", jsonPath
@@ -81,6 +135,7 @@ test("raw_json path works", () => {
   const out = JSON.parse(readFileSync(outPath, "utf8"));
   assert.equal(out.run_id, "run-2");
   assert.equal(out.session, "warm");
+  assert.equal(out.confinement, "in-box");
   assert.equal(out.model, "test-model");
   assert.equal(out.submitted, true);
   assert.deepEqual(out.raw_json, { a: 1 });
@@ -98,6 +153,7 @@ test("invalid-JSON fallback to raw_text", () => {
     "--run-id", "run-3",
     "--harness", "agy",
     "--session", "cold",
+    "--confinement", "host-open",
     "--raw-json-file", jsonPath
   ]);
   assert.equal(result.status, 0);
@@ -106,6 +162,7 @@ test("invalid-JSON fallback to raw_text", () => {
 
   const out = JSON.parse(readFileSync(outPath, "utf8"));
   assert.equal(out.raw_text, "{ bad json");
+  assert.equal(out.confinement, "host-open");
   assert.equal(out.raw_json, undefined);
 });
 
@@ -121,12 +178,14 @@ test("--kind rca works", () => {
     "--run-id", "run-4",
     "--harness", "agy",
     "--session", "cold",
+    "--confinement", "host-sandboxed",
     "--raw-text-file", txtPath
   ]);
   assert.equal(result.status, 0);
 
   const out = JSON.parse(readFileSync(outPath, "utf8"));
   assert.equal(out.run_id, "run-4");
+  assert.equal(out.confinement, "host-sandboxed");
   assert.equal(out.raw_text, "rca prose here");
   assert.equal(out.schema_version, "agent-rca.v1");
 });
@@ -138,6 +197,7 @@ test("invalid kind exits 1", () => {
     "--run-id", "123",
     "--harness", "agy",
     "--session", "cold",
+    "--confinement", "host-sandboxed",
     "--raw-text-file", "/dev/null"
   ]);
   assert.equal(result.status, 1);
@@ -151,6 +211,7 @@ test("--kind rca --raw-json-file exits non-zero", () => {
     "--run-id", "123",
     "--harness", "agy",
     "--session", "cold",
+    "--confinement", "host-sandboxed",
     "--raw-json-file", "/tmp/raw.json"
   ]);
   assert.equal(result.status, 1);
