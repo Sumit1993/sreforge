@@ -29,24 +29,6 @@ groups:
         # trailing baseline (collapse ratio). This keeps it quiet for scenarios that
         # simply never exercise the provider (idle/no baseline), so it only fires on
         # an active-then-stalled transition.
-        #
-        # THIRD QUALIFIER — min sample count (#95). The two qualifiers above are not
-        # enough on a freshly-recreated Prometheus. `quiesce` wipes the TSDB by
-        # force-recreating Prometheus, and `rate(...[30m] offset 2m)` will happily
-        # extrapolate a full-window rate from the handful of residual scrapes taken
-        # while the previous deployment was still up. That satisfies the > 0.15
-        # min-baseline from data which is an artifact of the wipe, while the current
-        # [2m] rate is legitimately 0 because quiesce just stopped the load — so the
-        # alert pends on exactly the state the quiesce gate itself creates, and
-        # `confirm-quiesced` (which requires 0 pending) can never settle. That
-        # deadlocked 11/21 runs of the 2026-07-22 campaign.
-        #
-        # At the stack's 5s scrape_interval a fully-covered 30m window holds ~360
-        # samples; the sparse post-recreate case in #95 had ~24 (about two minutes).
-        # Requiring > 120 demands ~10 minutes of real history before the collapse
-        # comparison is allowed to arm at all, which no post-wipe TSDB can fake.
-        # `max()` over the per-endpoint series asks "does any series have real
-        # history", which is the question that matters.  # TUNE-ON-CERT
         expr: |
           (
             sum(rate(book_metadata_requests_total{job="book-metadata"}[2m]))
@@ -56,10 +38,6 @@ groups:
           and
           (
             sum(rate(book_metadata_requests_total{job="book-metadata"}[30m] offset 2m)) > 0.15
-          )
-          and
-          (
-            max(count_over_time(book_metadata_requests_total{job="book-metadata"}[30m] offset 2m)) > 120
           )
         for: 2m                       # TUNE-ON-CERT — sustained-collapse window (unchanged)
         labels:

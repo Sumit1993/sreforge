@@ -5,9 +5,15 @@
 // 0 firing alerts, 0 pending alerts, all scrape targets healthy, and baseline
 // metrics present (when require-baseline is set).
 //
-// Alerts labelled `role: ambient` are EXEMPT from the firing/pending assertion
-// (#121) — they are deliberate furniture and are never quiet. They are still
-// reported, so the exemption is visible rather than silent.
+// Two classes of alert are EXEMPT from the firing/pending assertion. Both are
+// still reported, so an exemption is visible rather than silent:
+//
+//   - `role: ambient` (#121) — deliberate furniture, never quiet by construction.
+//   - outside the scenario's `[verify] services` (#95) — the same grader scope the
+//     compound oracle uses for `no_new_alerts` (ADR-0006). An alert this scenario
+//     does not grade must not be able to block its arm.
+//
+// With no SCENARIO_ID or no declared scope, the gate stays strictly global.
 //
 //   node scripts/confirm-quiesced.mjs [--deadline=120] [--interval=3] [--settle=3]
 //                                     [--require-baseline=0|1] [--prom=URL]
@@ -53,6 +59,62 @@ export function isAmbientAlert(alert) {
 	return alert?.labels?.role === AMBIENT_ROLE;
 }
 
+// Read a scenario's declared grader scope — `[verify] services` in scenario.toml.
+//
+// This is the SAME scope the compound oracle already uses for `no_new_alerts`
+// (ADR-0006, amended 2026-07-21). That amendment settled that a cross-service
+// alert outside a scenario's declared services is a diagnosis signal, not a gate
+// for that scenario, precisely so a shared rules surface cannot dock an unrelated
+// scenario's grade. The quiesce gate was still asserting globally, which is the
+// same class of bug one step earlier in the run: #95's deadlock was
+// BookMetadataTrafficStalled pending during latency-cache-stampede, a scenario
+// that does not declare book-metadata at all.
+//
+// Section-scoped parse, matching tools/rules-lint/lint.mjs and
+// tools/headroom/campaign.mjs — this repo reads this manifest by regex and has no
+// TOML dependency.
+export function readScenarioServices(scenarioId, scenariosDir = null) {
+	if (!scenarioId) return { services: null, reason: "no SCENARIO_ID" };
+	const dir =
+		scenariosDir ??
+		path.resolve(
+			path.dirname(fileURLToPath(import.meta.url)),
+			"..",
+			"..",
+			"..",
+			"scenarios",
+		);
+	const manifest = path.join(dir, scenarioId, "scenario.toml");
+	if (!fs.existsSync(manifest)) {
+		return { services: null, reason: `no manifest at ${manifest}` };
+	}
+	const content = fs.readFileSync(manifest, "utf8");
+	const verifyBlock = content.match(
+		/(?:^|\n)\[verify\][^\n]*\n([\s\S]*?)(?=\n\[|$)/,
+	)?.[1];
+	const raw = verifyBlock?.match(/services\s*=\s*\[(.*?)\]/s)?.[1];
+	if (!raw) {
+		return { services: null, reason: "no [verify] services declared" };
+	}
+	const services = [...raw.matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
+	return services.length
+		? { services, reason: null }
+		: { services: null, reason: "[verify] services is empty" };
+}
+
+// An alert is out of scope when the scenario declares a scope and the alert's
+// service is not in it. Two deliberate fail-closed choices:
+//   - no declared scope at all -> nothing is exempt (the pre-#95 strict gate)
+//   - an alert with no `service` label -> never exempt, even under a scope.
+//     rules-lint makes that unreachable for shipped rules, but an unlabelled rule
+//     must not be able to buy itself an exemption by omission.
+export function isOutOfScopeAlert(alert, services) {
+	if (!services?.length) return false;
+	const svc = alert?.labels?.service;
+	if (!svc) return false;
+	return !services.includes(svc);
+}
+
 export function parseRequireBaseline(val, fallback = 0) {
 	if (val === undefined || val === null) return fallback;
 	if (typeof val === "boolean") return val ? 1 : 0;
@@ -68,18 +130,27 @@ export function classifyPoll({
 	targets = [],
 	baseline = null,
 	requireBaseline = 0,
+	services = null,
 }) {
-	// Ambient furniture is filtered out before the assertion, not after: it must
-	// affect neither `clean` nor the reported firing/pending lists, or a timeout
-	// diagnostic would name a rule the operator cannot do anything about.
-	const gated = alerts.filter((a) => !isAmbientAlert(a));
-	const ambient = [
-		...new Set(
-			alerts
-				.filter((a) => isAmbientAlert(a) && a.state !== "inactive")
-				.map((a) => a.labels?.alertname),
+	// Exemptions are filtered out before the assertion, not after: they must affect
+	// neither `clean` nor the reported firing/pending lists, or a timeout diagnostic
+	// would name a rule the operator cannot do anything about. Both categories are
+	// reported separately so an exemption is always visible.
+	const nonInactive = (a) => a.state !== "inactive";
+	const names = (list) => [...new Set(list.map((a) => a.labels?.alertname))];
+
+	const ambient = names(
+		alerts.filter((a) => isAmbientAlert(a) && nonInactive(a)),
+	);
+	const outOfScope = names(
+		alerts.filter(
+			(a) =>
+				!isAmbientAlert(a) && isOutOfScopeAlert(a, services) && nonInactive(a),
 		),
-	];
+	);
+	const gated = alerts.filter(
+		(a) => !isAmbientAlert(a) && !isOutOfScopeAlert(a, services),
+	);
 	const firing = firingNames(gated);
 	const pending = pendingNames(gated);
 	const targetsDown = targets
@@ -101,6 +172,7 @@ export function classifyPoll({
 		baselinePresent,
 		baselineOk,
 		ambient,
+		outOfScope,
 	};
 }
 
@@ -110,6 +182,7 @@ export async function runQuiesceLoop({
 	intervalS = 3,
 	settle = 3,
 	requireBaseline = 0,
+	services = null,
 	nowFn = Date.now,
 	sleepFn = sleep,
 	logStderr = true,
@@ -127,6 +200,7 @@ export async function runQuiesceLoop({
 		baselinePresent: false,
 		baselineOk: !requireBaseline,
 		ambient: [],
+		outOfScope: [],
 	};
 
 	while (nowFn() < deadlineMs) {
@@ -151,6 +225,7 @@ export async function runQuiesceLoop({
 			targets: pollData.targets,
 			baseline: pollData.baseline,
 			requireBaseline,
+			services,
 		});
 
 		const elapsed = ((nowFn() - started) / 1000).toFixed(0);
@@ -159,9 +234,13 @@ export async function runQuiesceLoop({
 			cleanStreak++;
 			if (cleanStreak >= settle) {
 				if (logStderr) {
+					const exempt = [
+						...(lastRes.ambient ?? []),
+						...(lastRes.outOfScope ?? []),
+					];
 					process.stderr.write(
 						`[confirm-quiesced] QUIESCED after ${elapsed}s (${settle} consecutive clean checks)` +
-							`${lastRes.ambient?.length ? ` — ambient exempt: ${lastRes.ambient.join(",")}` : ""}\n`,
+							`${exempt.length ? ` — exempt: ${exempt.join(",")}` : ""}\n`,
 					);
 				}
 				const result = {
@@ -177,14 +256,14 @@ export async function runQuiesceLoop({
 			}
 			if (logStderr) {
 				process.stderr.write(
-					`[confirm-quiesced] not settled (streak ${cleanStreak}/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"} ambient_exempt=[${(lastRes.ambient ?? []).join(",")}]\n`,
+					`[confirm-quiesced] not settled (streak ${cleanStreak}/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"} ambient_exempt=[${(lastRes.ambient ?? []).join(",")}] out_of_scope_exempt=[${(lastRes.outOfScope ?? []).join(",")}]\n`,
 				);
 			}
 		} else {
 			cleanStreak = 0;
 			if (logStderr) {
 				process.stderr.write(
-					`[confirm-quiesced] not settled (streak 0/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"} ambient_exempt=[${(lastRes.ambient ?? []).join(",")}]\n`,
+					`[confirm-quiesced] not settled (streak 0/${settle}): firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline=${lastRes.baselineOk ? "ok" : "missing"} ambient_exempt=[${(lastRes.ambient ?? []).join(",")}] out_of_scope_exempt=[${(lastRes.outOfScope ?? []).join(",")}]\n`,
 				);
 			}
 		}
@@ -196,12 +275,18 @@ export async function runQuiesceLoop({
 		const errStr = lastFetchError
 			? ` (prometheus_unreachable: true, fetch_error: ${lastFetchError})`
 			: "";
-		// Name the exempted ambient alerts in the timeout line. They did not cause
-		// the timeout, but an operator reading this needs to know they were seen and
+		// Name the exempted alerts in the timeout line. They did not cause the
+		// timeout, but an operator reading this needs to know they were seen and
 		// deliberately ignored — otherwise the next debugging session re-discovers
 		// the metronome from scratch, which is what #121 was filed about.
-		const ambientStr = lastRes.ambient?.length
-			? ` (ambient, exempt: ${lastRes.ambient.join(",")})`
+		const exemptions = [
+			lastRes.ambient?.length ? `ambient: ${lastRes.ambient.join(",")}` : null,
+			lastRes.outOfScope?.length
+				? `out-of-scope: ${lastRes.outOfScope.join(",")}`
+				: null,
+		].filter(Boolean);
+		const ambientStr = exemptions.length
+			? ` (exempt — ${exemptions.join("; ")})`
 			: "";
 		process.stderr.write(
 			`[confirm-quiesced] QUIESCE_TIMEOUT after ${deadlineS}s — never settled${errStr}: firing=[${lastRes.firing.join(",")}] pending=[${lastRes.pending.join(",")}] targets_down=[${lastRes.targetsDown.join(",")}] baseline_present=${lastRes.baselinePresent}${ambientStr}\n`,
@@ -219,6 +304,7 @@ export async function runQuiesceLoop({
 			targets_down: lastRes.targetsDown,
 			baseline_present: lastRes.baselinePresent,
 			ambient_exempt: lastRes.ambient ?? [],
+			out_of_scope_exempt: lastRes.outOfScope ?? [],
 		},
 	};
 	if (logStdout) {
@@ -243,6 +329,22 @@ export async function main() {
 		defaultRequireBaseline,
 	);
 	const prom = args.prom || process.env.PROM_URL || PROM;
+
+	// Scope the assertion to the scenario's declared services (ADR-0006). Absent a
+	// declared scope this stays the strict global gate it has always been — the
+	// fallback is fail-closed, and it says so, because a silently-unscoped gate is
+	// how a run ends up arming on a dirty plane.
+	const scenarioId = args.scenario || process.env.SCENARIO_ID || "";
+	const { services, reason } = readScenarioServices(scenarioId);
+	if (services) {
+		process.stderr.write(
+			`[confirm-quiesced] scoped to scenario '${scenarioId}' services=[${services.join(",")}] — alerts on other services are reported, not gated (ADR-0006)\n`,
+		);
+	} else {
+		process.stderr.write(
+			`[confirm-quiesced] WARNING: unscoped gate (${reason}) — asserting on ALL services, which can deadlock on a cross-service alert this scenario does not grade (#95)\n`,
+		);
+	}
 
 	const PROM_CONTAINER = args["prom-container"] || "booklogr-prometheus";
 	try {
@@ -280,6 +382,7 @@ export async function main() {
 		intervalS,
 		settle,
 		requireBaseline,
+		services,
 	});
 
 	if (res.ok) {

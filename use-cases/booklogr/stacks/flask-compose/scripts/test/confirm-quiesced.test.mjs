@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	classifyPoll,
+	isOutOfScopeAlert,
 	parseRequireBaseline,
+	readScenarioServices,
 	runQuiesceLoop,
 } from "../confirm-quiesced.mjs";
 
@@ -324,6 +326,123 @@ describe("confirm-quiesced classification and loop tests", () => {
 		});
 		assert.equal(res.clean, true);
 		assert.deepEqual(res.ambient, []);
+	});
+
+	// ── #95: the gate must not block on an alert the scenario does not grade ────
+	// The measured deadlock was BookMetadataTrafficStalled pending during
+	// latency-cache-stampede, whose [verify] services is ["booklogr-api"] only.
+	// ADR-0006 (amended 2026-07-21) already scopes no_new_alerts this way; the
+	// quiesce gate was still asserting globally.
+	const stalledPending = {
+		state: "pending",
+		labels: {
+			alertname: "BookMetadataTrafficStalled",
+			service: "book-metadata",
+		},
+	};
+
+	it("17. the #95 deadlock: out-of-scope pending alert no longer blocks", () => {
+		const res = classifyPoll({
+			alerts: [stalledPending],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+			services: ["booklogr-api"],
+		});
+		assert.equal(res.clean, true);
+		assert.deepEqual(res.pending, []);
+		assert.deepEqual(res.outOfScope, ["BookMetadataTrafficStalled"]);
+	});
+
+	it("18. the same alert DOES block a scenario that declares its service", () => {
+		// worker-cpu-starvation grades book-metadata, so there the collapse is a
+		// real coupled signal and must still gate.
+		const res = classifyPoll({
+			alerts: [stalledPending],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+			services: ["booklogr-api", "book-metadata"],
+		});
+		assert.equal(res.clean, false);
+		assert.deepEqual(res.pending, ["BookMetadataTrafficStalled"]);
+		assert.deepEqual(res.outOfScope, []);
+	});
+
+	it("19. no declared scope -> strict global gate (fail-closed)", () => {
+		for (const services of [null, []]) {
+			const res = classifyPoll({
+				alerts: [stalledPending],
+				targets: healthyTargets,
+				baseline: 1.5,
+				requireBaseline: 1,
+				services,
+			});
+			assert.equal(res.clean, false, `services=${JSON.stringify(services)}`);
+			assert.deepEqual(res.pending, ["BookMetadataTrafficStalled"]);
+		}
+	});
+
+	it("20. an in-scope alert still blocks, and an unlabelled alert is never exempt", () => {
+		const inScope = classifyPoll({
+			alerts: [
+				{
+					state: "firing",
+					labels: {
+						alertname: "BooklogrApiHighErrorRate",
+						service: "booklogr-api",
+					},
+				},
+			],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+			services: ["booklogr-api"],
+		});
+		assert.equal(inScope.clean, false);
+		assert.deepEqual(inScope.firing, ["BooklogrApiHighErrorRate"]);
+
+		// A rule with no service label must not buy an exemption by omission.
+		const unlabelled = classifyPoll({
+			alerts: [{ state: "firing", labels: { alertname: "NoServiceLabel" } }],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+			services: ["booklogr-api"],
+		});
+		assert.equal(unlabelled.clean, false);
+		assert.deepEqual(unlabelled.firing, ["NoServiceLabel"]);
+	});
+
+	it("21. isOutOfScopeAlert edge cases", () => {
+		assert.equal(isOutOfScopeAlert(stalledPending, ["booklogr-api"]), true);
+		assert.equal(
+			isOutOfScopeAlert(stalledPending, ["booklogr-api", "book-metadata"]),
+			false,
+		);
+		assert.equal(isOutOfScopeAlert(stalledPending, null), false);
+		assert.equal(isOutOfScopeAlert(stalledPending, []), false);
+		assert.equal(isOutOfScopeAlert({ labels: {} }, ["booklogr-api"]), false);
+	});
+
+	it("22. readScenarioServices reads the real shipped manifests", () => {
+		// The 6 verdict scenarios scope booklogr-api only; worker-cpu-starvation
+		// additionally grades book-metadata. That asymmetry is what makes scoping
+		// the correct fix for #95 rather than a rule change.
+		const stampede = readScenarioServices("latency-cache-stampede");
+		assert.deepEqual(stampede.services, ["booklogr-api"]);
+
+		const worker = readScenarioServices("worker-cpu-starvation");
+		assert.deepEqual(worker.services, ["booklogr-api", "book-metadata"]);
+
+		// Fallbacks report WHY, so an unscoped gate is never silent.
+		const missing = readScenarioServices("does-not-exist");
+		assert.equal(missing.services, null);
+		assert.match(missing.reason, /no manifest/);
+
+		const none = readScenarioServices("");
+		assert.equal(none.services, null);
+		assert.match(none.reason, /no SCENARIO_ID/);
 	});
 
 	it("16. the loop settles through a permanently-firing ambient alert", async () => {

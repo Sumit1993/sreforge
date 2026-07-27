@@ -121,9 +121,28 @@ Two supported ways to do it right:
   from its `scenario.toml` to be inactive, and ignore every other rule. This is
   the narrowest correct gate.
 
-`pnpm forge quiesce <use-case>` already does the right thing here; the built-in
-gate exempts `role: ambient` and reports what it exempted, so an exemption is
-visible in the log rather than silent.
+`pnpm forge quiesce <use-case>` already does the right thing here.
+
+### The gate is scoped to the scenario you are arming
+
+The built-in gate exempts two classes of alert from its firing/pending assertion,
+and reports both, so an exemption is visible in the log rather than silent:
+
+- **`role: ambient`** — the furniture above.
+- **Alerts on a service the scenario does not grade.** This is the same
+  `[verify] services` scope the compound oracle already uses for `no_new_alerts`,
+  so the gate and the grade agree on what is in scope. An alert the scenario does
+  not grade cannot block its arm.
+
+That second rule is what stops a shared rules surface from deadlocking an
+unrelated scenario. Six of the seven booklogr scenarios declare `booklogr-api`
+only; a `book-metadata` alert pending during one of them is a diagnosis signal,
+not a reason to refuse to arm. The one scenario that *does* declare
+`book-metadata` still waits for it, because there the signal is genuinely
+coupled.
+
+With no `SCENARIO_ID`, or a scenario declaring no `services`, the gate stays
+strictly global and says so — the fallback is fail-closed.
 
 ### Give the gate room after a hot run
 
