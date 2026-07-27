@@ -71,7 +71,7 @@ function isFullRecord(record) {
     if (typeof at.raw_text === "string" || typeof at.raw_json === "string" || at.raw_json || at.events || at.transcript || at.trajectory) {
       return true;
     }
-    const headerKeys = new Set(["schema_version", "run_id", "harness", "session", "captured_at", "model", "provider", "submitted"]);
+    const headerKeys = new Set(["schema_version", "run_id", "harness", "session", "confinement", "captured_at", "model", "provider", "submitted"]);
     const keys = Object.keys(at);
     if (keys.some(k => !headerKeys.has(k))) {
       return true;

@@ -121,7 +121,7 @@ Each run produces an artifact set in **`runs/<runId>/`**:
 - `diagnosis.json`: The **`diagnosis.v1`** RCA-judge result, if the [RCA judge](../../concepts/closed-loop-verification/) has graded the run's `rca.txt` against the scenario's authored root-cause truth. Reported *beside* the verdict — its score never feeds `record.json` or the pass decision. Absent is a normal state (no RCA, judge not run, or judge unreachable). Written by `tools/rca-judge/judge.mjs`; never written into or read from `record.json`.
 
 The engine also captures the record into persistent storage via a split (ADR-0026):
-- **Pruned record**: The `record.json` stripped of `trajectory.transcript` and the raw payload (`raw_text`/`raw_json`) of `agent_transcript`, but retaining `agent_transcript`'s identity header (`harness`, `model`, `provider`, `session`, `run_id`, `captured_at`) plus a `full_record_sha256` reference, is committed to `use-cases/<uc>/scenarios/<id>/records/<runId>.json`.
+- **Pruned record**: The `record.json` stripped of `trajectory.transcript` and the raw payload (`raw_text`/`raw_json`) of `agent_transcript`, but retaining `agent_transcript`'s identity header (`harness`, `model`, `provider`, `session`, `confinement`, `run_id`, `captured_at`) plus a `full_record_sha256` reference, is committed to `use-cases/<uc>/scenarios/<id>/records/<runId>.json`.
 - **Full record**: The complete run state is archived in a content-addressed private store seam.
 - **Headroom campaign runs**: `tools/headroom` campaign run-ids and their records land in these exact same existing paths (`runs/<runId>/record.json` and pruned copies); the campaign records nothing new.
 
@@ -132,6 +132,7 @@ The `run-record.v1` schema fields include:
 | `run_id`, `scenario_id`, `profile` | Run + scenario identity |
 | `trigger` | The firing alert that opened the run (`source`, `alert_name`, `severity`, `labels`, `annotations`, `fired_at`, `signals`) |
 | `trajectory` | What the agent produced: `agent_name`, `diff`, `submitted`, `duration_ms` |
+| `agent_transcript` | Harness-sourced transcript metadata (`harness`, `model`, `provider`, `session`, `confinement`: `host-open` \| `host-sandboxed` \| `in-box`, `captured_at`) |
 | `ci`, `deploy` | CI-gate result and the redeploy result (`null` if not reached) |
 | `score` | The oracle's `oracle_score` (see below) |
 | `verdict` | `"passed"` \| `"failed"` \| `"rejected"` \| `"aborted"` \| `"error"` |

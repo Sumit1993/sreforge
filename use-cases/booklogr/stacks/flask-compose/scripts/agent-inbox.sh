@@ -76,6 +76,7 @@ write_handoff() {
     --run-id "${RUN_ID:-run-unknown}" \
     --harness "agent-loop" \
     --session "$SESSION" \
+    --confinement "in-box" \
     --model "$MODEL" \
     --provider "$PROVIDER" \
     --submitted "$SUBMITTED" \

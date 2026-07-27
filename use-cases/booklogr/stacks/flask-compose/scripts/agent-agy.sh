@@ -35,6 +35,8 @@ else
   DOMAINS_JSON="["
   first=true
   IFS=',' read -ra DOMAINS <<< "$EGRESS_CSV"
+  # scenario.toml [endpoints] are BINDING; without loopback in allowedDomains they return 000.
+  DOMAINS+=("localhost" "127.0.0.1")
   for d in "${DOMAINS[@]}"; do
     [ -z "$d" ] && continue
     if [ "$first" = true ]; then first=false; else DOMAINS_JSON+=","; fi
@@ -104,6 +106,12 @@ EOF
 
 cat > "$SCRATCH/inner.sh" <<EOF
 cd "$SCRATCH"
+# srt injects its own no_proxy covering loopback, which makes clients bypass srt's proxy and
+# die on a direct connection. Clearing it routes them back through the proxy. node's fetch
+# (undici) ignores proxy env vars entirely unless NODE_USE_ENV_PROXY is set, so any node-based
+# tool would still see 000 without it. No new tell: srt already exports ALL_PROXY/HTTP_PROXY.
+unset no_proxy NO_PROXY
+export NODE_USE_ENV_PROXY=1
 exec agy --model "$MODEL" --dangerously-skip-permissions --print-timeout 45m0s -p "\$(cat "$SCRATCH/prompt.txt")"
 EOF
 
@@ -127,6 +135,7 @@ node "$(cd "$HERE/../../../../.." && pwd)/tools/transcript/write-handoff.mjs" \
   --run-id "${RUN_ID:-run-unknown}" \
   --harness "agy" \
   --session "$SESSION" \
+  --confinement "host-sandboxed" \
   --model "$MODEL" \
   --provider "$PROVIDER" \
   --submitted "$SUBMITTED" \
@@ -141,6 +150,7 @@ if docker exec agent-shell cat /workspace/.sreforge/rca.txt > "$RCA_TMP" 2>/dev/
     --run-id "${RUN_ID:-run-unknown}" \
     --harness "agy" \
     --session "$SESSION" \
+    --confinement "host-sandboxed" \
     --model "$MODEL" \
     --provider "$PROVIDER" \
     --submitted "$SUBMITTED" \

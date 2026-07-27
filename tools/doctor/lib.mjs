@@ -160,6 +160,10 @@ export function defineChecks(config) {
 			? `pnpm forge quiesce ${useCase}`
 			: "pnpm forge quiesce <use-case>");
 
+	const deployUpHint = useCase
+		? `pnpm forge up ${useCase}`
+		: "pnpm forge up <use-case>";
+
 	const safeFetch = async (url, options = {}) => {
 		try {
 			const res = await fetch(url, options);
@@ -554,9 +558,10 @@ export function defineChecks(config) {
 				const ruleStr = rulesPresent
 					? `${alertName} (service: ${alertService})`
 					: "ABSENT";
-				const commitStr = commitPresent && expectedPattern
-					? `PRESENT (${expectedPattern})`
-					: "ABSENT";
+				const commitStr =
+					commitPresent && expectedPattern
+						? `PRESENT (${expectedPattern})`
+						: "ABSENT";
 
 				return {
 					status: "pass",
