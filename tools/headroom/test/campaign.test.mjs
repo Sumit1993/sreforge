@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,6 +15,9 @@ import {
 	evaluateVerdict,
 	generateHeadroomMd,
 	HeadroomError,
+	parseArgs,
+	readScenarioMode,
+	REPO_ROOT,
 	runCampaign,
 	scoreSubcommand,
 } from "../campaign.mjs";
@@ -276,4 +285,154 @@ test("headroom.md rendering: golden-ish assertions", () => {
 	assert.match(md, /\*\*Mitigation Median\*\*: 0\.5/);
 	assert.match(md, /\*\*Diagnosis Median\*\*: 1/);
 	assert.match(md, /\*\*Falls-for-decoy Rate\*\*: 0\/1/);
+});
+
+
+// Discriminating the parse from the fallback is the whole difficulty here: the
+// only mode a manifest may declare is "score-headroom", which is ALSO the
+// fallback value — so asserting the return value alone passes even when the
+// parser is completely broken. The warning channel is the discriminator. A
+// successful parse emits NOTHING; every fallback path emits a distinct message.
+function captureWarnings(fn) {
+	const seen = [];
+	const orig = process.stderr.write;
+	process.stderr.write = (chunk) => {
+		seen.push(chunk.toString());
+		return true;
+	};
+	try {
+		return { out: fn(), warnings: seen.join("") };
+	} finally {
+		process.stderr.write = orig;
+	}
+}
+
+test("readScenarioMode: reads the field from [verify] and stays silent", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[identity]\nid = "x"\n\n[verify]\noracle = "mitigation"   # trailing comment\nqualification_mode = "score-headroom"\npass_threshold = 0.85\n`,
+		"utf8",
+	);
+	const { out, warnings } = captureWarnings(() => readScenarioMode(outDir));
+	assert.equal(out, "score-headroom");
+	assert.equal(warnings, "", `expected a silent parse, got: ${warnings}`);
+});
+
+test("readScenarioMode: accepts a direct scenario.toml path", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\nqualification_mode = "score-headroom"\n`,
+		"utf8",
+	);
+	const { out, warnings } = captureWarnings(() =>
+		readScenarioMode(join(outDir, "scenario.toml")),
+	);
+	assert.equal(out, "score-headroom");
+	assert.equal(warnings, "");
+});
+
+// This is the load-bearing regression test. A manifest declaring decoy-rate must
+// warn about DECOY-RATE specifically — proving the parser read the value. A
+// broken parser would report "field missing" instead, and this would fail.
+test("readScenarioMode: a manifest may not select decoy-rate", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\nqualification_mode = "decoy-rate"\npass_threshold = 0.85\n`,
+		"utf8",
+	);
+	const { out, warnings } = captureWarnings(() => readScenarioMode(outDir));
+	assert.equal(out, "score-headroom", "decoy-rate must not gate from a manifest");
+	assert.match(warnings, /decoy-rate/);
+	assert.match(warnings, /not gating/);
+	assert.doesNotMatch(warnings, /field missing/);
+});
+
+test("readScenarioMode: qualification_mode outside [verify] is ignored", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[identity]\nqualification_mode = "decoy-rate"\n\n[verify]\noracle = "mitigation"\n`,
+		"utf8",
+	);
+	const { out, warnings } = captureWarnings(() => readScenarioMode(outDir));
+	assert.equal(out, "score-headroom");
+	// The [identity] value must be invisible: we expect the MISSING-field warning,
+	// not the decoy-rate one.
+	assert.match(warnings, /field missing/);
+	assert.doesNotMatch(warnings, /not gating/);
+});
+
+test("readScenarioMode: unknown mode warns and falls back", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\nqualification_mode = "score-headrom"\n`,
+		"utf8",
+	);
+	const { out, warnings } = captureWarnings(() => readScenarioMode(outDir));
+	assert.equal(out, "score-headroom");
+	assert.match(warnings, /unknown qualification_mode/);
+});
+
+test("readScenarioMode: missing field warns and falls back", () => {
+	const outDir = tmp();
+	writeFileSync(
+		join(outDir, "scenario.toml"),
+		`[verify]\noracle = "mitigation"\npass_threshold = 0.85\n`,
+		"utf8",
+	);
+	const { out, warnings } = captureWarnings(() => readScenarioMode(outDir));
+	assert.equal(out, "score-headroom");
+	assert.match(warnings, /qualification_mode field missing/);
+});
+
+test("readScenarioMode: missing manifest warns and falls back", () => {
+	const outDir = tmp();
+	const { out, warnings } = captureWarnings(() => readScenarioMode(outDir));
+	assert.equal(out, "score-headroom");
+	assert.match(warnings, /scenario manifest not found/);
+});
+
+test("all 7 shipped scenario manifests parse silently", () => {
+	const dir = join(REPO_ROOT, "use-cases", "booklogr", "scenarios");
+	const names = readdirSync(dir, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.map((d) => d.name);
+	assert.ok(names.length >= 7, `expected >=7 scenarios, saw ${names.length}`);
+	for (const n of names) {
+		const { out, warnings } = captureWarnings(() =>
+			readScenarioMode(join(dir, n)),
+		);
+		assert.equal(warnings, "", `${n}: emitted ${warnings}`);
+		assert.equal(out, "score-headroom", `${n}: unexpected mode`);
+	}
+});
+
+
+test("runCampaign: a direct scenario.toml path still yields the scenario id", () => {
+	const calls = [];
+	const { runIds } = runCampaign({
+		scenario: "/path/to/scenario-xyz/scenario.toml",
+		runs: 1,
+		useCase: "booklogr",
+		idPrefix: "hr",
+		executor: (a) => {
+			calls.push(a);
+			return 0;
+		},
+	});
+	// Without normalization this is "hr-scenario.toml-1".
+	assert.deepEqual(runIds, ["hr-scenario-xyz-1"]);
+});
+
+test("parseArgs: an unknown --mode is rejected, not silently defaulted", () => {
+	assert.throws(
+		() => parseArgs(["score", "--mode", "score-headrom"]),
+		(e) => e instanceof HeadroomError && /unknown --mode/.test(e.message),
+	);
+	assert.equal(parseArgs(["score", "--mode", "decoy-rate"]).mode, "decoy-rate");
+	assert.equal(parseArgs(["score"]).mode, null);
 });

@@ -68,6 +68,7 @@ stop_during_verification = false
 # --- verification (v1 mitigation oracle) ---------------------------------------
 [verify]
 oracle           = "mitigation"
+qualification_mode = "score-headroom"  # ARCHETYPE — score-headroom (mitigation median vs 0.8 threshold governs qualification)
 pass_threshold   = 0.85
 load_active_during_scoring = true
   # Services whose firing alerts count toward the no_new_alerts regression signal.

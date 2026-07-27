@@ -68,6 +68,7 @@ stop_during_verification = false      # ARCHETYPE — anti-cheat (ADR-0004): loa
 # Multi-signal, objective, no-LLM oracle.
 [verify]
 oracle           = "mitigation"       # ARCHETYPE — oracle family
+qualification_mode = "score-headroom"  # ARCHETYPE — score-headroom (mitigation median vs 0.8 threshold governs qualification)
 pass_threshold   = 0.85               # ARCHETYPE — weighted score must reach 0.85 to pass
 load_active_during_scoring = true     # ARCHETYPE — anti-cheat (ADR-0004): load stays active while the oracle scores
   services = ["booklogr-api"]   # BINDING — grader scope for no_new_alerts

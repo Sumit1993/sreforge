@@ -96,8 +96,9 @@ grades observed behaviour, **not** a diff match against the reference fix.
 
 ```toml
 [verify]
-oracle         = "mitigation"   # ARCHETYPE — compound oracle adds detect/diagnose later
-pass_threshold = 0.85           # ARCHETYPE — weighted score needed to pass
+oracle           = "mitigation"   # ARCHETYPE — compound oracle adds detect/diagnose later
+qualification_mode = "score-headroom" # ARCHETYPE — score-headroom (mitigation median vs 0.8 threshold governs qualification)
+pass_threshold   = 0.85           # ARCHETYPE — weighted score needed to pass
 load_active_during_scoring = true   # ARCHETYPE — anti-cheat
 signals = ["ci_green", "alert_cleared", "sustained_clear", "time_to_clear", "no_new_alerts"]
 

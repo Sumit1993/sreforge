@@ -198,7 +198,10 @@ export function defaultExecutor(
 	{ useCase, rid, agentCmd, scenario },
 	spawnSyncFn = spawnSync,
 ) {
-	const env = { ...process.env, SCENARIO_ID: basename(resolve(scenario)) };
+	const env = {
+		...process.env,
+		SCENARIO_ID: basename(resolveScenarioDir(scenario)),
+	};
 	if (agentCmd) env.AGENT_CMD = agentCmd;
 
 	const res = spawnSyncFn("pnpm", ["forge", "auto", useCase, `id=${rid}`], {
@@ -218,7 +221,10 @@ export function runCampaign({
 }) {
 	const runIds = [];
 	const failedRunIds = [];
-	const scenarioShort = basename(resolve(scenario));
+	// Same normalization as scoreSubcommand: `--scenario` may name the directory
+	// or its scenario.toml. Without this a .toml path yields SCENARIO_ID
+	// "scenario.toml" and run ids like "headroom-scenario.toml-1".
+	const scenarioShort = basename(resolveScenarioDir(scenario));
 
 	for (let i = 1; i <= runs; i++) {
 		const rid = `${idPrefix}-${scenarioShort}-${i}`;
@@ -240,6 +246,65 @@ export function runCampaign({
 	return { runIds, failedRunIds };
 }
 
+// Modes the `--mode` operator override accepts. Anything else — a typo, a stale
+// flag in a script — is rejected loudly rather than silently landing in
+// evaluateVerdict's score-headroom branch, which is exactly the class of "config
+// that quietly does not do what it says" that #111 exists to remove.
+export const QUALIFICATION_MODES = ["score-headroom", "decoy-rate"];
+
+// Modes a MANIFEST may select — deliberately narrower. #111 demoted decoy-rate to
+// an informational statistic, so a scenario author must not be able to re-promote
+// it to a gating verdict by editing scenario.toml, with no operator involved.
+// decoy-rate remains reachable, but only as a deliberate `--mode` override.
+export const MANIFEST_QUALIFICATION_MODES = ["score-headroom"];
+
+// Accept either a scenario directory or a direct path to its scenario.toml.
+export function resolveScenarioDir(scenarioPath) {
+	const p = resolve(scenarioPath);
+	return p.endsWith("scenario.toml") ? dirname(p) : p;
+}
+
+export function readScenarioMode(scenarioPath) {
+	if (!scenarioPath) return "score-headroom";
+	const targetPath = join(resolveScenarioDir(scenarioPath), "scenario.toml");
+	if (!existsSync(targetPath)) {
+		loud(
+			`WARNING: scenario manifest not found at ${targetPath}, falling back to score-headroom`,
+		);
+		return "score-headroom";
+	}
+	const content = readFileSync(targetPath, "utf8");
+	// Section-scoped, matching how tools/rules-lint/lint.mjs reads this manifest:
+	// isolate the [verify] block first, then look inside it. A bare file-wide
+	// match would pick up a `qualification_mode` sitting under any other section.
+	// NOTE: deliberately no `m` flag. With `m`, `$` matches at every line end and
+	// the lazy capture terminates after the first line of the block — silently
+	// hiding every field below it. `(?:^|\n)` gives the start-of-line anchor
+	// instead, and `$` stays end-of-string.
+	const verifyBlock = content.match(
+		/(?:^|\n)\[verify\][^\n]*\n([\s\S]*?)(?=\n\[|$)/,
+	)?.[1];
+	const match = verifyBlock?.match(
+		/^\s*qualification[_-]mode\s*=\s*["']([^"']+)["']/m,
+	);
+	if (match?.[1]) {
+		const mode = match[1];
+		if (!MANIFEST_QUALIFICATION_MODES.includes(mode)) {
+			loud(
+				mode === "decoy-rate"
+					? `WARNING: qualification_mode "decoy-rate" in ${targetPath} is not gating (#111 demoted it to an informational statistic); falling back to score-headroom. Pass --mode decoy-rate explicitly for a legacy scoring.`
+					: `WARNING: unknown qualification_mode "${mode}" in ${targetPath} (a manifest may only declare ${MANIFEST_QUALIFICATION_MODES.join(", ")}), falling back to score-headroom`,
+			);
+			return "score-headroom";
+		}
+		return mode;
+	}
+	loud(
+		`WARNING: qualification_mode field missing in ${targetPath}, falling back to score-headroom`,
+	);
+	return "score-headroom";
+}
+
 export function parseArgs(argv) {
 	const o = {
 		cmd: null,
@@ -252,7 +317,7 @@ export function parseArgs(argv) {
 		driver: null,
 		judge: false,
 		threshold: 0.8,
-		mode: "score-headroom",
+		mode: null,
 		date: null,
 	};
 
@@ -270,7 +335,14 @@ export function parseArgs(argv) {
 		else if (a === "--driver") o.driver = argv[++i];
 		else if (a === "--judge") o.judge = true;
 		else if (a === "--threshold") o.threshold = parseFloat(argv[++i]);
-		else if (a === "--mode") o.mode = argv[++i];
+		else if (a === "--mode") {
+			const m = argv[++i];
+			if (!QUALIFICATION_MODES.includes(m))
+				fail(
+					`unknown --mode "${m}" (expected one of ${QUALIFICATION_MODES.join(", ")})`,
+				);
+			o.mode = m;
+		}
 		else if (a === "--date") o.date = argv[++i];
 		else fail(`unknown flag: ${a}`);
 	}
@@ -281,9 +353,14 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 	if (!opts.scenario) fail("--scenario <id> is required");
 	if (!opts.runIds || opts.runIds.length === 0)
 		fail("--run-ids <rid1,rid2,...> is required");
-	const useCaseMatch = resolve(opts.scenario).match(/use-cases\/([^/]+)/);
+	// Normalize once: `--scenario` may name the scenario directory or its
+	// scenario.toml. Every consumer below (record lookup, verify/ output path)
+	// wants the directory, so collapse the two spellings here rather than
+	// leaving each call site to guess.
+	const scenarioPath = resolveScenarioDir(opts.scenario);
+	const useCaseMatch = scenarioPath.match(/use-cases\/([^/]+)/);
 	const useCase = opts.useCase || (useCaseMatch ? useCaseMatch[1] : "booklogr");
-	const scenarioShort = basename(resolve(opts.scenario));
+	const scenarioShort = basename(scenarioPath);
 
 	const rows = [];
 	const mitigationScores = [];
@@ -327,7 +404,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 					"--run-dir",
 					runDir,
 					"--scenario",
-					resolve(opts.scenario),
+					scenarioPath,
 				],
 				{ stdio: "inherit", env: process.env },
 			);
@@ -402,10 +479,12 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 	const diagnosisMedian = computeMedian(diagnosisScores);
 	const decoyRate = computeDecoyRate(diagnoses);
 
+	const effectiveMode = opts.mode || readScenarioMode(scenarioPath);
+
 	const { verdict, reason } = evaluateVerdict({
 		mitigationMedian,
 		decoyRate,
-		mode: opts.mode,
+		mode: effectiveMode,
 		threshold: opts.threshold,
 	});
 
@@ -416,7 +495,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 		driver: opts.driver,
 		judgeModel,
 		threshold: opts.threshold,
-		mode: opts.mode,
+		mode: effectiveMode,
 		verdict,
 		reason,
 		rows,
@@ -425,7 +504,7 @@ export async function scoreSubcommand(opts, finderFn = findRecordAndDiagnosis) {
 		decoyRate,
 	});
 
-	const scenarioVerify = join(resolve(opts.scenario), "verify");
+	const scenarioVerify = join(scenarioPath, "verify");
 	if (!existsSync(scenarioVerify))
 		mkdirSync(scenarioVerify, { recursive: true });
 	writeFileSync(join(scenarioVerify, "headroom.md"), md, "utf8");
