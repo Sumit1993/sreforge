@@ -35,6 +35,8 @@ else
   DOMAINS_JSON="["
   first=true
   IFS=',' read -ra DOMAINS <<< "$EGRESS_CSV"
+  # scenario.toml [endpoints] are BINDING; without loopback in allowedDomains they return 000.
+  DOMAINS+=("localhost" "127.0.0.1")
   for d in "${DOMAINS[@]}"; do
     [ -z "$d" ] && continue
     if [ "$first" = true ]; then first=false; else DOMAINS_JSON+=","; fi
@@ -104,6 +106,7 @@ EOF
 
 cat > "$SCRATCH/inner.sh" <<EOF
 cd "$SCRATCH"
+unset no_proxy NO_PROXY
 exec agy --model "$MODEL" --dangerously-skip-permissions --print-timeout 45m0s -p "\$(cat "$SCRATCH/prompt.txt")"
 EOF
 
