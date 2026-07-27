@@ -18,6 +18,7 @@ SCRIPTS="$HERE"
 . "$HERE/lib-scenario.sh"
 
 SCENARIO_ID="${SCENARIO_ID:-latency-cache-stampede}"
+export SCENARIO_ID   # child scripts read it — see the note in arm-regress.sh
 source_scenario_env "$SCENARIO_ID"
 
 # 5. Ensure the storm is running (on-demand load profile)

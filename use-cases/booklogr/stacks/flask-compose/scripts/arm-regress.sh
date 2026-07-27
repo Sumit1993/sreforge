@@ -28,6 +28,12 @@ REPO_ROOT="$(cd "$STACK/../../../.." && pwd)"
 . "$HERE/lib-fault-delivery.sh"
 
 SCENARIO_ID="${SCENARIO_ID:-latency-cache-stampede}"
+# Exported, not just assigned: quiesce.sh below runs as a child and confirm-quiesced
+# scopes its assertion by this scenario's [verify] services (#95). Unexported, a
+# standalone `bash scripts/arm-regress.sh` (documented in scripts/README.md) hands
+# the gate no SCENARIO_ID, it falls back to the strict global gate, and the #95
+# deadlock returns on exactly the path that is not covered by the Taskfile `env:`.
+export SCENARIO_ID
 source_scenario_env "$SCENARIO_ID"
 
 # 0. Quiesce gate (#74): deterministic observability state per run
