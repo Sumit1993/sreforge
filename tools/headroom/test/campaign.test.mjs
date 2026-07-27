@@ -11,6 +11,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
 	computeMedian,
+	defaultExecutor,
 	evaluateVerdict,
 	generateHeadroomMd,
 	HeadroomError,
@@ -91,6 +92,34 @@ test("evaluateVerdict: decoy-rate no diagnoses -> DISQUALIFIED explicit", () => 
 	const r = evaluateVerdict({ decoyRate: null, mode: "decoy-rate" });
 	assert.equal(r.verdict, "DISQUALIFIED");
 	assert.match(r.reason, /no diagnosis available/);
+});
+
+test("defaultExecutor argv structure", () => {
+	let captured = null;
+	const mockSpawnSync = (cmd, args, opts) => {
+		captured = { cmd, args, opts };
+		return { status: 0 };
+	};
+	const status = defaultExecutor(
+		{
+			useCase: "booklogr",
+			rid: "test-run-123",
+			agentCmd: "node my-agent.mjs",
+			scenario: "/path/to/my-scenario",
+		},
+		mockSpawnSync,
+	);
+
+	assert.equal(status, 0);
+	assert.equal(captured.cmd, "pnpm");
+	assert.deepEqual(captured.args, [
+		"forge",
+		"auto",
+		"booklogr",
+		"id=test-run-123",
+	]);
+	assert.equal(captured.opts.env.SCENARIO_ID, "my-scenario");
+	assert.equal(captured.opts.env.AGENT_CMD, "node my-agent.mjs");
 });
 
 test("run orchestration with injected stub executor", () => {

@@ -17,10 +17,16 @@ The agent gets a shell, the documented HTTP endpoints, and `submit` — nothing 
 
 | env var            | endpoint                    | what it is                          |
 |--------------------|-----------------------------|-------------------------------------|
-| `API_URL`          | `http://booklogr-api:5000`  | the Flask app                       |
-| `PROM_URL`         | `http://prometheus:9090`    | Prometheus query API + alerts       |
-| `ALERTMANAGER_URL` | `http://alertmanager:9093`  | Alertmanager (firing alerts)        |
-| `GRAFANA_URL`      | `http://grafana:3000`       | Grafana dashboards (internal port)  |
+| `API_URL`                 | `http://booklogr-api:5000`  | the Flask app                       |
+| `PROM_URL`                | `http://prometheus:9090`    | Prometheus query API + alerts       |
+| `ALERTMANAGER_URL`        | `http://alertmanager:9093`  | Alertmanager (firing alerts)        |
+| `GRAFANA_URL`             | `http://grafana:3000`       | Grafana dashboards (internal port)  |
+| `AGENT_WINDOW`            | `22`                        | sliding window size (messages)      |
+| `AGENT_OUT_MAX`           | `3000`                      | max bytes per tool output feedback  |
+| `AGENT_DEGRADE_THRESHOLD` | `2`                        | consecutive 500s before degradation |
+| `AGENT_WINDOW_FLOOR`      | `6`                         | floor for context window reduction  |
+| `AGENT_OUT_MAX_FLOOR`     | `500`                       | floor for tool output reduction     |
+| `AGENT_MAX_DEGRADATIONS`  | `3`                         | max degradation steps per run       |
 
 (This stack has no Loki, so no `LOKI_URL`.)
 

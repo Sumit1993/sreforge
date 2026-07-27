@@ -167,7 +167,10 @@ tasks:
     # payload as its kickoff; grading is the existing external-runner tail.
     # No resident agent, no daemon — see scripts/auto-incident.mjs.
     deps: [build-core]
+    vars:
+      RUN_ID: '{{.id | default ""}}'
     env:
+      RUN_ID: '{{.RUN_ID}}'
       PROVIDER: '{{.PROVIDER | default ""}}'
       MCP: '{{.MCP | default ""}}'
       EGRESS_ALLOWLIST: '{{.EGRESS_ALLOWLIST | default ""}}'
@@ -177,6 +180,10 @@ tasks:
     cmds:
       - node scripts/auto-incident.mjs
 
+  confirm-runner:
+    desc: "[run] verify sreforge-runner is running AND registered with gitea"
+    cmds: [node scripts/confirm-runner.mjs]
+
   # ── run (per run; the engine) ────────────────────────────────────────────────
   run:
     desc: "[run] drive one incident end-to-end (vars: RUNNER=scripted|external, id=<run-id>, record-dir overrides)"
@@ -184,8 +191,8 @@ tasks:
     # Fail fast (~5s) if the CI runner is dead — avoids a 10-min timeout in the
     # GiteaCiGate. Recovery: pnpm forge forge-up (docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner)
     preconditions:
-      - sh: 'docker inspect -f "running:{{ "{{" }}.State.Running{{ "}}" }}" sreforge-runner 2>/dev/null | grep -q "running:true"'
-        msg: "sreforge-runner is not running — recovery: pnpm forge forge-up"
+      - sh: 'node scripts/confirm-runner.mjs'
+        msg: "sreforge-runner is not running or not registered — recovery: docker compose -f infra/forge/forge.yml up -d --force-recreate act_runner"
     vars:
       RUN_ID: '{{.id | default ""}}'
     env:
