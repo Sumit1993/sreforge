@@ -17,6 +17,7 @@ node tools/transcript/write-handoff.mjs \
   --run-id "<run-id>" \
   --harness "<harness-name>" \
   --session "cold" \
+  --confinement "host-open" \
   --kind "transcript" \
   --raw-text-file "/path/to/raw.txt" \
   --out ".run-workspace/agent-transcript.json"
@@ -26,9 +27,12 @@ node tools/transcript/write-handoff.mjs \
   --run-id "<run-id>" \
   --harness "<harness-name>" \
   --session "cold" \
+  --confinement "host-open" \
   --kind "rca" \
   --raw-json-file "/path/to/rca.json" \
   --out ".run-workspace/agent-rca.json"
 ```
+
+`--confinement` is required and must be one of `host-open` | `host-sandboxed` | `in-box` — the tier the driver actually ran the agent under. It is a fixed property of the driver, hardcoded per driver, never an env var; an unlabelled handoff is refused so a verdict is never banked with unknown measurement conditions.
 
 The engine's `FileRunRecorder` automatically ingests these files from the `.run-workspace` directory and bundles them into the final `run-record.v1` artifact set.
