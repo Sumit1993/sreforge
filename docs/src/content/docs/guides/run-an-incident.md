@@ -121,7 +121,8 @@ Two supported ways to do it right:
   from its `scenario.toml` to be inactive, and ignore every other rule. This is
   the narrowest correct gate.
 
-`pnpm forge quiesce <use-case>` already does the right thing here.
+`pnpm forge quiesce <use-case>` already does the right thing here — with one
+caveat about *which* scenario it scopes to, below.
 
 ### The gate is scoped to the scenario you are arming
 
@@ -140,6 +141,32 @@ only; a `book-metadata` alert pending during one of them is a diagnosis signal,
 not a reason to refuse to arm. The one scenario that *does* declare
 `book-metadata` still waits for it, because there the signal is genuinely
 coupled.
+
+#### Name the scenario when you quiesce standalone
+
+The scope comes from `SCENARIO_ID`, and **the default is not "unscoped" — it is one
+specific scenario.** `arm` and `auto` set it from the run, so the normal path is
+correct without thinking about it. A bare standalone `quiesce` does not:
+
+```sh
+pnpm forge quiesce booklogr                                    # scopes to latency-cache-stampede
+pnpm forge quiesce booklogr SCENARIO_ID=worker-cpu-starvation  # scopes to that scenario
+```
+
+This matters in one direction only, and it is the unsafe one: quiescing bare before
+arming `worker-cpu-starvation` scopes to `[booklogr-api]` when that scenario grades
+`[booklogr-api, book-metadata]`, so a `book-metadata` alert is exempted when it
+should have blocked. The reverse is harmless.
+
+The gate always prints the scope it resolved, so check the line rather than assume:
+
+```
+[confirm-quiesced] scoped to scenario 'worker-cpu-starvation' services=[booklogr-api,book-metadata] …
+```
+
+Invoking `scripts/confirm-quiesced.mjs` or `scripts/quiesce.sh` directly with no
+`SCENARIO_ID` in the environment is the only path that is genuinely unscoped, and
+it warns loudly that it is.
 
 With no `SCENARIO_ID`, or a scenario declaring no `services`, the gate stays
 strictly global and says so — the fallback is fail-closed.
