@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -470,6 +470,89 @@ describe("confirm-quiesced classification and loop tests", () => {
 			[],
 			`these scenarios would fall back to the unscoped gate: ${unscoped.join(", ")}`,
 		);
+	});
+
+	it("24. role:ambient beats declared scope (deliberate precedence)", () => {
+		// If a scenario ever declared the ambient service, `role: ambient` still wins:
+		// classifyPoll checks isAmbientAlert first. That is intentional — the metronome
+		// is never quiet, so gating on it can never succeed — but it means the gate and
+		// the oracle would disagree for such a scenario, which is why rules-lint
+		// forbids declaring edge-client in [verify] services. Pinned so the precedence
+		// cannot be "simplified" without someone reading this comment.
+		const res = classifyPoll({
+			alerts: [ambientFiring],
+			targets: healthyTargets,
+			baseline: 1.5,
+			requireBaseline: 1,
+			services: ["booklogr-api", "edge-client"],
+		});
+		assert.equal(res.clean, true);
+		assert.deepEqual(res.ambient, ["EdgeClientRequestJitter"]);
+		assert.deepEqual(res.outOfScope, []);
+	});
+
+	it("25. runQuiesceLoop threads `services` through to classifyPoll", () => {
+		// classifyPoll was tested with `services` directly; nothing proved the loop
+		// actually forwards it. A dropped pass-through would silently restore the
+		// global gate with every unit test still green.
+		let polls = 0;
+		return runQuiesceLoop({
+			fetchPoll: async () => {
+				polls++;
+				return {
+					alerts: [stalledPending],
+					targets: healthyTargets,
+					baseline: 1.5,
+				};
+			},
+			deadlineS: 60,
+			intervalS: 0,
+			settle: 2,
+			requireBaseline: 1,
+			services: ["booklogr-api"],
+			sleepFn: async () => {},
+			logStderr: false,
+			logStdout: false,
+		}).then((res) => {
+			assert.equal(
+				res.ok,
+				true,
+				"out-of-scope pending must not block the loop",
+			);
+			assert.equal(polls, 2);
+		});
+	});
+
+	it("26. the gate's scope agrees with the oracle's for every shipped manifest", () => {
+		// Three separate regexes read `services` in this repo. This gate reads the
+		// [verify] block; the oracle (run-incident.mjs:161) matches file-wide and
+		// double-quotes only. They agree on all shipped manifests today, and this
+		// fails loudly if a manifest ever lands in a shape where they disagree —
+		// because then the plane could arm clean on an alert the oracle then counts.
+		//
+		// MIRRORS run-incident.mjs:161 — keep in sync, or delete both once the two
+		// callers share one helper (tracked as follow-up).
+		const oracleScope = (toml) => {
+			const m = toml.match(/^\s*services\s*=\s*\[([^\]]*)\]/m);
+			return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : null;
+		};
+
+		const scenariosDir = fileURLToPath(
+			new URL("../../../../scenarios", import.meta.url),
+		);
+		const disagreements = [];
+		for (const e of readdirSync(scenariosDir, { withFileTypes: true })) {
+			const manifest = join(scenariosDir, e.name, "scenario.toml");
+			if (!e.isDirectory() || !existsSync(manifest)) continue;
+			const gate = readScenarioServices(e.name).services;
+			const oracle = oracleScope(readFileSync(manifest, "utf8"));
+			if (JSON.stringify(gate) !== JSON.stringify(oracle)) {
+				disagreements.push(
+					`${e.name}: gate=${JSON.stringify(gate)} oracle=${JSON.stringify(oracle)}`,
+				);
+			}
+		}
+		assert.deepEqual(disagreements, [], disagreements.join(" | "));
 	});
 
 	it("16. the loop settles through a permanently-firing ambient alert", async () => {

@@ -144,6 +144,12 @@ coupled.
 With no `SCENARIO_ID`, or a scenario declaring no `services`, the gate stays
 strictly global and says so — the fallback is fail-closed.
 
+**Scrape-target health stays global on purpose.** Only the *alert* assertion is
+scoped. A down target blocks the arm no matter which scenario you are running,
+because that is the check that catches a genuinely degraded dependency dragging
+an in-scope service down without firing an in-scope alert. Alerts can be scoped
+safely precisely because target health is not.
+
 ### Give the gate room after a hot run
 
 Immediately after a run that drove real traffic, an alert computed over a rate

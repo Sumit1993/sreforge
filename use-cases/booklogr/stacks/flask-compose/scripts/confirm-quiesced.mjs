@@ -153,6 +153,15 @@ export function classifyPoll({
 	);
 	const firing = firingNames(gated);
 	const pending = pendingNames(gated);
+	// DELIBERATELY UNSCOPED, and this asymmetry is what makes scoping the alert
+	// assertion safe. Scoping alerts is sound because an out-of-scope alert can only
+	// reach the verdict through `no_new_alerts`, which ADR-0006 already scopes — the
+	// other mitigation signals read the target alert alone. What alerts cannot cover
+	// is the PHYSICS channel: a genuinely degraded out-of-scope dependency inflating
+	// in-scope latency without firing an in-scope alert. Target health is the check
+	// that catches that, so it stays global — a dead book-metadata still blocks the
+	// arm of a scenario that never grades book-metadata. Narrow this and the
+	// justification for scoping alerts goes with it.
 	const targetsDown = targets
 		.filter((t) => t.health !== "up")
 		.map((t) => t.labels?.job ?? t.scrapeUrl);
@@ -234,13 +243,20 @@ export async function runQuiesceLoop({
 			cleanStreak++;
 			if (cleanStreak >= settle) {
 				if (logStderr) {
-					const exempt = [
-						...(lastRes.ambient ?? []),
-						...(lastRes.outOfScope ?? []),
-					];
+					// Distinguish the two exemption reasons here as well as on the timeout
+					// line — this is the line an operator actually sees on the happy path,
+					// and "why was this ignored" is the question they will have.
+					const why = [
+						lastRes.ambient?.length
+							? `ambient: ${lastRes.ambient.join(",")}`
+							: null,
+						lastRes.outOfScope?.length
+							? `out-of-scope: ${lastRes.outOfScope.join(",")}`
+							: null,
+					].filter(Boolean);
 					process.stderr.write(
 						`[confirm-quiesced] QUIESCED after ${elapsed}s (${settle} consecutive clean checks)` +
-							`${exempt.length ? ` — exempt: ${exempt.join(",")}` : ""}\n`,
+							`${why.length ? ` — exempt — ${why.join("; ")}` : ""}\n`,
 					);
 				}
 				const result = {

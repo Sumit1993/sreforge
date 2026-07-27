@@ -5,7 +5,8 @@
 // Rationale: `no_new_alerts` in the compound oracle is scoped by the alert's `service`
 // label (PR #71). An alert rule missing a `service` label silently escapes
 // regression counting (fail-open). This offline lint asserts every rule in
-// `observability/rules/*.yml` carries a nested `service` label.
+// `observability/rules/*.yml` AND `furniture/*.yml` carries a nested `service`
+// label, plus two ambient invariants (#121) — see AMBIENT_SERVICE below.
 //
 // Usage:
 //   node tools/rules-lint/lint.mjs [<file|glob> ...]
@@ -18,8 +19,23 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
 
-const DEFAULT_TARGET =
-	"use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml";
+// One definition, used by BOTH ambient invariants below. They are a matched pair —
+// the forward check ("ambient rules carry role: ambient") and the reverse check
+// ("non-ambient rules don't claim it") must agree on which service is ambient. Two
+// independent literals meant renaming the ambient service silently disabled the
+// forward check while making the reverse check start rejecting legitimate new
+// furniture, which pressures an author into dropping the label the gate needs.
+export const AMBIENT_SERVICE = "edge-client";
+
+// Both the SERVED rules dir and the FURNITURE dir. arm-regress.sh installs
+// furniture/ambient-rules.yml over observability/rules/ambient-rules.yml on every
+// arm, so linting only the served copy checks a file that any arm overwrites — a
+// label required by the quiesce gate (#121) would survive exactly one run. The
+// authoritative source has to be in scope or the guard is theatre.
+const DEFAULT_TARGETS = [
+	"use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml",
+	"use-cases/booklogr/stacks/flask-compose/furniture/*.yml",
+];
 
 function isValidServiceValue(rawVal) {
 	if (!rawVal) return false;
@@ -224,7 +240,7 @@ export function resolveTargets(patterns) {
  */
 export function checkUnscopedAmbientService(
 	scenariosDir = "use-cases/booklogr/scenarios",
-	ambientService = "edge-client",
+	ambientService = AMBIENT_SERVICE,
 ) {
 	const resolvedDir = resolve(REPO_ROOT, scenariosDir);
 	const errors = [];
@@ -238,7 +254,16 @@ export function checkUnscopedAmbientService(
 		if (!existsSync(manifestPath)) continue;
 		count++;
 		const content = readFileSync(manifestPath, "utf8");
-		const verifyMatch = content.match(/^\[verify\]\s*([\s\S]*?)(?=\n\[|$)/m);
+		// NOTE: deliberately no `m` flag, and the section header is consumed by
+		// `[^\n]*\n` rather than `\s*`. With `/m`, `$` matches at every line end and
+		// the lazy capture terminated after the FIRST key line of the block — so this
+		// invariant silently inspected only `oracle = "..."` and passed everything
+		// else, including a scenario that really did declare the ambient service. It
+		// printed "Invariant passed" while checking nothing. Same trap, same fix, and
+		// now the same regex as confirm-quiesced.mjs and tools/headroom/campaign.mjs.
+		const verifyMatch = content.match(
+			/(?:^|\n)\[verify\][^\n]*\n([\s\S]*?)(?=\n\[|$)/,
+		);
 		if (verifyMatch) {
 			const verifyContent = verifyMatch[1];
 			const servicesMatch = verifyContent.match(/services\s*=\s*\[(.*?)\]/s);
@@ -368,7 +393,7 @@ export function extractAlertLabels(content, file = "") {
  */
 export function checkAmbientRoleConsistency(
 	filePaths = [],
-	ambientService = "edge-client",
+	ambientService = AMBIENT_SERVICE,
 ) {
 	const errors = [];
 	let count = 0;
@@ -401,7 +426,7 @@ export function checkAmbientRoleConsistency(
 if (import.meta.url === `file://${process.argv[1]}`) {
 	let rawArgs = process.argv.slice(2);
 	if (rawArgs.length === 0) {
-		rawArgs = [DEFAULT_TARGET];
+		rawArgs = [...DEFAULT_TARGETS];
 	}
 
 	let filePaths;
@@ -441,7 +466,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 			process.exit(1);
 		} else {
 			console.log(
-				`[rules-lint] Invariant passed: ambient service 'edge-client' is unscoped in all scenario verification targets.`,
+				`[rules-lint] Invariant passed: ambient service '${AMBIENT_SERVICE}' is unscoped in all scenario verification targets.`,
 			);
 		}
 	}
