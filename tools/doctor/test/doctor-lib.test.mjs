@@ -362,10 +362,14 @@ test("ambient-furniture check reports enabled status, rules, and commits using g
 	}
 });
 
+// Port 1 is never bound, so the prometheus probe fails deterministically. Pointing this at
+// the real 9090 makes the test pass only while the stack is DOWN and fail once it is up.
+const UNREACHABLE_PROM = "http://127.0.0.1:1";
+
 test("deployUpHint is defined for deploy plane checks", async () => {
 	const checksDefault = defineChecks({
 		deployServices: ["nonexistent-svc"],
-		prometheusUrl: "http://localhost:9090",
+		prometheusUrl: UNREACHABLE_PROM,
 	});
 	const deployPlaneCheck = checksDefault.find((c) => c.id === "deploy-plane");
 	const promCheck = checksDefault.find((c) => c.id === "alerting-prometheus");
@@ -380,7 +384,7 @@ test("deployUpHint is defined for deploy plane checks", async () => {
 
 	const checksUseCase = defineChecks({
 		deployServices: ["nonexistent-svc"],
-		prometheusUrl: "http://localhost:9090",
+		prometheusUrl: UNREACHABLE_PROM,
 		useCase: "booklogr",
 	});
 	const res3 = await checksUseCase.find((c) => c.id === "deploy-plane").run();
