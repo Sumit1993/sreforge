@@ -6,17 +6,17 @@ Instructions for AI coding agents working in this repository.
 ## mage knowledge base (external hub)
 
 This repository's durable knowledge lives in an external **mage hub** at
-`/home/sumit/sources/sreforge-workspace/sreforge-memory`, where this repo is the **sreforge** project. mage is a portable,
+`/home/sumit/.mage/hubs/github.com/sumit1993/sreforge-memory`, where this repo is the **sreforge** project. mage is a portable,
 file-based knowledge base of notes — insight, procedure, and pointers (not
 copies of sources) — navigable as an Obsidian graph.
 
 **Before non-trivial work in this repo:**
 
-1. Read the hub index first: `/home/sumit/sources/sreforge-workspace/sreforge-memory/INDEX.md` — find the **sreforge** wing (its
+1. Read the hub index first: `/home/sumit/.mage/hubs/github.com/sumit1993/sreforge-memory/INDEX.md` — find the **sreforge** wing (its
    notes are grouped there; in a large hub the wing links out to its own
-   `/home/sumit/sources/sreforge-workspace/sreforge-memory/_index.sreforge.md`). One line per note: type · title · keywords · → link. Open
+   `/home/sumit/.mage/hubs/github.com/sumit1993/sreforge-memory/_index.sreforge.md`). One line per note: type · title · keywords · → link. Open
    only the notes the task touches; don't read everything.
-2. Skim `/home/sumit/sources/sreforge-workspace/sreforge-memory/decisions/` for the hub's governing decisions.
+2. Skim `/home/sumit/.mage/hubs/github.com/sumit1993/sreforge-memory/decisions/` for the hub's governing decisions.
 3. Treat notes as point-in-time. If a note is `status: stale-suspect`, or its
    `last_reviewed` / `provenance.commit` looks old, verify it against the
    current code before relying on it.
