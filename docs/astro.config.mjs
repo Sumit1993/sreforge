@@ -12,10 +12,10 @@ export default defineConfig({
       description:
         'A contamination-controlled, event-triggered evaluation harness for autonomous SWE/SRE agents.',
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/Sumit1993/sreforge' },
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/prismalens/sreforge' },
       ],
       editLink: {
-        baseUrl: 'https://github.com/Sumit1993/sreforge/edit/main/docs/',
+        baseUrl: 'https://github.com/prismalens/sreforge/edit/main/docs/',
       },
       lastUpdated: true,
       sidebar: [

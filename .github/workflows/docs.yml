@@ -1,8 +1,10 @@
 name: Docs
 
 # Build the Astro + Starlight docs site (docs/) and publish to GitHub Pages.
-# The site is a project page served from /sreforge — astro.config.mjs pins the
-# matching `site` + `base`, so no path config is needed here.
+# The site is served from the custom domain sreforge.sfun.cloud at the root —
+# astro.config.mjs pins the matching `site` + `base: '/'`, and docs/public/CNAME
+# is emitted into the artifact so the domain survives a Pages re-enable or a
+# repository transfer. No path config is needed here.
 
 on:
   push:

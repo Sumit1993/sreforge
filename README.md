@@ -59,7 +59,7 @@ mage/                                  # pointer to the external knowledge-base 
 ```
 
 The durable design knowledge lives in an external **mage** hub
-(`sreforge-memory`); this repo's `AGENTS.md` explains how to navigate it.
+(`sreforge-kb`); this repo's `AGENTS.md` explains how to navigate it.
 
 ## Scenarios and selection
 

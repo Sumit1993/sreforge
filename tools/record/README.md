@@ -11,7 +11,7 @@ Tools for managing the canonical `run-record.v1` artifact sets produced by the e
 
 ## `bank.mjs` — Private Store Sync Tool
 
-`bank.mjs` syncs full run records and raw campaign evidence into the private content-addressed store (`Sumit1993/sreforge-runs`).
+`bank.mjs` syncs full run records and raw campaign evidence into the private content-addressed store (`prismalens/sreforge-runs`).
 
 ### CLI Contract
 
@@ -21,7 +21,7 @@ node tools/record/bank.mjs <record.json | records-dir> [options]
 
 | Option | Description |
 | --- | --- |
-| `--store <path>` | Local clone of `sreforge-runs` (default: `~/sreforge-runs`). |
+| `--store <path>` | Local clone of `sreforge-runs` (default: `../sreforge-runs`, a sibling of this repo). |
 | `--import-all` | Import every `*.json` under `use-cases/**/records/` plus evidence items passed via `--evidence`. |
 | `--evidence <path>` | Archive a raw evidence directory or file verbatim under `evidence/<basename>/` (repeatable). |
 | `--dry-run` | Print what WOULD be banked (counts + hashes only). No writes, no push. |
