@@ -7,6 +7,9 @@ import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+// Shared with tools/record-lint/lint.mjs — see that module's header for why the
+// bank and the public-repo lint must use one definition of "full".
+import { isFullRecord } from "./is-full-record.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
@@ -55,30 +58,6 @@ async function getDirStats(dirPath) {
 
   await walk(dirPath);
   return { totalBytes, fileCount };
-}
-
-function isFullRecord(record) {
-  if (typeof record !== "object" || record === null) return false;
-
-  // 1. Check trajectory.transcript
-  if (typeof record.trajectory?.transcript === "string" && record.trajectory.transcript.trim() !== "") {
-    return true;
-  }
-
-  // 2. Check agent_transcript payload
-  if (record.agent_transcript && typeof record.agent_transcript === "object") {
-    const at = record.agent_transcript;
-    if (typeof at.raw_text === "string" || typeof at.raw_json === "string" || at.raw_json || at.events || at.transcript || at.trajectory) {
-      return true;
-    }
-    const headerKeys = new Set(["schema_version", "run_id", "harness", "session", "confinement", "captured_at", "model", "provider", "submitted"]);
-    const keys = Object.keys(at);
-    if (keys.some(k => !headerKeys.has(k))) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 async function collectJsonFiles(targetPaths) {
