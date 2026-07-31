@@ -7,6 +7,7 @@ Tools for managing the canonical `run-record.v1` artifact sets produced by the e
 | Path | What |
 | --- | --- |
 | `bank.mjs` | Content-addressed sync tool for private `sreforge-runs` store (ADR-0026 #28). |
+| `is-full-record.mjs` | The public/private boundary predicate. Shared by `bank.mjs` and `tools/record-lint/lint.mjs` so the store and the public repo cannot disagree about what "full" means. |
 | `migrate-run-records.mjs` | Migrates older camelCase records to the canonical snake_case `run-record.v1` schema. |
 
 ## `bank.mjs` — Private Store Sync Tool
@@ -38,6 +39,8 @@ node tools/record/bank.mjs <record.json | records-dir> [options]
 1. **Safety Rail A — Public remote refusal**: Refuses to run if `--store` remote origin is not `sreforge-runs` or if store path is inside the public `sreforge` repository.
 2. **Safety Rail B — Runtime privacy assertion**: Asserts that `sreforge-runs` GitHub repository visibility is `PRIVATE` before writing or pushing.
 3. **Safety Rail C — Zero content leaks**: Logs only derived metadata (`run_id`, `scenario_id`, `sha256`, byte count, action); never logs transcript, diff, or evidence bodies.
+
+These three guard the *private store*. The matching guard on the *public repo* side is `pnpm record-lint` (`tools/record-lint/`, CI-required), which fails if any git-tracked record under `use-cases/` carries transcript content. Both halves share `is-full-record.mjs`; without the lint, `bank.mjs` refusing a pruned record and nothing refusing a full one left the boundary enforced in one direction only.
 
 ### Store Layout (`sreforge-runs`)
 

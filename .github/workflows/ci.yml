@@ -72,12 +72,32 @@ jobs:
       - name: Lint alert rules for service labels
         run: node tools/rules-lint/lint.mjs
 
+  # Enforces the ADR-0026 §7 public/private boundary from the public side: no
+  # transcript-bearing record may be committed here. bank.mjs guards the private
+  # store; this guards the repo. Both halves must run or the boundary is one-sided.
+  record-lint:
+    name: record-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      # The guard's own tests run here too: the repo's tools/ suites are not
+      # otherwise wired into CI, and an unverified boundary check is not a check.
+      - name: Test the record boundary lint
+        run: node --test tools/record-lint/test/*.test.mjs
+      - name: Lint committed records for transcript content
+        run: node tools/record-lint/lint.mjs
+
   # Single stable status check to require in branch protection, independent of how
   # the matrix above expands.
   gate:
     name: CI gate
     if: always()
-    needs: [build, rules-lint]
+    needs: [build, rules-lint, record-lint]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed

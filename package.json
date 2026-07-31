@@ -19,6 +19,8 @@
     "test:certify": "node --test tools/certify/test/*.test.mjs",
     "rules-lint": "node tools/rules-lint/lint.mjs",
     "test:rules-lint": "node --test tools/rules-lint/test/*.test.mjs",
+    "record-lint": "node tools/record-lint/lint.mjs",
+    "test:record-lint": "node --test tools/record-lint/test/*.test.mjs",
     "test:transcript": "node --test tools/transcript/test/*.test.mjs",
     "test:record": "node --test tools/record/test/*.test.mjs",
     "test:bank": "node --test tools/record/test/bank.test.mjs",

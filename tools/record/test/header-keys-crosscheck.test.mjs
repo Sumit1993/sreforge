@@ -17,25 +17,25 @@ export function extractKeysFromSerialize(text) {
 
 export function extractKeysFromBank(text) {
   const match = text.match(/const\s+headerKeys\s*=\s*new\s+Set\(\[([^\]]+)\]\)/);
-  if (!match) throw new Error("Could not find 'const headerKeys = new Set([...])' in bank.mjs");
+  if (!match) throw new Error("Could not find 'const headerKeys = new Set([...])' in is-full-record.mjs");
   const keyMatches = match[1].match(/"([^"]+)"/g);
-  if (!keyMatches) throw new Error("No keys found in bank.mjs headerKeys array");
+  if (!keyMatches) throw new Error("No keys found in is-full-record.mjs headerKeys array");
   return new Set(keyMatches.map(k => k.replace(/"/g, "")));
 }
 
-test("header keys list cross-check: serialize.ts and bank.mjs match exactly", () => {
+test("header keys list cross-check: serialize.ts and is-full-record.mjs match exactly", () => {
   const serializePath = join(REPO_ROOT, "core/src/record/serialize.ts");
-  const bankPath = join(REPO_ROOT, "tools/record/bank.mjs");
+  const predicatePath = join(REPO_ROOT, "tools/record/is-full-record.mjs");
 
   const serializeContent = readFileSync(serializePath, "utf8");
-  const bankContent = readFileSync(bankPath, "utf8");
+  const predicateContent = readFileSync(predicatePath, "utf8");
 
   const serializeKeys = extractKeysFromSerialize(serializeContent);
-  const bankKeys = extractKeysFromBank(bankContent);
+  const predicateKeys = extractKeysFromBank(predicateContent);
 
   assert.deepEqual(
     Array.from(serializeKeys).sort(),
-    Array.from(bankKeys).sort(),
-    `Prune header keys mismatch between ${serializePath} and ${bankPath}`
+    Array.from(predicateKeys).sort(),
+    `Prune header keys mismatch between ${serializePath} and ${predicatePath}`
   );
 });
