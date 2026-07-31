@@ -18,7 +18,7 @@ maintained release branches.
 Use GitHub's private vulnerability reporting:
 
 - Go to the repository's **Security** tab and choose
-  **[Report a vulnerability](https://github.com/Sumit1993/sreforge/security/advisories/new)**.
+  **[Report a vulnerability](https://github.com/prismalens/sreforge/security/advisories/new)**.
 
 If you cannot use that, email **sumitpatel.14may@gmail.com** with the details.
 

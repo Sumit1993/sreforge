@@ -122,7 +122,10 @@ async function main() {
     strict: true,
   });
 
-  const defaultStorePath = process.env.HOME ? join(process.env.HOME, "sreforge-runs") : "/home/sumit/sreforge-runs";
+  // The store is cloned as a sibling of this repo, so derive the default from the
+  // repo root rather than $HOME — that keeps the default correct wherever the
+  // workspace lives. Override with --store for any other layout.
+  const defaultStorePath = resolve(REPO_ROOT, "../sreforge-runs");
   const rawStorePath = values.store ? expandPath(values.store) : defaultStorePath;
   const storePath = resolve(process.cwd(), rawStorePath);
 
@@ -140,7 +143,7 @@ async function main() {
     process.exit(1);
   }
 
-  const isSreforgeRunsRemote = /^(https:\/\/github\.com\/|git@github\.com:)Sumit1993\/sreforge-runs(\.git)?$/.test(remoteUrl);
+  const isSreforgeRunsRemote = /^(https:\/\/github\.com\/|git@github\.com:)prismalens\/sreforge-runs(\.git)?$/.test(remoteUrl);
   if (!isSreforgeRunsRemote) {
     console.error(`FATAL: --store points at '${remoteUrl}', not sreforge-runs. Refusing to bank records into a non-private store.`);
     process.exit(1);
@@ -165,7 +168,7 @@ async function main() {
   if (!values["dry-run"]) {
     let visibility = "";
     try {
-      visibility = execFileSync("gh", ["repo", "view", "Sumit1993/sreforge-runs", "--json", "visibility", "-q", ".visibility"], { encoding: "utf8" }).trim();
+      visibility = execFileSync("gh", ["repo", "view", "prismalens/sreforge-runs", "--json", "visibility", "-q", ".visibility"], { encoding: "utf8" }).trim();
     } catch (err) {
       console.error("FATAL: Failed to query sreforge-runs visibility via gh CLI.");
       process.exit(1);

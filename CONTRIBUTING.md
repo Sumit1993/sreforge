@@ -24,7 +24,7 @@ Requirements: **Node >= 18** and **pnpm** (the repo pins pnpm via the
 The engine lives in `core/` and builds on its own lockfile:
 
 ```bash
-git clone https://github.com/Sumit1993/sreforge.git
+git clone https://github.com/prismalens/sreforge.git
 cd sreforge/core
 pnpm install --frozen-lockfile
 pnpm build        # tsc -> dist/

@@ -14,7 +14,7 @@ function createTempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
-function initFakeStore(repoUrl = "https://github.com/Sumit1993/sreforge-runs.git") {
+function initFakeStore(repoUrl = "https://github.com/prismalens/sreforge-runs.git") {
   const dir = createTempDir("sreforge-runs-store-");
   execFileSync("git", ["init"], { cwd: dir });
   execFileSync("git", ["config", "user.name", "Test User"], { cwd: dir });
@@ -169,7 +169,7 @@ test("3. hash-mismatch guard — incorrect stored full_record_sha256 is recomput
 });
 
 test("4. public-remote refusal — --store whose origin is sreforge.git exits non-zero with FATAL string", () => {
-  const storeDir = initFakeStore("https://github.com/Sumit1993/sreforge.git");
+  const storeDir = initFakeStore("https://github.com/prismalens/sreforge.git");
   const workDir = createTempDir("sreforge-test-rec-");
   const recPath = join(workDir, "full_record.json");
   writeFileSync(recPath, JSON.stringify(fixtureFullRecord, null, 2));
@@ -179,7 +179,7 @@ test("4. public-remote refusal — --store whose origin is sreforge.git exits no
       execFileSync("node", [SCRIPT, recPath, "--store", storeDir, "--dry-run"], { encoding: "utf8" });
     },
     (err) => {
-      assert.ok(err.stderr.includes("FATAL: --store points at 'https://github.com/Sumit1993/sreforge.git', not sreforge-runs. Refusing to bank records into a non-private store."));
+      assert.ok(err.stderr.includes("FATAL: --store points at 'https://github.com/prismalens/sreforge.git', not sreforge-runs. Refusing to bank records into a non-private store."));
       return true;
     }
   );
@@ -209,7 +209,7 @@ test("6. pruned skip — a pruned record (no transcript) is skipped", () => {
 });
 
 test("7. anchored remote check — ssh remote passes, prefix-spoofed remote is rejected", () => {
-  const sshStoreDir = initFakeStore("git@github.com:Sumit1993/sreforge-runs.git");
+  const sshStoreDir = initFakeStore("git@github.com:prismalens/sreforge-runs.git");
   const workDir = createTempDir("sreforge-test-rec-");
   const recPath = join(workDir, "full_record.json");
   writeFileSync(recPath, JSON.stringify(fixtureFullRecord, null, 2));
@@ -217,13 +217,13 @@ test("7. anchored remote check — ssh remote passes, prefix-spoofed remote is r
   const sshOut = execFileSync("node", [SCRIPT, recPath, "--store", sshStoreDir, "--dry-run"], { encoding: "utf8" });
   assert.match(sshOut, /Would bank records\/[a-f0-9]{64}\.json/);
 
-  const spoofedStoreDir = initFakeStore("https://evil.com/github.com/Sumit1993/sreforge-runs.git");
+  const spoofedStoreDir = initFakeStore("https://evil.com/github.com/prismalens/sreforge-runs.git");
   assert.throws(
     () => {
       execFileSync("node", [SCRIPT, recPath, "--store", spoofedStoreDir, "--dry-run"], { encoding: "utf8" });
     },
     (err) => {
-      assert.ok(err.stderr.includes("FATAL: --store points at 'https://evil.com/github.com/Sumit1993/sreforge-runs.git', not sreforge-runs. Refusing to bank records into a non-private store."));
+      assert.ok(err.stderr.includes("FATAL: --store points at 'https://evil.com/github.com/prismalens/sreforge-runs.git', not sreforge-runs. Refusing to bank records into a non-private store."));
       return true;
     }
   );

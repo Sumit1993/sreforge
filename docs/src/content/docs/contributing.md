@@ -5,7 +5,7 @@ description: Ground rules, development setup, and the change workflow for SREFor
 
 SREForge is a young, focused project; contributions of all sizes are welcome.
 This page mirrors the repo's
-[`CONTRIBUTING.md`](https://github.com/Sumit1993/sreforge/blob/main/CONTRIBUTING.md)
+[`CONTRIBUTING.md`](https://github.com/prismalens/sreforge/blob/main/CONTRIBUTING.md)
 — that file is the source of truth.
 
 ## Ground rules
@@ -27,7 +27,7 @@ Requirements: **Node ≥ 18** and **pnpm** (the repo pins pnpm via the
 The engine lives in `core/` and builds on its own lockfile:
 
 ```bash
-git clone https://github.com/Sumit1993/sreforge.git
+git clone https://github.com/prismalens/sreforge.git
 cd sreforge/core
 pnpm install --frozen-lockfile
 pnpm build        # tsc -> dist/
@@ -78,4 +78,4 @@ redeploys the site to GitHub Pages automatically.
 
 Use the issue templates. For anything security-sensitive, **do not open a public
 issue** — see
-[`SECURITY.md`](https://github.com/Sumit1993/sreforge/blob/main/SECURITY.md).
+[`SECURITY.md`](https://github.com/prismalens/sreforge/blob/main/SECURITY.md).
