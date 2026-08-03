@@ -116,17 +116,58 @@ test("refuses the handoff when the run id does not match", async () => {
   assert.match(err, new RegExp(RUN_ID));
 });
 
-test("is a no-op when no handoff exists", async () => {
+test("is a no-op when no handoff exists, but says so out loud (#124)", async () => {
   const base = tmp();
+  const missing = join(tmp(), "does-not-exist.json");
 
-  const runDir = await new FileRunRecorder({
-    baseDir: base,
-    transcriptHandoffPath: join(tmp(), "does-not-exist.json"),
-  }).record(makeRecord());
+  // A driver that drops its handoff silently costs the record its harness,
+  // model, provider AND confinement tier — the record is written unlabelled and
+  // nothing on this path used to mention it. Behaviour is unchanged; the
+  // absence is now audible at the same volume as a mismatch or a parse failure.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  let runDir;
+  try {
+    runDir = await new FileRunRecorder({
+      baseDir: base,
+      transcriptHandoffPath: missing,
+    }).record(makeRecord());
+  } finally {
+    console.warn = realWarn;
+  }
 
   assert.ok(!existsSync(join(runDir, "agent-transcript.json")));
   assert.ok(!existsSync(join(runDir, "transcript-error.txt")));
   assert.ok(existsSync(join(runDir, "record.json")), "record.json is still written");
+
+  const written = JSON.parse(readFileSync(join(runDir, "record.json"), "utf8"));
+  assert.equal(written.verdict, "passed", "the verdict must survive a missing transcript");
+  assert.equal(written.agent_transcript, undefined);
+
+  const warning = warnings.find(w => w.includes("agent transcript handoff expected"));
+  assert.ok(warning, `expected an absent-handoff warning, got: ${JSON.stringify(warnings)}`);
+  assert.match(warning, new RegExp(missing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(warning, /unlabelled/);
+});
+
+test("stays silent when no handoff path is configured at all", async () => {
+  const base = tmp();
+
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    await new FileRunRecorder({ baseDir: base }).record(makeRecord());
+  } finally {
+    console.warn = realWarn;
+  }
+
+  assert.equal(
+    warnings.filter(w => w.includes("agent transcript handoff expected")).length,
+    0,
+    "a recorder with no handoff path configured was never expecting one",
+  );
 });
 
 test("a malformed handoff never costs us the graded record", async () => {

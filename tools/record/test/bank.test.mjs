@@ -67,6 +67,7 @@ const fixtureFullRecord = {
     run_id: "run-test-full-1",
     harness: "agy",
     session: "sess-123",
+    confinement: "host-sandboxed",
     raw_text: "RAW SECRET_TRANSCRIPT_MARKER DATA",
   },
 };
@@ -108,6 +109,7 @@ const fixturePrunedRecord = {
     run_id: "run-test-pruned-1",
     harness: "agy",
     session: "sess-123",
+    confinement: "host-sandboxed",
   },
   full_record_sha256: "0000000000000000000000000000000000000000000000000000000000000000",
 };
@@ -249,5 +251,185 @@ test("8. scoped git add — stray pre-existing content in store is not staged or
   // Verify stray file remains untracked in git status
   const status = execFileSync("git", ["-C", storeDir, "status", "--porcelain"], { encoding: "utf8" });
   assert.ok(status.includes("?? stray_untracked.txt"));
+});
+
+// ---------------------------------------------------------------------------
+// #124 — the confinement label gate. A record whose driver dropped its handoff
+// cannot say how it was measured; banking its verdict anyway is what these
+// tests forbid. See the block comment above unlabelledReason() in bank.mjs.
+// ---------------------------------------------------------------------------
+
+function writeRecord(record, name = "rec.json") {
+  const workDir = createTempDir("sreforge-test-rec-");
+  const recPath = join(workDir, name);
+  writeFileSync(recPath, JSON.stringify(record, null, 2));
+  return recPath;
+}
+
+/**
+ * Writes a record into its own git repo and stages it, so bank.mjs's
+ * `git ls-files` sees it as TRACKED — a record this repo has already accepted,
+ * which the inversion guard grandfathers.
+ */
+function writeTrackedRecord(record, name = "rec.json") {
+  const workDir = createTempDir("sreforge-test-tracked-");
+  execFileSync("git", ["init"], { cwd: workDir });
+  execFileSync("git", ["config", "user.name", "Test User"], { cwd: workDir });
+  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workDir });
+  const recPath = join(workDir, name);
+  writeFileSync(recPath, JSON.stringify(record, null, 2));
+  execFileSync("git", ["add", "--", name], { cwd: workDir });
+  return recPath;
+}
+
+function runBank(args) {
+  return spawnSync("node", [SCRIPT, ...args], { encoding: "utf8" });
+}
+
+test("9. unlabelled refusal — a full record with no agent_transcript is refused, not banked", () => {
+  const storeDir = initFakeStore();
+  const { agent_transcript, ...noHeader } = fixtureFullRecord;
+  const recPath = writeRecord({ ...noHeader, run_id: "run-test-no-header" }, "no_header.json");
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 1, "an unlabelled record must make the run exit non-zero");
+  const combined = res.stdout + res.stderr;
+  assert.match(combined, /\[refused\].*unlabelled record — no agent_transcript header at all/);
+  assert.doesNotMatch(combined, /Would bank records\//);
+  assert.match(combined, /Refused 1 unlabelled record\(s\)/);
+
+  const idx = JSON.parse(readFileSync(join(storeDir, "index.json"), "utf8"));
+  assert.equal(idx.length, 0, "a refused record must not enter index.json");
+});
+
+test("10. unlabelled refusal — a header without confinement is refused", () => {
+  const storeDir = initFakeStore();
+  const { confinement, ...headerNoConfinement } = fixtureFullRecord.agent_transcript;
+  const recPath = writeRecord(
+    { ...fixtureFullRecord, run_id: "run-test-no-conf", agent_transcript: headerNoConfinement },
+    "no_confinement.json"
+  );
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 1);
+  assert.match(res.stdout + res.stderr, /\[refused\].*agent_transcript\.confinement is missing/);
+});
+
+test("11. unlabelled refusal — an out-of-enum confinement value is refused", () => {
+  const storeDir = initFakeStore();
+  const recPath = writeRecord(
+    {
+      ...fixtureFullRecord,
+      run_id: "run-test-bad-conf",
+      agent_transcript: { ...fixtureFullRecord.agent_transcript, confinement: "host-sandbox" },
+    },
+    "bad_confinement.json"
+  );
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 1);
+  const combined = res.stdout + res.stderr;
+  assert.match(combined, /\[refused\].*confinement is not a recognised tier/);
+  assert.match(combined, /host-open \| host-sandboxed \| in-box/);
+});
+
+test("12. inversion case (untracked) — a NEW verdict-bearing record with no agent_transcript key is refused, not skipped as pruned", () => {
+  const storeDir = initFakeStore();
+  const { agent_transcript, ...noHeader } = fixturePrunedRecord;
+  const recPath = writeRecord({ ...noHeader, run_id: "run-test-inversion" }, "inversion.json");
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 1, "a dropped handoff must not launder a verdict into the public-eligible arm");
+  const combined = res.stdout + res.stderr;
+  assert.match(combined, /\[refused\].*no agent_transcript header at all/);
+  assert.doesNotMatch(combined, /\[skip\].*skipped: pruned/);
+});
+
+test("12b. inversion case (tracked) — the same record, already tracked by git, keeps skipping as pruned", () => {
+  const storeDir = initFakeStore();
+  const { agent_transcript, ...noHeader } = fixturePrunedRecord;
+  const recPath = writeTrackedRecord({ ...noHeader, run_id: "run-test-inversion-tracked" }, "inversion.json");
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 0, "records this repo has already accepted must not make runs:import permanently red");
+  const combined = res.stdout + res.stderr;
+  assert.match(combined, /\[skip\].*skipped: pruned/);
+  assert.doesNotMatch(combined, /\[refused\]/);
+});
+
+test("12c. tracked scoping is inversion-arm only — a tracked FULL record with no agent_transcript is still refused", () => {
+  const storeDir = initFakeStore();
+  const { agent_transcript, ...noHeader } = fixtureFullRecord;
+  const recPath = writeTrackedRecord({ ...noHeader, run_id: "run-test-tracked-full" }, "tracked_full.json");
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 1, "the full arm grandfathers on store presence only, never on git tracking");
+  assert.match(res.stdout + res.stderr, /\[refused\].*no agent_transcript header at all/);
+});
+
+test("13. pre-#123 pruned records keep skipping — an identity header without confinement is not refused on the pruned arm", () => {
+  const storeDir = initFakeStore();
+  const { confinement, ...headerNoConfinement } = fixturePrunedRecord.agent_transcript;
+  const recPath = writeRecord(
+    { ...fixturePrunedRecord, run_id: "run-test-legacy-pruned", agent_transcript: headerNoConfinement },
+    "legacy_pruned.json"
+  );
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 0, "the historical pruned corpus must stay importable");
+  const combined = res.stdout + res.stderr;
+  assert.match(combined, /\[skip\].*skipped: pruned/);
+  assert.doesNotMatch(combined, /\[refused\]/);
+});
+
+test("14. --allow-unlabelled — banks with a loud warning instead of refusing", () => {
+  const storeDir = initFakeStore();
+  const { agent_transcript, ...noHeader } = fixtureFullRecord;
+  const recPath = writeRecord({ ...noHeader, run_id: "run-test-override" }, "override.json");
+
+  const res = runBank([recPath, "--store", storeDir, "--no-push", "--allow-unlabelled"]);
+  assert.equal(res.status, 0);
+  const combined = res.stdout + res.stderr;
+  assert.match(combined, /\[warn\].*unlabelled record — no agent_transcript header at all.*--allow-unlabelled/);
+  assert.match(combined, /\[banked\] records\/[a-f0-9]{64}\.json/);
+  assert.doesNotMatch(combined, /\[refused\]/);
+
+  const idx = JSON.parse(readFileSync(join(storeDir, "index.json"), "utf8"));
+  assert.equal(idx.length, 1);
+});
+
+test("15. grandfathering — an unlabelled record already in the store stays [already-present], never refused", () => {
+  const storeDir = initFakeStore();
+  const { agent_transcript, ...noHeader } = fixtureFullRecord;
+  const recPath = writeRecord({ ...noHeader, run_id: "run-test-grandfathered" }, "grandfathered.json");
+
+  // Get it into the store the way the historical corpus got there.
+  const first = runBank([recPath, "--store", storeDir, "--no-push", "--allow-unlabelled"]);
+  assert.equal(first.status, 0);
+
+  // Re-banking it WITHOUT the override must be a no-op, not a wall of refusals.
+  const second = runBank([recPath, "--store", storeDir, "--no-push"]);
+  assert.equal(second.status, 0, "re-banking the historical corpus must not fail");
+  const combined = second.stdout + second.stderr;
+  assert.match(combined, /\[already-present\] records\/[a-f0-9]{64}\.json/);
+  assert.doesNotMatch(combined, /\[refused\]/);
+});
+
+test("16. no-content-leak — a refusal reason never echoes the offending value or record body", () => {
+  const storeDir = initFakeStore();
+  const recPath = writeRecord(
+    {
+      ...fixtureFullRecord,
+      run_id: "run-test-leak",
+      agent_transcript: { ...fixtureFullRecord.agent_transcript, confinement: "SECRET_TRANSCRIPT_MARKER" },
+    },
+    "leaky_confinement.json"
+  );
+
+  const res = runBank([recPath, "--store", storeDir, "--dry-run"]);
+  assert.equal(res.status, 1);
+  const combined = res.stdout + res.stderr;
+  assert.match(combined, /\[refused\]/);
+  assert.equal(combined.includes("SECRET_TRANSCRIPT_MARKER"), false);
 });
 
