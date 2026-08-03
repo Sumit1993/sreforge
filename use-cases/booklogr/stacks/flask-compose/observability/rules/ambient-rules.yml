@@ -1,17 +1,20 @@
-# AMBIENT furniture (#121). These rules are deliberate background noise so a
-# scenario is not the only thing an agent sees. They are NOT scenario signals and
-# NOT mitigation gates.
+# AMBIENT furniture (#86 / QB-5), and the AUTHORITATIVE copy of it (#121).
 #
-# EdgeClientRequestJitter reduces to `time() % 120 < 60` — the `or vector(1)`
-# makes the right-hand side unconditionally true — so it fires 60 seconds out of
-# every 120, forever, armed or not, load plane running or stopped. With `for: 0s`
-# it flips the instant the modulus rolls.
+# arm-regress.sh installs this file over observability/rules/ambient-rules.yml on
+# every arm, so THIS is the version that actually runs. Anything the served copy
+# must carry has to be here or it survives exactly one arm. `rules-lint` covers
+# this directory for that reason.
 #
-# Consequence for anything that waits for a quiet plane: a gate of the form "no
+# EdgeClientRequestJitter reduces to `time() % 120 < 60` — the `or vector(1)` makes
+# the right-hand side unconditionally true — so it fires 60 seconds out of every
+# 120, forever, armed or not, load plane running or stopped. With `for: 0s` it
+# flips the instant the modulus rolls.
+#
+# Consequence for anything waiting on a quiet plane: a gate of the form "no
 # alerting rule is non-inactive" can only pass during the 60s down-phase and must
 # land a whole settle streak inside it. That is a coin flip against a metronome,
-# not a gate. Every rule here carries `role: ambient` so `confirm-quiesced` and
-# external drivers can exempt them by label instead of by hardcoded name.
+# not a gate. `role: ambient` is what lets confirm-quiesced and external drivers
+# exempt these by label instead of by hardcoded name.
 groups:
   - name: edge_telemetry
     rules:
