@@ -35,10 +35,12 @@
 //      value carrying whitespace, a markdown pipe, an angle bracket or any
 //      other punctuation — i.e. anything prose-shaped, or anything that could
 //      break out of a table cell — fails the build loudly instead of being
-//      published. Note it does NOT reject digits; a numeric-looking identifier
-//      would pass. The page's freedom from private numbers comes from (2) and
-//      (3) — which fields are read at all — and is pinned by the committed-page
-//      test asserting the rendered page contains no digit whatsoever.
+//      published. SAFE_TOKEN itself does not reject digits; a separate
+//      DIGIT_IN_VALUE check does, so a versioned name like `postgres-15` fails
+//      here — naming the manifest and the field — rather than silently making
+//      the page's digit-free property untrue. Between them, the page contains no
+//      digit at all by construction, which is the cheapest airtight proof that no
+//      median or score reached it; the committed-page test pins that property.
 //
 // Usage:
 //   node tools/catalog/generate.mjs            # regenerate the committed page
@@ -68,10 +70,21 @@ export const PROFILES = ["incident", "patch"];
 // Identifier SHAPE only: letters, digits, dot, underscore, hyphen. This rejects
 // whitespace, markdown pipes, angle brackets and every other punctuation mark —
 // so no prose and no cell-breaking or HTML-injecting value can be rendered.
-// It deliberately does NOT reject digits (a numeric-looking id is a legitimate
-// identifier); keeping private numbers off the page is the job of the field
-// allowlist above, not of this pattern.
+// It deliberately does NOT reject digits — that is DIGIT_IN_VALUE's job below.
 const SAFE_TOKEN = /^[a-z0-9][a-z0-9._-]*$/i;
+
+// Identity values must additionally be digit-free. This is stricter than the
+// leakage boundary literally requires — a scenario named `postgres-15` leaks
+// nothing — but it is what makes the rendered page's "contains no digit at all"
+// property true BY CONSTRUCTION, and that property is the cheapest airtight proof
+// that no headroom median, threshold or score reached the page. Checking it HERE
+// rather than only in the committed-page test means a versioned scenario name
+// fails at generation time with the offending manifest and field named, instead
+// of surfacing later as an unexplained whole-page digit assertion in the suite.
+// Loosening this is a deliberate decision: relax it and the committed-page digit
+// assertion in tools/catalog/test/generate.test.mjs together, and replace them
+// with an explicit check against the numbers in each verify/headroom.md.
+const DIGIT_IN_VALUE = /[0-9]/;
 
 export const ROLE_BY_STATUS = {
 	DISQUALIFIED: "regression-guard / CI-smoke",
@@ -131,6 +144,15 @@ export function readIdentity(content, where = "scenario.toml") {
 			throw new Error(
 				`${where}: identity field '${key}' = ${JSON.stringify(value)} is not a bare identifier. ` +
 					`The public catalog only publishes identifier-shaped values (leakage boundary).`,
+			);
+		}
+		if (DIGIT_IN_VALUE.test(value)) {
+			throw new Error(
+				`${where}: identity field '${key}' = ${JSON.stringify(value)} contains a digit. ` +
+					`The published catalog is kept digit-free by construction, so that no headroom median, ` +
+					`threshold or score can hide in it. Rename this scenario, or relax DIGIT_IN_VALUE in ` +
+					`tools/catalog/generate.mjs together with the committed-page digit assertion in ` +
+					`tools/catalog/test/generate.test.mjs — deliberately, and as one change.`,
 			);
 		}
 		out[key] = value;

@@ -120,9 +120,11 @@ test("LEAKAGE: no digit sequence from headroom.md reaches the page", () => {
 		for (const digits of SECRET_DIGITS) {
 			assert.ok(!page.includes(digits), `private number ${digits} leaked into the catalog page`);
 		}
-		// Nothing numeric from a headroom report at all: the page carries no
-		// multi-digit token whatsoever.
-		const numeric = page.match(/\d[\d.]+/g) ?? [];
+		// Nothing numeric at all: the page carries no digit whatsoever. `*` not
+		// `+`, matching the committed-page assertion at the bottom of this file —
+		// real headroom reports carry lone single digits (`**Diagnosis Median**: 1`),
+		// and a pattern requiring two characters would miss exactly those leaks.
+		const numeric = page.match(/\d[\d.]*/g) ?? [];
 		assert.deepEqual(numeric, [], `page contains numeric tokens: ${numeric.join(", ")}`);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
@@ -156,8 +158,13 @@ test("missing headroom.md yields a pending-qualification row", () => {
 		const page = generate(root);
 		assert.match(page, /\| pending qualification \| unqualified \(no headroom run\) \|/);
 		// The uppercase verdict words must not appear for an unqualified scenario —
-		// the CI row count greps for exactly those.
-		assert.ok(!/QUALIFIED/.test(page.split("\n").find(l => l.includes("fixture-pending"))));
+		// the CI row count greps for exactly those. Bind the row first: `.find()`
+		// returns undefined when nothing matches, and RegExp.test(undefined) tests
+		// the string "undefined", so an unbound check would quietly pass if the row
+		// ever stopped being emitted.
+		const row = page.split("\n").find(l => l.includes("fixture-pending"));
+		assert.ok(row, "expected a rendered row for fixture-pending");
+		assert.ok(!/QUALIFIED/.test(row), `pending row must not carry a verdict word: ${row}`);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -210,6 +217,20 @@ test("classify covers all three states", () => {
 test("a non-identifier identity value is rejected rather than published", () => {
 	const bad = 'id = "x"\nuse_case = "u"\nstack = "s"\nprofile = "incident | evil"\n';
 	assert.throws(() => readIdentity(bad, "bad.toml"), /not a bare identifier/);
+});
+
+test("a digit-bearing identity value is rejected at generation time, naming the manifest and field", () => {
+	// SAFE_TOKEN alone would accept `postgres-15`, which would silently put digits
+	// on the page and turn the committed-page zero-digit assertion into a confusing
+	// failure far from its cause. This check fails first, and says where.
+	const bad = 'id = "postgres-15"\nuse_case = "u"\nstack = "s"\nprofile = "incident"\n';
+	assert.throws(() => readIdentity(bad, "use-cases/u/scenarios/postgres-15/scenario.toml"), {
+		message: /use-cases\/u\/scenarios\/postgres-15\/scenario\.toml: identity field 'id' = "postgres-15" contains a digit/,
+	});
+	// Every allowlisted field is covered, not just id.
+	assert.throws(() => readIdentity('id = "a"\nuse_case = "u"\nstack = "flask-compose-v2"\nprofile = "incident"\n', "t.toml"), {
+		message: /identity field 'stack' .* contains a digit/,
+	});
 });
 
 test("an unknown profile is a hard error", () => {
