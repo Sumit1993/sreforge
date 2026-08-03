@@ -112,7 +112,18 @@ const server = createServer((req, res) => {
     return;
   }
 
-  const url = new URL(req.url, `http://${HOST}`);
+  // Parse inside a guard: a request target of `//` is a protocol-relative
+  // reference, so `new URL("//", "http://127.0.0.1")` resolves to an empty host
+  // and throws. Outside a try that TypeError reaches the event loop uncaught and
+  // takes the whole process down — one stray request would end the session.
+  let url;
+  try {
+    url = new URL(req.url, `http://${HOST}`);
+  } catch {
+    json(res, 400, { error: "malformed request target" });
+    return;
+  }
+
   try {
     if (url.pathname === "/") {
       // Static frontend, read from disk each request (no build; edit-and-refresh).
