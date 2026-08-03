@@ -37,8 +37,25 @@ const REPO_ROOT = resolve(HERE, "..", "..");
 const STORE_DIR = resolve(process.env.SREFORGE_RUNS_DIR || resolve(REPO_ROOT, "..", "sreforge-runs"));
 const RECORDS_DIR = join(STORE_DIR, "records");
 const INDEX_JSON = join(STORE_DIR, "index.json");
-const PORT = Number(process.env.PORT || 7421);
 const HOST = "127.0.0.1"; // loopback ONLY — the never-agent-reachable guardrail.
+
+/**
+ * PORT has to be settled before anything derives from it: the Host allowlist
+ * embeds the port, so a junk value would build an allowlist that can never match
+ * and every request would 403 with no hint as to why. Fail loudly at startup
+ * instead. 0 is rejected on purpose — it means "any free port", which would
+ * leave the allowlist naming a port we are not actually listening on.
+ */
+function validatedPort(raw) {
+  if (raw === undefined || String(raw).trim() === "") return 7421;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    console.error(`PORT must be an integer between 1 and 65535 (got ${JSON.stringify(raw)})`);
+    process.exit(1);
+  }
+  return n;
+}
+const PORT = validatedPort(process.env.PORT);
 
 // Record filenames are the content sha256. Anchored hex-64 is also the path
 // guard for /api/run/<sha> — nothing else can ever be joined onto RECORDS_DIR.
@@ -73,6 +90,13 @@ function loadStore() {
   for (const name of readdirSync(RECORDS_DIR)) {
     if (!name.endsWith(".json")) continue;
     const sha256 = name.slice(0, -".json".length);
+    // The stem IS the content hash, and the id the UI will later ask for. A file
+    // not named like one could never be fetched back through /api/run/<sha256>,
+    // so report it rather than admitting a record carrying an unusable id.
+    if (!SHA_RE.test(sha256)) {
+      unreadable.push({ name, error: "filename stem is not a sha256 hex digest" });
+      continue;
+    }
     try {
       // sha256 rides along on the record so a UI row can link to its full JSON.
       records.push({ ...JSON.parse(readFileSync(join(RECORDS_DIR, name), "utf8")), sha256 });

@@ -25,10 +25,34 @@ The default resolves to the `sreforge-runs` checkout sitting **beside** this
 repo. That holds for a normal clone; inside a `git worktree` the sibling path is
 the worktree's parent, so pass `SREFORGE_RUNS_DIR` explicitly there.
 
-If the store directory, its `index.json`, or its `records/` directory is missing,
-the server still starts and every route answers normally — the API returns
-`{"ok": false, "error": "store not found at <path>"}` and the page shows that
-message instead of a table. It never crashes on a missing store.
+`PORT` is validated at startup: it must be an integer in 1–65535, and the server
+exits with a message rather than listening on a nonsense port. `0` is rejected
+too — it would mean "any free port", leaving the Host allowlist naming a port the
+server is not on.
+
+### When the store is incomplete
+
+The server still starts and every route still answers — it never crashes on a
+missing store. `/api/summary` and `/api/runs` report `ok: false` with an error
+naming the part that is actually missing, and the page shows that message instead
+of a table:
+
+| Missing | `error` |
+| --- | --- |
+| the store directory | `store not found at <STORE_DIR>` |
+| `index.json` | `index.json not found at <path>` |
+| `records/` | `records/ not found at <path>` |
+
+These are checked in that order, so the first one that fails is the one reported.
+
+`/api/run/<sha256>` is separate: it reads one file directly and answers **404**
+(`no record <sha>`) when that record is absent, or **400** when the id is not a
+sha256 hex digest. It does not carry the `ok`/`error` store envelope.
+
+Individual records that cannot be used are not fatal either. A file under
+`records/` whose name is not `<sha256>.json`, or whose contents will not parse,
+is skipped and listed by name in the `unreadable` array of the store header,
+while the rest of the scan continues.
 
 ## Guarantees
 
