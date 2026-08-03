@@ -26,6 +26,8 @@
     "test:bank": "node --test tools/record/test/bank.test.mjs",
     "runs:bank": "node tools/record/bank.mjs",
     "runs:import": "node tools/record/bank.mjs --import-all",
+    "runs:dashboard": "node tools/runs-dashboard/server.mjs",
+    "test:runs-dashboard": "node --test tools/runs-dashboard/test/*.test.mjs",
     "test:doctor": "node --test tools/doctor/test/*.test.mjs",
     "test:rca-judge": "node --test tools/rca-judge/test/*.test.mjs",
     "headroom": "node tools/headroom/campaign.mjs",

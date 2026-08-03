@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SREForge · Runs</title>
+<style>
+  /* ── SREForge Runs — private run-data reading room ────────────────────────
+     Same ink-navy night-ops base and cyan telemetry accent as the control
+     dashboard, but this surface only reads: three stacked levels
+     (scenarios → runs → one record), no controls, no charts, no assets. */
+  :root{
+    --void:#0b0f17; --bay:#121826; --bay2:#0d1220; --inset:#080b12;
+    --rule:#1d2637; --rule2:#2a3446;
+    --ink:#e2e8f2; --mute:#8b97ad; --faint:#57627a;
+    --signal:#57d0e6;              /* cyan telemetry — interactive */
+    --nominal:#46c08a; --elevated:#e0a63c; --alarm:#ff5d52;
+    --mono:"JetBrains Mono","Cascadia Code","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --ey:.12em;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--void);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.5;
+    padding-bottom:64px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  .ey{font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;color:var(--faint);font-weight:600}
+  a{color:var(--signal);text-decoration:none}
+  :focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+
+  header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;
+    padding:13px 26px;background:linear-gradient(180deg,rgba(11,15,23,.94),rgba(11,15,23,.82));
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
+  .brand{font-family:var(--sans);font-weight:700;letter-spacing:.16em;font-size:13px;text-transform:uppercase;color:var(--mute)}
+  .brand b{color:var(--ink)} .brand .sep{color:var(--signal);margin:0 6px}
+  .rail{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .tag{font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;color:var(--nominal);
+    border:1px solid #1d4a38;background:#0c2018;border-radius:2px;padding:3px 9px}
+
+  main{max-width:1180px;margin:0 auto;padding:20px 26px 0}
+  .storeline{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;font-size:11px;color:var(--mute);margin-bottom:16px}
+  .storeline .p{color:var(--ink)}
+  .storeline.bad{color:#ffc7c2}
+
+  .bay{position:relative;background:linear-gradient(180deg,var(--bay),var(--bay2));border:1px solid var(--rule);
+    border-radius:4px;margin-bottom:18px;overflow:hidden}
+  .bay::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--rule2)}
+  .bay.live::before{background:var(--nominal)}
+  .bay-hd{display:flex;align-items:baseline;gap:12px;padding:13px 18px;border-bottom:1px solid var(--rule)}
+  .bay-hd .cs{font-size:15px;font-weight:700;letter-spacing:.02em}
+  .bay-hd .sub{font-size:10px;letter-spacing:var(--ey);text-transform:uppercase;color:var(--faint);font-weight:600}
+  .bay-hd .rt{margin-left:auto}
+  .pad{padding:13px 18px}
+
+  .tblwrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{text-align:left;padding:6px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
+  th{color:var(--faint);font-weight:600;font-size:9.5px;letter-spacing:var(--ey);text-transform:uppercase;
+    position:sticky;top:0;background:var(--inset)}
+  td.num,th.num{text-align:right}
+  td.id{color:var(--mute)}
+  tr.row{cursor:pointer}
+  tr.row:hover td{background:#0e1a24;color:#fff}
+  tr.row.sel td{background:#08222a;box-shadow:inset 2px 0 0 var(--signal)}
+  .vp{color:var(--nominal);font-weight:700} .vf{color:var(--alarm);font-weight:700} .vr{color:var(--elevated);font-weight:700}
+  .kinds{color:var(--faint);font-size:10.5px}
+  .kinds b{color:var(--mute);font-weight:600}
+  .chip{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--rule2);
+    border-radius:2px;padding:1px 6px;color:var(--faint);margin-right:4px}
+  .chip.decoy{color:var(--elevated);border-color:#5a4520;background:#221a08}
+  .bar{position:relative;display:inline-block;width:58px;height:6px;background:var(--inset);
+    border:1px solid var(--rule);border-radius:2px;vertical-align:middle;margin-left:8px}
+  .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--nominal);border-radius:1px}
+  .bar.low i{background:var(--alarm)}
+
+  pre.rec{background:#06090f;margin:0;padding:13px 15px;font-size:11.5px;line-height:1.55;
+    white-space:pre-wrap;word-break:break-word;max-height:560px;overflow:auto;color:#c6d0e0}
+  .empty{color:var(--faint);text-align:center;padding:44px;letter-spacing:.04em}
+  .err{color:#ffc7c2;padding:16px 18px}
+  .sha{font-size:10px;color:var(--faint);letter-spacing:.02em}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">SREForge<span class="sep">/</span><b>Runs</b></div>
+  <div class="rail">
+    <span class="tag">loopback · not agent-reachable · read-only</span>
+  </div>
+</header>
+
+<main>
+  <div class="storeline" id="storeline">reading store…</div>
+
+  <section class="bay" id="bay-scen">
+    <div class="bay-hd"><div class="cs">scenarios</div><div class="sub" id="scen-sub"></div></div>
+    <div id="scen"><div class="empty">loading…</div></div>
+  </section>
+
+  <section class="bay" id="bay-runs" hidden>
+    <div class="bay-hd"><div class="cs" id="runs-title">runs</div><div class="sub" id="runs-sub"></div></div>
+    <div id="runs"></div>
+  </section>
+
+  <section class="bay" id="bay-rec" hidden>
+    <div class="bay-hd"><div class="cs" id="rec-title">record</div><div class="sub sha" id="rec-sha"></div></div>
+    <div id="rec"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = (r) => r == null ? "—" : (r * 100).toFixed(0) + "%";
+const num = (n, d = 3) => n == null ? "—" : Number(n).toFixed(d);
+const ts = (s) => s ? String(s).replace("T", " ").replace(/\.\d+Z$/, "Z") : "—";
+const dur = (ms) => ms == null ? "—" : ms < 1000 ? ms + "ms" : (ms / 1000).toFixed(0) + "s";
+const verdictCls = (v) => v === "passed" ? "vp" : v === "rejected" ? "vr" : "vf";
+
+const bar = (r) => r == null ? "" :
+  `<span class="bar ${r < 0.5 ? "low" : ""}"><i style="width:${Math.round(Math.max(0, Math.min(r, 1)) * 100)}%"></i></span>`;
+
+const kindsCell = (k) => Object.entries(k || {}).filter(([, n]) => n > 0)
+  .map(([name, n]) => `<b>${esc(name)}</b>&nbsp;${n}`).join("&nbsp; ") || "—";
+
+let selectedScenario = null;
+
+async function getJson(url) {
+  const r = await fetch(url);
+  const j = await r.json().catch(() => ({ error: `bad JSON from ${url}` }));
+  if (!r.ok && !j.error) j.error = `HTTP ${r.status}`;
+  return j;
+}
+
+function renderStoreLine(head) {
+  const line = $("storeline");
+  line.classList.toggle("bad", !head.ok);
+  if (!head.ok) { line.innerHTML = `⚠ ${esc(head.error || "store unavailable")}`; return; }
+  const bad = (head.unreadable || []).length;
+  line.innerHTML = `<span class="ey">store</span><span class="p">${esc(head.store)}</span>`
+    + `<span class="ey">records</span><span class="p">${head.total_records}</span>`
+    + (head.index_entries != null ? `<span class="ey">index entries</span><span class="p">${head.index_entries}</span>` : "")
+    + (bad ? `<span style="color:var(--elevated)">${bad} unreadable</span>` : "");
+}
+
+async function loadSummary() {
+  const j = await getJson("/api/summary");
+  renderStoreLine(j);
+  if (!j.ok) { $("scen").innerHTML = `<div class="err">store not found — ${esc(j.error || "unavailable")}</div>`; return; }
+  const rows = j.scenarios || [];
+  $("scen-sub").textContent = `${rows.length} scenarios · ${j.total_records} records`;
+  $("bay-scen").classList.add("live");
+  if (!rows.length) { $("scen").innerHTML = `<div class="empty">no run records in the store</div>`; return; }
+
+  $("scen").innerHTML = `<div class="tblwrap"><table>
+    <thead><tr>
+      <th>scenario</th><th class="num">runs</th><th class="num">passed</th>
+      <th>rate</th><th class="num">score median</th><th>latest run</th><th>models</th><th>run kinds</th>
+    </tr></thead><tbody>${rows.map((s) => `
+      <tr class="row" data-scenario="${esc(s.scenario_id)}">
+        <td>${s.decoy ? '<span class="chip decoy">decoy</span>' : ""}${esc(s.scenario_id)}</td>
+        <td class="num">${s.runs}</td>
+        <td class="num">${s.passed}</td>
+        <td>${pct(s.rate)}${bar(s.rate)} <span class="ey">${esc(s.rate_label)}</span></td>
+        <td class="num">${num(s.score_median)}</td>
+        <td class="id">${esc(ts(s.latest_started_at))}</td>
+        <td class="id">${esc((s.models || []).join(", ") || "—")}</td>
+        <td class="kinds">${kindsCell(s.kinds)}</td>
+      </tr>`).join("")}</tbody></table></div>`;
+
+  $("scen").querySelectorAll("tr.row").forEach((tr) => (tr.onclick = () => loadRuns(tr.dataset.scenario)));
+  if (selectedScenario) markSelected("scen", "scenario", selectedScenario);
+}
+
+function markSelected(container, attr, value) {
+  $(container).querySelectorAll("tr.row").forEach((tr) => tr.classList.toggle("sel", tr.dataset[attr] === value));
+}
+
+async function loadRuns(scenario) {
+  selectedScenario = scenario;
+  markSelected("scen", "scenario", scenario);
+  $("bay-runs").hidden = false;
+  $("bay-rec").hidden = true;
+  $("runs-title").textContent = scenario;
+  $("runs").innerHTML = `<div class="empty">loading runs…</div>`;
+
+  const j = await getJson("/api/runs?scenario=" + encodeURIComponent(scenario));
+  if (j.error) { $("runs").innerHTML = `<div class="err">${esc(j.error)}</div>`; return; }
+  const rows = j.runs || [];
+  $("runs-sub").textContent = `${rows.length} runs · newest first`;
+  if (!rows.length) { $("runs").innerHTML = `<div class="empty">no runs for this scenario</div>`; return; }
+
+  $("runs").innerHTML = `<div class="tblwrap"><table>
+    <thead><tr>
+      <th>run id</th><th>kind</th><th>verdict</th><th class="num">score</th>
+      <th>started</th><th class="num">duration</th><th>model</th><th>harness</th><th>profile</th>
+    </tr></thead><tbody>${rows.map((r) => `
+      <tr class="row" data-sha="${esc(r.sha256)}" data-run="${esc(r.run_id)}">
+        <td>${esc(r.run_id)}</td>
+        <td class="id">${esc(r.kind)}</td>
+        <td class="${verdictCls(r.verdict)}">${esc(r.verdict)}</td>
+        <td class="num">${num(r.score)}</td>
+        <td class="id">${esc(ts(r.started_at))}</td>
+        <td class="num id">${esc(dur(r.duration_ms))}</td>
+        <td class="id">${esc(r.model || "—")}</td>
+        <td class="id">${esc(r.harness || "—")}</td>
+        <td class="id">${esc(r.profile || "—")}</td>
+      </tr>`).join("")}</tbody></table></div>`;
+
+  $("runs").querySelectorAll("tr.row").forEach((tr) => (tr.onclick = () => loadRecord(tr.dataset.sha, tr.dataset.run)));
+  $("bay-runs").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function loadRecord(sha, runId) {
+  markSelected("runs", "sha", sha);
+  $("bay-rec").hidden = false;
+  $("rec-title").textContent = runId || "record";
+  $("rec-sha").textContent = sha;
+  $("rec").innerHTML = `<div class="empty">loading record…</div>`;
+
+  const j = await getJson("/api/run/" + encodeURIComponent(sha));
+  if (j.error) { $("rec").innerHTML = `<div class="err">${esc(j.error)}</div>`; return; }
+  $("rec").innerHTML = `<pre class="rec">${esc(JSON.stringify(j, null, 2))}</pre>`;
+  $("bay-rec").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+loadSummary();
+</script>
+</body>
+</html>
