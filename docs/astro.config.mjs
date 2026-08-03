@@ -44,6 +44,7 @@ export default defineConfig({
             { label: 'CLI — pnpm forge', link: '/reference/cli/' },
             { label: 'Architecture', link: '/reference/architecture/' },
             { label: 'Scenario format', link: '/reference/scenario-format/' },
+            { label: 'Scenario catalog', link: '/reference/scenario-catalog/' },
             { label: 'Run contract', link: '/reference/run-contract/' },
           ],
         },
