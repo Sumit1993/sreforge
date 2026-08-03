@@ -70,6 +70,30 @@ export function decoySignal(rec) {
   return signals.find((s) => DECOY_SIGNAL_IDS.has(s?.id)) ?? null;
 }
 
+/**
+ * A timestamp as a comparable instant, or null when it is absent/unparseable.
+ *
+ * Ordering must not be done on the text. Lexical order equals chronological
+ * order only if every value shares one format, and nothing guarantees that: the
+ * run-record schema types `started_at` as a bare `string` (no `format`, no
+ * pattern) and core/src/record/serialize.ts passes the value straight through
+ * without normalising it. Two shapes that already break text order:
+ *   "…T00:00:00Z" vs "…T00:00:00.500Z"  → "." < "Z", so the later instant sorts first
+ *   "…T10:00:00+05:30" vs "…T06:00:00Z" → same instant, different text entirely
+ */
+const instantOf = (value) => {
+  const t = Date.parse(value ?? "");
+  return Number.isFinite(t) ? t : null;
+};
+
+/** Newest first; missing or unparseable timestamps sink to the bottom. */
+function byNewest(a, b) {
+  const ta = instantOf(a), tb = instantOf(b);
+  if (ta === null) return tb === null ? 0 : 1;
+  if (tb === null) return -1;
+  return tb - ta;
+}
+
 const durationMs = (rec) => {
   const a = Date.parse(rec?.started_at ?? ""), b = Date.parse(rec?.finished_at ?? "");
   return Number.isFinite(a) && Number.isFinite(b) ? b - a : null;
@@ -97,7 +121,8 @@ export function summarizeScenarios(records) {
 
     const passed = recs.filter(isPassed).length;
     const models = [...new Set(recs.map((r) => r?.agent_transcript?.model).filter(Boolean))].sort();
-    const started = recs.map((r) => r?.started_at).filter(Boolean).sort();
+    // Latest by instant, but the ORIGINAL string is what we report.
+    const started = recs.map((r) => r?.started_at).filter((v) => instantOf(v) !== null).sort(byNewest);
     const decoyed = recs.map(decoySignal).filter(Boolean);
 
     // Decoy column only when the store gives us an unambiguous signal; otherwise
@@ -114,7 +139,7 @@ export function summarizeScenarios(records) {
       passed,
       pass_rate: recs.length ? passed / recs.length : null,
       score_median: median(recs.map((r) => r?.score?.score)),
-      latest_started_at: started.length ? started[started.length - 1] : null,
+      latest_started_at: started.length ? started[0] : null,   // byNewest → index 0
       models,
       kinds,
       rate,
@@ -123,7 +148,7 @@ export function summarizeScenarios(records) {
   }
 
   // Most-recently-exercised scenario first; scenarios with no timestamp sink.
-  rows.sort((a, b) => String(b.latest_started_at ?? "").localeCompare(String(a.latest_started_at ?? "")));
+  rows.sort((a, b) => byNewest(a.latest_started_at, b.latest_started_at));
   return rows;
 }
 
@@ -147,5 +172,5 @@ export function runRows(records, scenarioId) {
       confinement: r?.agent_transcript?.confinement ?? null,
       profile: r?.profile ?? null,
     }))
-    .sort((a, b) => String(b.started_at ?? "").localeCompare(String(a.started_at ?? "")));
+    .sort((a, b) => byNewest(a.started_at, b.started_at));
 }

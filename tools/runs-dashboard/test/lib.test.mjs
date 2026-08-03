@@ -164,6 +164,53 @@ test("runRows reports a missing score as null, never as a coerced 0", () => {
   assert.equal(by["r-zero"], 0);         // a genuine 0 still survives the guard
 });
 
+test("ordering follows the instant, not the text, across timestamp formats", () => {
+  // Three instants written three legal ways. Text order disagrees with
+  // chronological order in both directions here:
+  //   "+05:30" sorts by its local wall-clock digits, not by its instant
+  //   "…:00Z" vs "…:00.500Z" — "." < "Z", so the LATER instant sorts first
+  const rows = runRows([
+    { scenario_id: "a", run_id: "second-oldest", started_at: "2026-07-01T12:00:00.500Z" },
+    { scenario_id: "a", run_id: "newest", started_at: "2026-07-01T18:00:00+05:30" },  // 12:30Z
+    { scenario_id: "a", run_id: "oldest", started_at: "2026-07-01T12:00:00Z" },
+  ], "a");
+  assert.deepEqual(rows.map((r) => r.run_id), ["newest", "second-oldest", "oldest"]);
+});
+
+test("scenario ordering compares instants and preserves the original string", () => {
+  const rows = summarizeScenarios([
+    // 09:00Z written as a +05:30 offset — textually "14:…", which a text compare
+    // would rank above the 13:00Z below, though it is chronologically earlier.
+    rec({ scenario_id: "older", started_at: "2026-07-01T14:30:00+05:30" }),
+    rec({ scenario_id: "newer", started_at: "2026-07-01T13:00:00Z" }),
+  ]);
+  assert.deepEqual(rows.map((r) => r.scenario_id), ["newer", "older"]);
+  // The reported value stays the record's own text, not a normalised rewrite.
+  assert.equal(rows[1].latest_started_at, "2026-07-01T14:30:00+05:30");
+});
+
+test("latest_started_at picks the latest instant among mixed formats", () => {
+  const [s] = summarizeScenarios([
+    rec({ started_at: "2026-07-01T12:00:00Z" }),
+    rec({ started_at: "2026-07-01T18:00:00+05:30" }),   // 12:30Z — the latest
+    rec({ started_at: "2026-07-01T12:00:00.500Z" }),
+  ]);
+  assert.equal(s.latest_started_at, "2026-07-01T18:00:00+05:30");
+});
+
+test("unparseable and missing timestamps sink instead of winning", () => {
+  const rows = summarizeScenarios([
+    rec({ scenario_id: "junk", started_at: "not-a-date" }),
+    rec({ scenario_id: "none", started_at: null }),
+    rec({ scenario_id: "real", started_at: "2026-01-01T00:00:00.000Z" }),
+  ]);
+  assert.equal(rows[0].scenario_id, "real");
+  assert.equal(rows[0].latest_started_at, "2026-01-01T00:00:00.000Z");
+  // A garbage timestamp must not be reported as though it were a real one.
+  assert.equal(rows.find((r) => r.scenario_id === "junk").latest_started_at, null);
+  assert.equal(rows.find((r) => r.scenario_id === "none").latest_started_at, null);
+});
+
 test("empty and malformed input never throws", () => {
   assert.deepEqual(summarizeScenarios([]), []);
   assert.deepEqual(summarizeScenarios(undefined), []);

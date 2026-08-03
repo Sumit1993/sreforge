@@ -123,6 +123,13 @@ const kindsCell = (k) => Object.entries(k || {}).filter(([, n]) => n > 0)
 
 let selectedScenario = null;
 
+// Monotonic token shared by loadRuns and loadRecord. Both panels are filled by
+// async fetches, so a slow response must not paint over a newer selection: each
+// load captures the token it started with and applies its result only if that
+// token is still current. loadRuns bumps it, which also invalidates any record
+// fetch still in flight for the scenario the user just left.
+let requestToken = 0;
+
 async function getJson(url) {
   let r;
   try {
@@ -190,6 +197,7 @@ function markSelected(container, attr, value) {
 }
 
 async function loadRuns(scenario) {
+  const token = ++requestToken;   // also invalidates any in-flight record load
   selectedScenario = scenario;
   markSelected("scen", "scenario", scenario);
   $("bay-runs").hidden = false;
@@ -198,6 +206,7 @@ async function loadRuns(scenario) {
   $("runs").innerHTML = `<div class="empty">loading runs…</div>`;
 
   const j = await getJson("/api/runs?scenario=" + encodeURIComponent(scenario));
+  if (token !== requestToken) return;            // a newer selection won
   if (j.error) { $("runs").innerHTML = `<div class="err">${esc(j.error)}</div>`; return; }
   const rows = j.runs || [];
   $("runs-sub").textContent = `${rows.length} runs · newest first`;
@@ -225,6 +234,7 @@ async function loadRuns(scenario) {
 }
 
 async function loadRecord(sha, runId) {
+  const token = ++requestToken;
   markSelected("runs", "sha", sha);
   $("bay-rec").hidden = false;
   $("rec-title").textContent = runId || "record";
@@ -232,6 +242,7 @@ async function loadRecord(sha, runId) {
   $("rec").innerHTML = `<div class="empty">loading record…</div>`;
 
   const j = await getJson("/api/run/" + encodeURIComponent(sha));
+  if (token !== requestToken) return;            // a newer row or scenario won
   if (j.error) { $("rec").innerHTML = `<div class="err">${esc(j.error)}</div>`; return; }
   $("rec").innerHTML = `<pre class="rec">${esc(JSON.stringify(j, null, 2))}</pre>`;
   $("bay-rec").scrollIntoView({ behavior: "smooth", block: "nearest" });
