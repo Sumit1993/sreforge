@@ -30,10 +30,15 @@
 //   3. From headroom.md only a single enum token is extracted — QUALIFIED or
 //      DISQUALIFIED. No other byte of that file is ever carried forward, so no
 //      median, threshold, run id or date can ride along.
-//   4. Every allowlisted value is re-validated against a strict token shape
-//      (SAFE_TOKEN) before it is rendered. Anything that is not a bare
-//      identifier — prose, a number, a pipe — fails the build loudly rather
-//      than being published.
+//   4. Every allowlisted value is re-validated against a strict token SHAPE
+//      (SAFE_TOKEN) before it is rendered: identifier characters only, so any
+//      value carrying whitespace, a markdown pipe, an angle bracket or any
+//      other punctuation — i.e. anything prose-shaped, or anything that could
+//      break out of a table cell — fails the build loudly instead of being
+//      published. Note it does NOT reject digits; a numeric-looking identifier
+//      would pass. The page's freedom from private numbers comes from (2) and
+//      (3) — which fields are read at all — and is pinned by the committed-page
+//      test asserting the rendered page contains no digit whatsoever.
 //
 // Usage:
 //   node tools/catalog/generate.mjs            # regenerate the committed page
@@ -60,7 +65,12 @@ export const IDENTITY_FIELDS = ["id", "use_case", "stack", "profile"];
 // a passthrough, so a typo (or free text) can never reach the page.
 export const PROFILES = ["incident", "patch"];
 
-// Bare identifiers only. Blocks prose, digits, markdown pipes and HTML.
+// Identifier SHAPE only: letters, digits, dot, underscore, hyphen. This rejects
+// whitespace, markdown pipes, angle brackets and every other punctuation mark —
+// so no prose and no cell-breaking or HTML-injecting value can be rendered.
+// It deliberately does NOT reject digits (a numeric-looking id is a legitimate
+// identifier); keeping private numbers off the page is the job of the field
+// allowlist above, not of this pattern.
 const SAFE_TOKEN = /^[a-z0-9][a-z0-9._-]*$/i;
 
 export const ROLE_BY_STATUS = {
@@ -201,7 +211,15 @@ export function collectScenarios(root = REPO_ROOT) {
 		}
 	}
 
-	rows.sort((a, b) => a.useCase.localeCompare(b.useCase) || a.id.localeCompare(b.id));
+	// Code-unit ordering, NOT locale collation. The rendered page is compared
+	// byte-for-byte by --check, so the row order must be identical on every
+	// runtime. localeCompare depends on the ambient locale and the ICU data the
+	// node build ships with, and it disagrees with code-unit order on exactly the
+	// characters scenario ids use: it sorts ["ab","a-b","a_b"] as a_b, a-b, ab
+	// while code-unit order is a-b, a_b, ab. That difference would make
+	// catalog:check flap between a developer's machine and CI.
+	const byCodeUnit = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+	rows.sort((a, b) => byCodeUnit(a.useCase, b.useCase) || byCodeUnit(a.id, b.id));
 	return rows;
 }
 

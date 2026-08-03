@@ -163,14 +163,34 @@ test("missing headroom.md yields a pending-qualification row", () => {
 	}
 });
 
+/** @param {string} page */
+function rowIds(page) {
+	return page
+		.split("\n")
+		.filter(l => l.startsWith("| ["))
+		.map(l => l.slice(3, l.indexOf("]")));
+}
+
+test("row order is code-unit, not locale collation (--check compares bytes)", () => {
+	// The cheapest case where localeCompare and code-unit order disagree: locale
+	// collation treats `-` and `_` as variable-weight and yields a_b, a-b, ab;
+	// code-unit order is a-b, a_b, ab. Pinning the latter keeps the generated
+	// page identical across locales and ICU builds, which is what makes the
+	// byte-comparing --check gate trustworthy.
+	const ids = ["ab", "a-b", "a_b"];
+	const root = makeRoot(ids.map(id => ({ id })));
+	try {
+		assert.deepEqual(rowIds(generate(root)), ["a-b", "a_b", "ab"]);
+		assert.notDeepEqual([...ids].sort((a, b) => a.localeCompare(b)), ["a-b", "a_b", "ab"]);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("rows are sorted by use-case then scenario id", () => {
 	const root = makeRoot([{ id: "zeta" }, { id: "alpha" }, { id: "mid" }]);
 	try {
-		const ids = generate(root)
-			.split("\n")
-			.filter(l => l.startsWith("| ["))
-			.map(l => l.slice(3, l.indexOf("]")));
-		assert.deepEqual(ids, ["alpha", "mid", "zeta"]);
+		assert.deepEqual(rowIds(generate(root)), ["alpha", "mid", "zeta"]);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
