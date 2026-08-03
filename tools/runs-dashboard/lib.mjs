@@ -136,7 +136,9 @@ export function runRows(records, scenarioId) {
       run_id: r?.run_id ?? null,
       kind: runKind(r?.run_id),
       verdict: r?.verdict ?? null,
-      score: Number.isFinite(Number(r?.score?.score)) ? Number(r.score.score) : null,
+      // Type-guard before the finite check: Number(null) is 0, so coercing first
+      // would report a missing score as a real 0.0 (same trap as median()).
+      score: typeof r?.score?.score === "number" && Number.isFinite(r.score.score) ? r.score.score : null,
       oracle_id: r?.score?.oracle_id ?? null,
       started_at: r?.started_at ?? null,
       duration_ms: durationMs(r),

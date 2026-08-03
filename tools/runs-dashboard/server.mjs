@@ -14,6 +14,13 @@
 // safety story: do NOT bind another interface. The frontend is a static file
 // (index.html) served from disk — no build.
 //
+// The bind is backed by a Host-header check (ALLOWED_HOSTS below). Binding alone
+// does not stop DNS rebinding: a page on an attacker-controlled origin can point
+// its own hostname at 127.0.0.1 and have the victim's browser read this port for
+// it. Such a request arrives on a genuinely loopback socket — the Host header is
+// the only thing that still names the attacker's origin — so every request must
+// carry a loopback authority or it is refused with 403.
+//
 //   Run:  pnpm runs:dashboard        (or: node tools/runs-dashboard/server.mjs)
 //   PORT               default 7421.
 //   SREFORGE_RUNS_DIR  default <repo-root>/../sreforge-runs.
@@ -36,6 +43,11 @@ const HOST = "127.0.0.1"; // loopback ONLY — the never-agent-reachable guardra
 // Record filenames are the content sha256. Anchored hex-64 is also the path
 // guard for /api/run/<sha> — nothing else can ever be joined onto RECORDS_DIR.
 const SHA_RE = /^[0-9a-f]{64}$/;
+
+// Anti-DNS-rebinding: the only Host authorities we answer to. A rebound request
+// carries the attacker's hostname here, so it never matches.
+const ALLOWED_HOSTS = new Set([HOST, `${HOST}:${PORT}`, "localhost", `localhost:${PORT}`]);
+const hostAllowed = (host) => typeof host === "string" && ALLOWED_HOSTS.has(host.toLowerCase());
 
 // ---- store loading: cached, invalidated on records/ mtime -------------------
 let cache = { key: null, store: null };
@@ -93,12 +105,22 @@ const storeHead = (s) => ({
 
 // ---- server ----------------------------------------------------------------
 const server = createServer((req, res) => {
+  // Host check BEFORE anything is parsed or served — see the header note on DNS
+  // rebinding. Nothing below this line runs for a non-loopback authority.
+  if (!hostAllowed(req.headers.host)) {
+    json(res, 403, { error: "forbidden: this dashboard answers only to a loopback Host" });
+    return;
+  }
+
   const url = new URL(req.url, `http://${HOST}`);
   try {
     if (url.pathname === "/") {
       // Static frontend, read from disk each request (no build; edit-and-refresh).
+      // Read first: a failed read must fall through to the 500 below, and once a
+      // 200 header is written that is no longer possible.
+      const html = readFileSync(join(HERE, "index.html"), "utf8");
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(readFileSync(join(HERE, "index.html"), "utf8"));
+      res.end(html);
       return;
     }
 
@@ -122,8 +144,12 @@ const server = createServer((req, res) => {
       const file = join(RECORDS_DIR, `${sha}.json`);
       if (!existsSync(file)) { json(res, 404, { error: `no record ${sha}` }); return; }
       // Private side — the full record, transcript and all, is what we came for.
+      // Read before the header, same reason as the static frontend above: a read
+      // that throws (deleted between the check and here, permissions) must still
+      // be answerable with a 500.
+      const body = readFileSync(file, "utf8");
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(readFileSync(file, "utf8"));
+      res.end(body);
       return;
     }
 

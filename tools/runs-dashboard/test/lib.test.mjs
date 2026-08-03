@@ -145,6 +145,25 @@ test("runRows filters by scenario, sorts newest first and derives duration", () 
   assert.deepEqual(runRows(records, "nope"), []);
 });
 
+test("runRows reports a missing score as null, never as a coerced 0", () => {
+  const base = { scenario_id: "a", run_id: "run-1", started_at: "2026-07-01T00:00:00.000Z" };
+  const rows = runRows([
+    { ...base, run_id: "r-null", score: { oracle_id: "mitigation", score: null } },
+    { ...base, run_id: "r-missing", score: { oracle_id: "mitigation" } },
+    { ...base, run_id: "r-string", score: { oracle_id: "mitigation", score: "0.9" } },
+    { ...base, run_id: "r-noscore" },
+    { ...base, run_id: "r-real", score: { oracle_id: "mitigation", score: 0.35 } },
+    { ...base, run_id: "r-zero", score: { oracle_id: "mitigation", score: 0 } },
+  ], "a");
+  const by = Object.fromEntries(rows.map((r) => [r.run_id, r.score]));
+  assert.equal(by["r-null"], null);      // Number(null) === 0 would have said 0
+  assert.equal(by["r-missing"], null);
+  assert.equal(by["r-string"], null);    // no coercion of numeric strings either
+  assert.equal(by["r-noscore"], null);
+  assert.equal(by["r-real"], 0.35);
+  assert.equal(by["r-zero"], 0);         // a genuine 0 still survives the guard
+});
+
 test("empty and malformed input never throws", () => {
   assert.deepEqual(summarizeScenarios([]), []);
   assert.deepEqual(summarizeScenarios(undefined), []);
