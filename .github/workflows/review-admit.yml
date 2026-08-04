@@ -1,0 +1,60 @@
+# Applies the `review-ready` admission label to a pull request.
+#
+# WHY IT IS DISPATCH-ONLY
+# -----------------------
+# This is the mechanism the drip cron will eventually use. It ships as manual
+# dispatch because the drip itself does not exist yet — not because the premise
+# is unproven. On mage-memory the premise WAS the open question ("does a label
+# applied by a workflow start a CodeRabbit review, given GitHub's anti-recursion
+# rule that GITHUB_TOKEN events do not trigger other *workflows*?") and it has
+# since been measured: a `review-ready` label applied by `github-actions[bot]`
+# via GITHUB_TOKEN does start a CodeRabbit review. The anti-recursion rule is a
+# workflow-trigger rule; it does not gate an external app's own webhooks. No PAT
+# is needed. Evidence: prismalens/prismalens#301, step-5 comment.
+#
+# Two measured caveats that the drip must model, recorded here so they are not
+# rediscovered:
+#   - Bot-AUTHORED PRs are skipped by CodeRabbit's platform default regardless of
+#     labels, so admitting one is a silent no-op. They already pass
+#     `review-evidence` via its bot-author branch, so exclude them from the queue.
+#   - An admitted review can enter the `paused` state without ever submitting
+#     review evidence. `paused` is not `delivered`; a drip confirmation step must
+#     distinguish them.
+#
+# It has to live on the DEFAULT branch to be dispatchable at all: workflow_dispatch
+# only lists workflows present on the default branch. A previous probe failed
+# entirely because the file existed only on a feature branch.
+name: Admit PR to review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to admit
+        required: true
+      label:
+        description: Label to apply
+        required: true
+        default: review-ready
+
+permissions:
+  pull-requests: write
+
+jobs:
+  admit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply admission label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          LABEL: ${{ inputs.label }}
+        run: |
+          gh pr edit "$PR" --repo "$REPO" --add-label "$LABEL"
+          echo "Applied '$LABEL' to #$PR using GITHUB_TOKEN."
+          echo
+          echo "If CodeRabbit does not start a review within ~5 minutes, check"
+          echo "first whether #$PR is bot-AUTHORED — those are skipped by"
+          echo "platform default and admission on them is a no-op by design."
+          echo "Record anything unexpected on prismalens/prismalens#301."
