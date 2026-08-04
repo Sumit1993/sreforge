@@ -6,7 +6,25 @@ reviews:
   # after each push, so a fix-push loop drains the whole budget on a single PR.
   # Pausing after 1 reviewed commit means one review per PR; push your fixes as a batch,
   # then re-request explicitly with an `@coderabbitai review` comment.
+  # Label-gated admission. `enabled: false` turns OFF unconditional automatic
+  # review; `labels` re-admits exactly the PRs carrying `review-ready`. Together
+  # they make an online review something a PR is ADMITTED to, not something every
+  # PR spends budget on. Unlabelled PRs get a "Review skipped" comment instead.
+  #
+  # Safe only because `review-evidence` is already a REQUIRED check on main
+  # (ruleset 18200324). That ordering is load-bearing: with the gate required
+  # first, an unreviewed PR is a BLOCKED merge. Flipped the other way round,
+  # "unreviewed" would silently become the default and nothing would say so.
+  #
+  # Evidence for a PR that is never admitted comes from a local CodeRabbit CLI
+  # review, which posts a head-SHA-keyed marker the gate accepts.
+  #
+  # Revert: ~/ai-context/state/sreforge-valve-revert.md (written before this
+  # merged, pinned to pre-flip commit dbca60bf). Tracked in prismalens/prismalens#301.
   auto_review:
+    enabled: false
+    labels:
+      - "review-ready"
     auto_pause_after_reviewed_commits: 1
     ignore_title_keywords:
       - "WIP"
