@@ -106,12 +106,44 @@ in_list () { # in_list <needle> <space-separated haystack>
   return 1
 }
 
+# Publishing is a POST, and the statuses API appends rather than replaces: every
+# call adds another row to the commit's status history. The sweeper re-evaluates
+# every open PR on a schedule, so an unchanged verdict was being re-POSTed on
+# every sweep — the history filled with identical entries, and the status
+# timestamp advanced without the verdict ever changing, which makes "when did
+# this last actually change" unanswerable from the API.
+#
+# So read the current status first and skip the write when nothing changed. Only
+# an EXACT match on BOTH state and description is a no-op: same state with a
+# different description is a real change (the `error` reasons differ), and must
+# still be published.
+#
+# A read failure deliberately does NOT count as "unchanged" — it falls through to
+# the POST. A redundant status is noise; a skipped one leaves a stale verdict on
+# the gate, and this gate exists precisely to stop stale evidence from vouching
+# for a current head.
 publish () { # publish <sha> <state> <description>
   local sha="$1" state="$2" desc="${3:0:140}"
   if [ "$DRY_RUN" = "1" ]; then
     printf '    would publish: %s — %s\n' "$state" "$desc"
     return 0
   fi
+
+  # The combined-status endpoint returns the MOST RECENT status per context, so
+  # this is one request regardless of how long the history is.
+  local current
+  current=$(gh api "repos/$REPO/commits/$sha/status?per_page=100" 2>/dev/null \
+            | jq -r --arg ctx "$STATUS_CONTEXT" '
+                [ .statuses[] | select(.context == $ctx) ][0]
+                | if . == null then empty else .state, (.description // "") end
+              ' 2>/dev/null)
+  if [ -n "$current" ] \
+     && [ "$(sed -n 1p <<<"$current")" = "$state" ] \
+     && [ "$(sed -n 2p <<<"$current")" = "$desc" ]; then
+    printf '    unchanged: %s — %s (not re-published)\n' "$state" "$desc"
+    return 0
+  fi
+
   gh api -X POST "repos/$REPO/statuses/$sha" \
     -f state="$state" \
     -f context="$STATUS_CONTEXT" \
