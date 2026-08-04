@@ -1,5 +1,5 @@
 {
-	"$comment": "Declarative repo governance applied by scripts/sync-repo-governance.sh (idempotent, gh-api based). Edit here; re-run the script to apply. This file was seeded as an exact snapshot of the live repository state, with exactly ONE intentional delta on top: 'Validate PR title (conventional commits)' is now a REQUIRED status check. That job already ran on every PR and was simply not enforced. Everything else applies as a no-op, so any further diff is an intentional change.",
+	"$comment": "Declarative repo governance. This file is the DECLARATION of intended state; it is not itself the applier. Do NOT run scripts/sync-repo-governance.sh to change required checks — prismalens/prismalens#301 documents that its ruleset lookup can fail OPEN and create a second overlapping ruleset. Apply ruleset changes with `gh api` directly, taking a JSON backup first and reading the live ruleset back afterwards; keep this file matching what you applied so a later sync cannot drift it out. Deltas on top of the original live-state snapshot: (1) 'Validate PR title (conventional commits)' is a REQUIRED status check; (2) 'review-evidence' is a REQUIRED status check, applied by hand via gh api against ruleset 18200324 — see prismalens/prismalens#301; (3) labels 'review-ready' and 'cr:queue' back the CodeRabbit label-admission valve. Everything else applies as a no-op, so any further diff is an intentional change.",
 	"settings": {
 		"has_issues": true,
 		"has_wiki": true,
@@ -92,6 +92,16 @@
 			"name": "wontfix",
 			"color": "ffffff",
 			"description": "This will not be worked on"
+		},
+		{
+			"name": "review-ready",
+			"color": "0e8a16",
+			"description": "Admit this PR to CodeRabbit online review"
+		},
+		{
+			"name": "cr:queue",
+			"color": "fbca04",
+			"description": "Queued for online review; drip promotes to review-ready"
 		}
 	],
 	"ruleset": {
@@ -126,7 +136,8 @@
 					"do_not_enforce_on_create": false,
 					"required_status_checks": [
 						{ "context": "CI gate" },
-						{ "context": "Validate PR title (conventional commits)" }
+						{ "context": "Validate PR title (conventional commits)" },
+						{ "context": "review-evidence" }
 					]
 				}
 			}
