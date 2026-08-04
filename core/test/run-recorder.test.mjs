@@ -163,10 +163,10 @@ test("stays silent when no handoff path is configured at all", async () => {
     console.warn = realWarn;
   }
 
-  assert.equal(
-    warnings.filter(w => w.includes("agent transcript handoff expected")).length,
-    0,
-    "a recorder with no handoff path configured was never expecting one",
+  assert.deepEqual(
+    warnings,
+    [],
+    "a recorder with no handoff path configured was never expecting one, so nothing may warn",
   );
 });
 
