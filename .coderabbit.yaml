@@ -11,16 +11,31 @@ reviews:
   # they make an online review something a PR is ADMITTED to, not something every
   # PR spends budget on. Unlabelled PRs get a "Review skipped" comment instead.
   #
-  # Safe only because `review-evidence` is already a REQUIRED check on main
-  # (ruleset 18200324). That ordering is load-bearing: with the gate required
-  # first, an unreviewed PR is a BLOCKED merge. Flipped the other way round,
-  # "unreviewed" would silently become the default and nothing would say so.
+  # SCOPE, precisely: `labels` gates AUTOMATIC review only. Manual triggers —
+  # `@coderabbitai review` and `@coderabbitai full review` — run regardless of
+  # these settings and still spend the online counter.
   #
-  # Evidence for a PR that is never admitted comes from a local CodeRabbit CLI
-  # review, which posts a head-SHA-keyed marker the gate accepts.
+  # ⚠️ THE JUSTIFICATION THIS SETTING SHIPPED WITH IS GONE. It read: "safe only
+  # because `review-evidence` is already a REQUIRED check on main (ruleset
+  # 18200324) — with the gate required first, an unreviewed PR is a BLOCKED
+  # merge." That gate was retired (deleted, not repaired: it tried to derive
+  # "a competent reviewer read this exact code" from a third-party reviewer's
+  # incidental artifacts, and its intended happy path never once completed end to
+  # end). Its replacement is GitHub's native `required_review_thread_resolution`:
+  # reviewers are advisory, their inline findings become review threads, and an
+  # unresolved thread blocks the merge button. Findings block; silence does not.
   #
-  # Revert: ~/ai-context/state/sreforge-valve-revert.md (written before this
-  # merged, pinned to pre-flip commit dbca60bf). Tracked in prismalens/prismalens#301.
+  # That replacement needs a reviewer who actually posts. On
+  # `prismalens/prismalens` the always-on poster is a Claude Code review workflow,
+  # so keeping this label-gated there costs nothing. THIS REPO HAS NO SUCH LANE,
+  # and the CLI marker producer (claude-kit's `cr-preview.sh` / `cr-evidence.sh`)
+  # has been deleted too. So as configured, no reviewer runs automatically on an
+  # unlabelled PR here — review is whatever a human remembers to ask for. That is
+  # a deliberate open decision, not an oversight; it is recorded on the retirement
+  # PR. Making review automatic again is a two-line change: `enabled: true` and
+  # drop the `labels` key below. The cost of doing so is that automatic spends
+  # here crowd out the deliberate `review-ready` spends on the other two repos,
+  # which share this counter.
   auto_review:
     enabled: false
     labels:

@@ -1,5 +1,5 @@
 {
-	"$comment": "Declarative repo governance. This file is the DECLARATION of intended state; it is not itself the applier. Do NOT run scripts/sync-repo-governance.sh to change required checks — prismalens/prismalens#301 documents that its ruleset lookup can fail OPEN and create a second overlapping ruleset. Apply ruleset changes with `gh api` directly, taking a JSON backup first and reading the live ruleset back afterwards; keep this file matching what you applied so a later sync cannot drift it out. Deltas on top of the original live-state snapshot: (1) 'Validate PR title (conventional commits)' is a REQUIRED status check; (2) 'review-evidence' is a REQUIRED status check, applied by hand via gh api against ruleset 18200324 — see prismalens/prismalens#301; (3) labels 'review-ready' and 'cr:queue' back the CodeRabbit label-admission valve. Everything else applies as a no-op, so any further diff is an intentional change.",
+	"$comment": "Declarative repo governance. This file is the DECLARATION of intended state; it is not itself the applier. Do NOT run scripts/sync-repo-governance.sh to change required checks — prismalens/prismalens#301 documents that its ruleset lookup can fail OPEN and create a second overlapping ruleset. Apply ruleset changes with `gh api` directly, taking a JSON backup first and reading the live ruleset back afterwards; keep this file matching what you applied so a later sync cannot drift it out. Deltas on top of the original live-state snapshot: (1) 'Validate PR title (conventional commits)' is a REQUIRED status check; (2) the label 'review-ready' admits a PR to CodeRabbit online review — by hand, since the workflow that applied it automatically was retired with the review-evidence gate. Everything else applies as a no-op, so any further diff is an intentional change. 'review-evidence' WAS a third required status check; it was retired and its producer deleted, so it is removed here too. This file is only the declaration — removing the context from the live ruleset 18200324 is a separate `gh api` edit, and until that edit is made every merge on main is blocked by a required check with no producer. The 'cr:queue' label is left declared but is now inert: the drip that promoted it to 'review-ready' never shipped here and its mage-memory prototype was deleted; the sync script never prunes, so dropping the declaration would not delete the label anyway.",
 	"settings": {
 		"has_issues": true,
 		"has_wiki": true,
@@ -136,8 +136,7 @@
 					"do_not_enforce_on_create": false,
 					"required_status_checks": [
 						{ "context": "CI gate" },
-						{ "context": "Validate PR title (conventional commits)" },
-						{ "context": "review-evidence" }
+						{ "context": "Validate PR title (conventional commits)" }
 					]
 				}
 			}
