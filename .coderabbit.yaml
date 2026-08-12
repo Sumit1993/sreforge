@@ -7,7 +7,7 @@ reviews:
   # Pausing after 1 reviewed commit means one review per PR; push your fixes as a batch,
   # then re-request explicitly with an `@coderabbitai review` comment.
   # Label-gated admission. `enabled: false` turns OFF unconditional automatic
-  # review; `labels` re-admits exactly the PRs carrying `review-ready`. Together
+  # review; `labels` re-admits exactly the PRs carrying `coderabbit_review`. Together
   # they make an online review something a PR is ADMITTED to, not something every
   # PR spends budget on. Unlabelled PRs get a "Review skipped" comment instead.
   #
@@ -24,7 +24,7 @@ reviews:
   auto_review:
     enabled: false
     labels:
-      - "review-ready"
+      - "coderabbit_review"
     auto_pause_after_reviewed_commits: 1
     ignore_title_keywords:
       - "WIP"
