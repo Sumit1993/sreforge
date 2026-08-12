@@ -1,33 +1,28 @@
-name: Claude Code
+name: Claude Fix
 
 on:
   issue_comment:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  issues:
-    types: [opened, assigned]
-  pull_request_review:
-    types: [submitted]
 
 # This is a managed caller stub.
-# The lane logic lives in prismalens/gh-workflows/.github/workflows/claude.yml.
+# The lane logic lives in prismalens/gh-workflows/.github/workflows/claude-fix.yml.
 # Do not add logic here.
 
 concurrency:
-  group: claude-mention-${{ github.event.issue.number || github.event.pull_request.number }}
+  group: claude-fix-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  claude:
-    uses: prismalens/gh-workflows/.github/workflows/claude.yml@main
+  fix:
+    uses: prismalens/gh-workflows/.github/workflows/claude-fix.yml@main
     # explicit mapping is the canon pattern — `inherit` does not cross ownership
     # boundaries and silently fails cross-owner consumers.
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     permissions:
-      contents: read
+      contents: write
       pull-requests: read
       issues: read
       id-token: write
-      actions: read
