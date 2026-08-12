@@ -42,16 +42,9 @@ jobs:
     name: Validate PR title (conventional commits)
     runs-on: ubuntu-latest
     steps:
-      # The standard conventional-commit types, plus the repo's own `eval`.
-      # `eval` means MEASUREMENT EVIDENCE — qualification runs, campaign records,
-      # certification verdicts — which is deliberately distinct from `test`
-      # (test code). It predates this gate being enforced (#104) and is already
-      # used on main: eval(campaign) #97, eval(cert) #93, eval(decoy) #108.
-      # Scopes are intentionally unrestricted (the repo uses scopes like core, booklogr, deps).
-      - if: github.event_name != 'merge_group'
-        uses: amannn/action-semantic-pull-request@v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # validation logic lives in canon; the job/check name must stay stable
+      # (pinned as a required check in the ruleset).
+      - uses: prismalens/gh-workflows/actions/pr-title@main
         with:
           types: |
             feat
@@ -66,5 +59,3 @@ jobs:
             chore
             revert
             eval
-      - if: github.event_name == 'merge_group'
-        run: echo "Title validated on the pull request before it entered the merge queue."
