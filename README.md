@@ -143,3 +143,4 @@ alert-push trigger** — Alertmanager pushes the firing notification to the box 
 the agent self-starts (`pnpm forge auto <use-case>`, ADR-0025).
 
 <!-- review-lane canary: verifies the Claude review lane posts on this repo (prismalens/prismalens#403). Safe to remove. -->
+<!-- canary bump: re-fire after workflow sync -->
