@@ -14,6 +14,9 @@ concurrency:
 
 jobs:
   review:
+    # Caller-side draft guard: skip before the reusable workflow is even invoked
+    # (the callee carries a backstop guard; GitHub cannot filter drafts at the trigger).
+    if: github.event.pull_request.draft != true
     uses: prismalens/gh-workflows/.github/workflows/claude-code-review.yml@main
     # explicit mapping is the canon pattern — `inherit` does not cross ownership
     # boundaries and silently fails cross-owner consumers.
