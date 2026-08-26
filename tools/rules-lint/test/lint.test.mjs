@@ -76,7 +76,11 @@ groups:
 });
 
 test("real live rule files all pass", () => {
-	const files = resolveTargets(DEFAULT_TARGETS);
+	// The served copy is a gitignored build artifact present only after an arm;
+	// exclude it so the exact file and alert counts stay deterministic.
+	const files = resolveTargets(DEFAULT_TARGETS).filter(
+		(f) => !f.endsWith("observability/rules/ambient-rules.yml"),
+	);
 	assert.equal(files.length, 3);
 	const stats = { totalAlerts: 0 };
 	const failures = lintRules(files, stats);
