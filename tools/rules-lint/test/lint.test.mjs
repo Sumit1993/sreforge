@@ -11,6 +11,7 @@ import {
 	AMBIENT_SERVICE,
 	checkAmbientRoleConsistency,
 	checkUnscopedAmbientService,
+	DEFAULT_TARGETS,
 	extractAlertLabels,
 	lintContent,
 	lintRules,
@@ -75,9 +76,7 @@ groups:
 });
 
 test("real live rule files all pass", () => {
-	const files = resolveTargets([
-		"use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml",
-	]);
+	const files = resolveTargets(DEFAULT_TARGETS);
 	assert.equal(files.length, 3);
 	const stats = { totalAlerts: 0 };
 	const failures = lintRules(files, stats);
@@ -359,9 +358,7 @@ test("checkAmbientRoleConsistency FAILS a non-ambient rule that claims role: amb
 });
 
 test("checkAmbientRoleConsistency holds on the shipped rules files", () => {
-	const shipped = resolveTargets([
-		"use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml",
-	]);
+	const shipped = resolveTargets(DEFAULT_TARGETS);
 	const res = checkAmbientRoleConsistency(shipped, "edge-client");
 	assert.deepEqual(res.errors, []);
 	assert.ok(res.count >= 1, "expected at least one ambient rule in the stack");
@@ -414,21 +411,17 @@ test("checkUnscopedAmbientService sees a services key on any line of [verify]", 
 	}
 });
 
-test("the INSTALLED ambient rule carries role: ambient, not just the served copy", () => {
-	// arm-regress.sh copies furniture/ambient-rules.yml over
-	// observability/rules/ambient-rules.yml on every arm. Labelling only the served
-	// copy meant the label survived exactly one run, after which the quiesce gate
-	// started gating on the metronome again and rules-lint failed. Assert BOTH.
+test("the authoritative ambient rule carries role: ambient", () => {
+	// The served copy is an untracked build artifact produced by a plain `cp` from
+	// furniture/ambient-rules.yml in arm-regress.sh, carrying the label by
+	// construction; labelling the authoritative copy is what matters (#121).
 	const stack = fileURLToPath(
 		new URL(
 			"../../../use-cases/booklogr/stacks/flask-compose/",
 			import.meta.url,
 		),
 	);
-	for (const rel of [
-		"furniture/ambient-rules.yml",
-		"observability/rules/ambient-rules.yml",
-	]) {
+	for (const rel of ["furniture/ambient-rules.yml"]) {
 		const alerts = extractAlertLabels(
 			readFileSync(join(stack, rel), "utf8"),
 			rel,
@@ -448,15 +441,12 @@ test("the INSTALLED ambient rule carries role: ambient, not just the served copy
 test("the default lint targets cover the furniture dir", () => {
 	// If furniture/*.yml leaves the default target set, the guard above stops
 	// running in CI (which invokes the CLI with no arguments).
-	const files = resolveTargets([
-		"use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml",
-		"use-cases/booklogr/stacks/flask-compose/furniture/*.yml",
-	]);
+	const files = resolveTargets(DEFAULT_TARGETS);
 	assert.ok(
 		files.some((f) => f.includes("furniture/ambient-rules.yml")),
 		"furniture/ambient-rules.yml must be linted",
 	);
 	const res = checkAmbientRoleConsistency(files, AMBIENT_SERVICE);
 	assert.deepEqual(res.errors, []);
-	assert.ok(res.count >= 2, `expected >=2 ambient rules, got ${res.count}`);
+	assert.ok(res.count >= 1, `expected >=1 ambient rules, got ${res.count}`);
 });
