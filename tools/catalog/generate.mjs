@@ -221,7 +221,15 @@ export function collectScenarios(root = REPO_ROOT) {
 			// The ONLY other file this generator opens. oracle.md, solution/ and
 			// inject/ are never touched.
 			const headroomPath = join(scenariosDir, sc.name, "verify", "headroom.md");
-			const verdict = existsSync(headroomPath) ? readVerdict(readFileSync(headroomPath, "utf8")) : null;
+			let verdict = null;
+			if (existsSync(headroomPath)) {
+				verdict = readVerdict(readFileSync(headroomPath, "utf8"));
+				if (verdict === null) {
+					throw new Error(
+						`${headroomPath}: bold verdict marker (**QUALIFIED** or **DISQUALIFIED**) is missing or malformed`,
+					);
+				}
+			}
 
 			rows.push({
 				id: identity.id,

@@ -256,6 +256,20 @@ test("a manifest id that disagrees with its directory name is a hard error", () 
 	}
 });
 
+test("a malformed headroom.md (missing bold verdict marker) is a hard error naming the file", () => {
+	const root = makeRoot([
+		{ id: "fixture-scenario", headroom: "# Baseline Headroom\n\nNo bold qualification verdict here.\n" },
+	]);
+	try {
+		assert.throws(
+			() => generate(root),
+			/use-cases\/fixtureuc\/scenarios\/fixture-scenario\/verify\/headroom\.md: bold verdict marker \(\*\*QUALIFIED\*\* or \*\*DISQUALIFIED\*\*\) is missing or malformed/,
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 // --- --check mode ------------------------------------------------------------
 
 function runScript(args, opts = {}) {
