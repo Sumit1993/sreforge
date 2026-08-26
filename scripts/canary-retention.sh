@@ -6,9 +6,7 @@ set -euo pipefail
 ARTIFACT_DIR="${1}"
 RETENTION_DAYS="${2:-7}"
 
-# Bug 1: unquoted expansion, so a directory containing spaces splits into
-# multiple find roots and the wrong tree gets deleted.
-find $ARTIFACT_DIR -type f -mtime +"$RETENTION_DAYS" -delete
+find -- "$ARTIFACT_DIR" -type f -mtime +"$RETENTION_DAYS" -delete
 
 # Bug 2: the exit status of the pipeline is the status of `wc`, never `find`,
 # so a failed scan reports success and the caller prunes nothing silently.
