@@ -38,8 +38,6 @@ source_scenario_env "$SCENARIO_ID"
 
 # 0. Quiesce gate (#74): deterministic observability state per run
 echo "==> Quiesce gate (#74)..."
-rm -f "$STACK/observability/rules/ambient-rules.yml"
-docker exec booklogr-prometheus kill -SIGHUP 1 >/dev/null 2>&1 || true
 bash "$SCRIPTS/quiesce.sh"
 
 # 1. Guard: substrate must be imported
@@ -127,17 +125,21 @@ if [ -f "$SCRIPTS/inject-red-herring.sh" ]; then
 fi
 
 # 3d. Ambient realism furniture delivery (Issue #86 / QB-5)
+# Single-sited reconcile of served ambient rules in both directions (#121);
+# splitting install and delete across steps lets a failed arm strand the file.
 AMBIENT_FURNITURE="${AMBIENT_FURNITURE:-1}"
 AMBIENT_FURNITURE_OPT_OUT="${AMBIENT_FURNITURE_OPT_OUT:-0}"
 AMBIENT_FURNITURE_COMMIT_OPT_OUT="${AMBIENT_FURNITURE_COMMIT_OPT_OUT:-0}"
 
+FURNITURE_DIR="$STACK/furniture"
+if [ -f "$FURNITURE_DIR/ambient.env" ]; then
+  # shellcheck disable=SC1091
+  . "$FURNITURE_DIR/ambient.env"
+fi
+AMBIENT_SERVED="$STACK/${AMBIENT_RULE_PATH:-observability/rules/ambient-rules.yml}"
+
 if [ "$AMBIENT_FURNITURE" != "0" ] && [ "$AMBIENT_FURNITURE_OPT_OUT" != "1" ]; then
   echo "==> Applying ambient realism furniture (AMBIENT_FURNITURE=1)..."
-  FURNITURE_DIR="$STACK/furniture"
-  if [ -f "$FURNITURE_DIR/ambient.env" ]; then
-    # shellcheck disable=SC1091
-    . "$FURNITURE_DIR/ambient.env"
-  fi
 
   # Piece B: Innocent recent deploy commit (opt out via AMBIENT_FURNITURE_COMMIT_OPT_OUT=1 or mode 3)
   if [ "$AMBIENT_FURNITURE_COMMIT_OPT_OUT" != "1" ] && [ "$DELIVERY_MODE" != "arm-runtime-notrace" ]; then
@@ -170,11 +172,14 @@ if [ "$AMBIENT_FURNITURE" != "0" ] && [ "$AMBIENT_FURNITURE_OPT_OUT" != "1" ]; t
 
   # Piece A: Flapping ambient alert rule
   if [ -f "$FURNITURE_DIR/ambient-rules.yml" ]; then
-    cp "$FURNITURE_DIR/ambient-rules.yml" "$STACK/observability/rules/ambient-rules.yml"
+    cp "$FURNITURE_DIR/ambient-rules.yml" "$AMBIENT_SERVED"
     echo "==> Loaded ambient alert rule: ${AMBIENT_ALERT_NAME:-EdgeClientRequestJitter}"
-    docker exec booklogr-prometheus kill -SIGHUP 1 >/dev/null 2>&1 || true
   fi
+else
+  echo "==> Ambient furniture disabled — removing served ambient rule"
+  rm -f "$AMBIENT_SERVED"
 fi
+docker exec booklogr-prometheus kill -SIGHUP 1 >/dev/null 2>&1 || true
 
 
 # 3c. DB revision reconciliation (#79) — keep the persisted Postgres volume in
