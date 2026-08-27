@@ -1,0 +1,46 @@
+name: transcript-probe
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/transcript-probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run a minimal Claude Code session
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Reply with exactly the word: probe
+          claude_args: >-
+            --allowed-tools "Read"
+            --model claude-sonnet-5
+
+      - name: Look for transcripts
+        if: always()
+        run: |
+          echo "PROBE_HOME=$HOME"
+          echo "--- ~/.claude ---"
+          ls -la "$HOME/.claude" 2>&1 || echo "PROBE_RESULT: no ~/.claude directory"
+          echo "--- ~/.claude/projects (recursive) ---"
+          ls -R "$HOME/.claude/projects" 2>&1 || echo "PROBE_RESULT: no ~/.claude/projects directory"
+          echo "--- any claude-ish jsonl under HOME ---"
+          find "$HOME" -name '*.jsonl' -path '*claude*' 2>/dev/null | head -20
+          echo "--- stats cache ---"
+          ls -la "$HOME/.claude/stats-cache.json" "$HOME/.claude/stats.json" 2>&1 \
+            || echo "PROBE_RESULT: no stats cache"
+          echo "--- execution file, for comparison ---"
+          ls -la "${RUNNER_TEMP}/claude-execution-output.json" 2>&1 \
+            || echo "PROBE_RESULT: no execution file either"
