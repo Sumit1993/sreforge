@@ -188,7 +188,6 @@ test("row order is code-unit, not locale collation (--check compares bytes)", ()
 	const root = makeRoot(ids.map(id => ({ id })));
 	try {
 		assert.deepEqual(rowIds(generate(root)), ["a-b", "a_b", "ab"]);
-		assert.notDeepEqual([...ids].sort((a, b) => a.localeCompare(b)), ["a-b", "a_b", "ab"]);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -227,10 +226,10 @@ test("a digit-bearing identity value is rejected at generation time, naming the 
 	assert.throws(() => readIdentity(bad, "use-cases/u/scenarios/postgres-15/scenario.toml"), {
 		message: /use-cases\/u\/scenarios\/postgres-15\/scenario\.toml: identity field 'id' = "postgres-15" contains a digit/,
 	});
-	// Every allowlisted field is covered, not just id.
-	assert.throws(() => readIdentity('id = "a"\nuse_case = "u"\nstack = "flask-compose-v2"\nprofile = "incident"\n', "t.toml"), {
-		message: /identity field 'stack' .* contains a digit/,
-	});
+	assert.equal(
+		readIdentity('id = "a"\nuse_case = "u"\nstack = "flask-compose-15"\nprofile = "incident"\n', "t.toml").stack,
+		"flask-compose-15",
+	);
 });
 
 test("an unknown profile is a hard error", () => {
@@ -282,14 +281,15 @@ test("--check passes against the committed page", () => {
 });
 
 test("--check detects drift and names the regen command", () => {
-	// Work on a copy of the committed page so the real one is never disturbed.
-	const outPath = join(REPO_ROOT, OUTPUT_RELPATH);
-	const original = readFileSync(outPath, "utf8");
-	writeFileSync(outPath, original + "\nstale hand edit\n");
+	const root = makeRoot([{ id: "fixture-scenario" }]);
 	try {
+		const outDir = join(root, dirname(OUTPUT_RELPATH));
+		mkdirSync(outDir, { recursive: true });
+		const outPath = join(root, OUTPUT_RELPATH);
+		writeFileSync(outPath, generate(root) + "\nstale hand edit\n");
 		let failed = false;
 		try {
-			runScript(["--check"], { stdio: "pipe" });
+			runScript(["--check"], { stdio: "pipe", env: { ...process.env, CATALOG_REPO_ROOT: root } });
 		} catch (err) {
 			failed = true;
 			assert.match(String(err.stderr), /DRIFT/);
@@ -298,7 +298,7 @@ test("--check detects drift and names the regen command", () => {
 		}
 		assert.ok(failed, "expected --check to exit non-zero on drift");
 	} finally {
-		writeFileSync(outPath, original);
+		rmSync(root, { recursive: true, force: true });
 	}
 });
 

@@ -18,14 +18,16 @@ identifier-shaped, an identity value containing a digit, an unknown `profile`, o
 disagrees with its directory. Every one of those names the offending manifest and field.
 
 **Leakage allowlist.** The page is published at sreforge.sfun.cloud and may carry scenario identity only,
-so the generator opens just two files per scenario — `scenario.toml`, from which it reads exactly `id`,
-`use_case`, `stack` and `profile` (never `title` or `description`, which encode authored root causes), and
-`verify/headroom.md`, from which it takes only the verdict word `QUALIFIED`/`DISQUALIFIED`; `verify/oracle.md`,
-`solution/` and `inject/` are never read at all, and no median, threshold or score can reach the page.
+so the generator opens just two files per scenario — `scenario.toml`, from which it reads `id`, `use_case`,
+`stack` and `profile` (`id`, `use_case` and `profile` are rendered, while `stack` is read but not published;
+never `title` or `description`, which encode authored root causes), and `verify/headroom.md`, from which it
+takes only the verdict word `QUALIFIED`/`DISQUALIFIED`. `verify/oracle.md`, `solution/` and `inject/` are
+never read at all, and no median, threshold or score can reach the page.
 
 Identity values must also be **digit-free**, which is stricter than the boundary literally needs. That is
 deliberate: it makes "the page contains no digit at all" true by construction, which is the cheapest airtight
 proof that no median, threshold or score leaked. The cost is that a versioned name like `postgres-15` is
 rejected — loudly, at generation time. To allow one, relax `DIGIT_IN_VALUE` in `generate.mjs` and the
 committed-page digit assertion in `test/generate.test.mjs` as a single deliberate change, and replace them
-with an explicit check against the numbers in each `verify/headroom.md`.
+with an explicit check against the numbers in each `verify/headroom.md`. `stack` is exempt from the digit
+rule because it is read but never rendered.

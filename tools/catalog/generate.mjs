@@ -10,7 +10,7 @@
 // LEAKAGE BOUNDARY — the load-bearing constraint
 // ---------------------------------------------------------------------------
 // The page ships to https://sreforge.sfun.cloud. It may contain ONLY:
-//   scenario id, use-case, stack, profile, the qualification status WORD, and a
+//   scenario id, use-case, profile, the qualification status WORD, and a
 //   derived role label.
 // It must NEVER contain medians, thresholds, scores, or any other number out of
 // verify/headroom.md; nor anything from verify/oracle.md, solution/, or inject/;
@@ -86,6 +86,10 @@ const SAFE_TOKEN = /^[a-z0-9][a-z0-9._-]*$/i;
 // with an explicit check against the numbers in each verify/headroom.md.
 const DIGIT_IN_VALUE = /[0-9]/;
 
+// Read but never rendered, so the digit rule's leakage rationale does not reach it.
+// If `stack` ever gains a column in TABLE_HEADER, remove it from this set.
+const DIGIT_EXEMPT = new Set(["stack"]);
+
 export const ROLE_BY_STATUS = {
 	DISQUALIFIED: "regression-guard / CI-smoke",
 	QUALIFIED: "certification-substrate",
@@ -146,7 +150,7 @@ export function readIdentity(content, where = "scenario.toml") {
 					`The public catalog only publishes identifier-shaped values (leakage boundary).`,
 			);
 		}
-		if (DIGIT_IN_VALUE.test(value)) {
+		if (!DIGIT_EXEMPT.has(key) && DIGIT_IN_VALUE.test(value)) {
 			throw new Error(
 				`${where}: identity field '${key}' = ${JSON.stringify(value)} contains a digit. ` +
 					`The published catalog is kept digit-free by construction, so that no headroom median, ` +
@@ -302,11 +306,14 @@ export function generate(root = REPO_ROOT) {
 
 function main() {
 	const check = process.argv.slice(2).includes("--check");
-	const outPath = join(REPO_ROOT, OUTPUT_RELPATH);
+	// CATALOG_REPO_ROOT allows testing the CLI drift path without writing
+	// to the git-tracked scenario catalog page.
+	const root = process.env.CATALOG_REPO_ROOT ? resolve(process.env.CATALOG_REPO_ROOT) : REPO_ROOT;
+	const outPath = join(root, OUTPUT_RELPATH);
 
 	let expected;
 	try {
-		expected = generate(REPO_ROOT);
+		expected = generate(root);
 	} catch (err) {
 		console.error(`[catalog] FATAL: ${err.message}`);
 		process.exit(2);
