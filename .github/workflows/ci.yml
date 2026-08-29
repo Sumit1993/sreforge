@@ -97,6 +97,16 @@ jobs:
         run: node --test tools/record-lint/test/*.test.mjs
       - name: Lint committed records for transcript content
         run: node tools/record-lint/lint.mjs
+      # The public scenario catalog is the other half of the same boundary: a
+      # generated page that may carry scenario IDENTITY only — never headroom
+      # numbers, oracle rubrics or solution wording. A stale committed page is
+      # therefore a boundary regression, not a docs nit, and belongs in this job.
+      # `node` rather than `pnpm` to match the rest of this job, which has no pnpm
+      # setup; locally these are `pnpm test:catalog` and `pnpm catalog:check`.
+      - name: Test the catalog generator (incl. leakage assertions)
+        run: node --test tools/catalog/test/*.test.mjs
+      - name: Check the generated scenario catalog is not stale
+        run: node tools/catalog/generate.mjs --check
 
   # Single stable status check to require in branch protection, independent of how
   # the matrix above expands.
