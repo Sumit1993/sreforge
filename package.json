@@ -28,7 +28,7 @@
     "test:transcript": "node --test tools/transcript/test/*.test.mjs",
     "test:record": "node --test tools/record/test/*.test.mjs",
     "test:bank": "node --test tools/record/test/bank.test.mjs",
-    "test:record-ci": "node --test tools/record/test/header-keys-crosscheck.test.mjs tools/record/test/migrate-run-records.test.mjs",
+    "test:record-ci": "node --test tools/record/test/confinement-tiers-crosscheck.test.mjs tools/record/test/header-keys-crosscheck.test.mjs tools/record/test/migrate-run-records.test.mjs",
     "runs:bank": "node tools/record/bank.mjs",
     "runs:import": "node tools/record/bank.mjs --import-all",
     "runs:dashboard": "node tools/runs-dashboard/server.mjs",
