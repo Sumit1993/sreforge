@@ -8,6 +8,7 @@
     "node": ">=18"
   },
   "scripts": {
+    "test": "pnpm test:certify && pnpm test:rules-lint && pnpm test:record-lint && pnpm test:catalog && pnpm test:transcript && pnpm test:record-ci && pnpm test:runs-dashboard && pnpm test:sandbox-runtime && pnpm test:doctor && pnpm test:rca-judge && pnpm test:headroom && pnpm test:trigger-bus && pnpm test:quiesce && pnpm test:confirm-runner",
     "guard": "node tools/contamination-guard/scan.mjs",
     "guard:strict": "node tools/contamination-guard/scan.mjs --strict",
     "detell": "node tools/detell-judge/judge.mjs",
@@ -27,16 +28,19 @@
     "test:transcript": "node --test tools/transcript/test/*.test.mjs",
     "test:record": "node --test tools/record/test/*.test.mjs",
     "test:bank": "node --test tools/record/test/bank.test.mjs",
+    "test:record-ci": "node --test tools/record/test/header-keys-crosscheck.test.mjs tools/record/test/migrate-run-records.test.mjs",
     "runs:bank": "node tools/record/bank.mjs",
     "runs:import": "node tools/record/bank.mjs --import-all",
     "runs:dashboard": "node tools/runs-dashboard/server.mjs",
     "test:runs-dashboard": "node --test tools/runs-dashboard/test/*.test.mjs",
+    "test:sandbox-runtime": "node --test infra/agent-sandbox/runtime/test/agent-loop.test.mjs",
     "test:doctor": "node --test tools/doctor/test/*.test.mjs",
     "test:rca-judge": "node --test tools/rca-judge/test/*.test.mjs",
     "headroom": "node tools/headroom/campaign.mjs",
     "test:headroom": "node --test tools/headroom/test/*.test.mjs",
     "test:trigger-bus": "node --test core/test/trigger-bus.test.mjs core/test/t0-bundle.test.mjs use-cases/booklogr/stacks/flask-compose/scripts/test/lib-storm.test.mjs",
-    "test:quiesce": "node --test use-cases/booklogr/stacks/flask-compose/scripts/test/confirm-quiesced.test.mjs"
+    "test:quiesce": "node --test use-cases/booklogr/stacks/flask-compose/scripts/test/confirm-quiesced.test.mjs",
+    "test:confirm-runner": "node --test use-cases/booklogr/stacks/flask-compose/scripts/test/confirm-runner.test.mjs"
   },
   "devDependencies": {
     "@go-task/cli": "^3.52.0",
