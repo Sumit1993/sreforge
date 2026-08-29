@@ -19,3 +19,7 @@ runs/
 
 # go-task change-detection checksums (Taskfile.yml sources/generates cache)
 .task/
+
+# Served ambient alert rule reconciled by arm-regress.sh from
+# furniture/ambient-rules.yml, which is the authoritative copy (#121) — build artifact.
+observability/rules/ambient-rules.yml

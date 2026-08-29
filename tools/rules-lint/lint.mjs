@@ -32,7 +32,7 @@ export const AMBIENT_SERVICE = "edge-client";
 // arm, so linting only the served copy checks a file that any arm overwrites — a
 // label required by the quiesce gate (#121) would survive exactly one run. The
 // authoritative source has to be in scope or the guard is theatre.
-const DEFAULT_TARGETS = [
+export const DEFAULT_TARGETS = [
 	"use-cases/booklogr/stacks/flask-compose/observability/rules/*.yml",
 	"use-cases/booklogr/stacks/flask-compose/furniture/*.yml",
 ];
