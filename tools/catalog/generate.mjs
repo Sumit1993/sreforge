@@ -271,7 +271,7 @@ const FRONTMATTER = [
 // HTML comment makes the page frontmatter-less and breaks the docs build.
 const INTRO = [
 	"A scenario is a reproducible fault, injected into a live use-case stack, paired with a closed-loop check that decides whether an agent actually restored the service.",
-	"Scenario identities and the methodology around them are public — that is what this page is; the authored root causes, the oracle rubrics, the per-run records and every score they carry live in a private store and are never published here (locally, per-run detail is rendered by `pnpm runs:dashboard`).",
+	"Scenario identities and the methodology around them are public; that is what this page is. So are the pruned run records committed beside each scenario, which carry the verdict, timings and score. What stays private is the authored root cause and the oracle rubric for each scenario, together with the full transcript-bearing record that each pruned record references by hash (locally, per-run detail is rendered by `pnpm runs:dashboard`).",
 	"The Role column says what each scenario is for today: most no longer separate frontier models on capability, so they earn their keep as regression guards rather than as discrimination axes.",
 ].join("\n");
 
