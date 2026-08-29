@@ -108,12 +108,41 @@ jobs:
       - name: Check the generated scenario catalog is not stale
         run: node tools/catalog/generate.mjs --check
 
+  tools-tests:
+    name: tools tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # action-setup reads the pnpm version from the root package.json
+      # `packageManager` field, so no version is pinned here (pinning both errors).
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install core deps
+        working-directory: core
+        run: pnpm install --frozen-lockfile
+
+      # Tool suites import core/dist, so the build must precede them.
+      - name: Build core
+        working-directory: core
+        run: pnpm build
+
+      - name: Run tools tests
+        run: pnpm test
+
   # Single stable status check to require in branch protection, independent of how
   # the matrix above expands.
   gate:
     name: CI gate
     if: always()
-    needs: [build, rules-lint, record-lint]
+    needs: [build, rules-lint, record-lint, tools-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed
