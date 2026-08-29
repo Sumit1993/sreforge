@@ -68,31 +68,21 @@ reach an agent-reachable surface.
 **Output dir**: `--run-dir` if given, else `--out`. `diagnosis.json` lands there.
 `--run-id` / `--scenario-id` override the ids derived from the directory names.
 
-## Stable interface (cross-repo contract)
+## Stability contract
 
-prismalens wires a `ScoringOracle` adapter against this exact invocation:
+This CLI surface is the contract prismalens (`ScoringOracle`) depends on:
 
 ```bash
 node tools/rca-judge/judge.mjs --judge --rca-file <path> --scenario <scenario-dir> --out <dir>
 ```
 
-→ writes `<out>/diagnosis.json` with the `diagnosis.v1` schema
-(`tools/certify/schemas/diagnosis.v1.schema.json`). Treat **`schema_version`**
-(`diagnosis.v1`) as the compatibility handle. `diagnosis.json` shape:
-
-```json
-{
-  "schema_version": "diagnosis.v1",
-  "run_id": "...",
-  "scenario": "...",
-  "score": 0.0,
-  "axes": { "root_cause_correct": false, "evidence_grounded": false, "false_leads": true },
-  "rationale": "...",
-  "rubric_version": "1",
-  "judge_model": "<exact model id used>",
-  "judged_at": "<ISO8601>"
-}
-```
+- **Consumer-facing surface**: `judge.mjs --judge` with `--scenario <dir>`, either `--run-dir` or `--rca-file`, optional `--out`, and required `RCA_JUDGE_MODEL`.
+- **Oracle layout**: Ground truth is resolved strictly at `<scenario>/verify/oracle.md` under `## Root cause (harness-internal)`. That layout is part of the contract.
+- **Exit codes**:
+  - `exit 2`: Contract violation (bad flags, missing/malformed oracle, unpinned model).
+  - `exit 0`: Success (writes `diagnosis.json`), or best-effort model unreachable / timeout / unparseable output (writes no diagnosis; absent score is normal).
+- **Output shape**: Writes `diagnosis.json` with `schema_version: "diagnosis.v1"` (`tools/certify/schemas/diagnosis.v1.schema.json`).
+- **Breaking changes**: `tools/rca-judge/test/contract.test.mjs` is the gate. Any change to flags, oracle resolution, exit codes, or schema version breaks prismalens.
 
 ## Env vars
 
