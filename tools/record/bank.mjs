@@ -10,6 +10,10 @@ import { createHash } from "node:crypto";
 // Shared with tools/record-lint/lint.mjs — see that module's header for why the
 // bank and the public-repo lint must use one definition of "full".
 import { isFullRecord } from "./is-full-record.mjs";
+// Shared with tools/transcript/write-handoff.mjs (pinned by a source-text
+// crosscheck test) — the write end and the bank end of the handoff must agree
+// on which confinement tiers are valid.
+import { CONFINEMENT_TIERS, isValidConfinement } from "./confinement.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
@@ -38,6 +42,51 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
+// -----------------------------------------------------------------------------
+// #124 — the confinement label gate.
+//
+// A record whose driver dropped its transcript handoff arrives here with no
+// `agent_transcript` header at all: it has lost `harness`, `model` and
+// `provider` along with `confinement`, so its verdict is a measurement whose
+// conditions are unknown. #123 made `--confinement` required and validated at
+// the WRITE end (tools/transcript/write-handoff.mjs), but every driver
+// deliberately swallows handoff failure (ADR-0004 best-effort), so that guard
+// never fires for the driver that simply forgot to call it.
+//
+// This is the bank end of the same rule: a record that cannot say how it was
+// measured is not banked. Refusing to *write* such a record at all (recorder
+// side) is the honest end-state, but it would throw away a real graded fix over
+// a metadata write — an ADR-0004 amendment, not a rider. See issue #124.
+//
+// Refusal is per-record, never first-offender abort: `--import-all` over the
+// historical corpus must stay usable.
+// -----------------------------------------------------------------------------
+
+/** True when the record carries an `agent_transcript` identity header object. */
+function hasAgentTranscriptHeader(record) {
+  const at = record.agent_transcript;
+  return Boolean(at) && typeof at === "object" && !Array.isArray(at);
+}
+
+const NO_HEADER_REASON = "no agent_transcript header at all (driver dropped its handoff)";
+
+/**
+ * Why this record is unlabelled, or `null` when it carries a valid confinement
+ * tier. Invariant (Safety Rail C): the reason never echoes record content — not
+ * even the offending value, which is attacker/driver-supplied text.
+ */
+function unlabelledReason(record) {
+  if (!hasAgentTranscriptHeader(record)) return NO_HEADER_REASON;
+  const { confinement } = record.agent_transcript;
+  if (confinement === undefined || confinement === null || confinement === "") {
+    return "agent_transcript.confinement is missing";
+  }
+  if (!isValidConfinement(confinement)) {
+    return `agent_transcript.confinement is not a recognised tier (expected one of ${Array.from(CONFINEMENT_TIERS).join(" | ")})`;
+  }
+  return null;
+}
+
 async function getDirStats(dirPath) {
   let totalBytes = 0;
   let fileCount = 0;
@@ -58,6 +107,41 @@ async function getDirStats(dirPath) {
 
   await walk(dirPath);
   return { totalBytes, fileCount };
+}
+
+/**
+ * Absolute paths of every git-tracked file under the scanned targets.
+ *
+ * Same scoping tools/record-lint/lint.mjs reasons in: a TRACKED record is one
+ * the repo has already accepted, while an UNTRACKED one is the normal
+ * pre-banking state — the record we are actually deciding about right now.
+ *
+ * One `git ls-files` per scan target (in practice exactly one), never one per
+ * record. A target outside any git repo yields nothing, so its records count as
+ * untracked and face the guard — the loud default.
+ */
+function collectTrackedFiles(targetPaths) {
+  const tracked = new Set();
+  for (const target of targetPaths) {
+    if (!existsSync(target)) continue;
+    const dir = statSync(target).isDirectory() ? target : dirname(target);
+    let out;
+    try {
+      // `git -C <dir> ls-files -z` lists tracked paths relative to <dir> and is
+      // already scoped to that subtree — no extra rev-parse round trip needed.
+      out = execFileSync("git", ["-C", dir, "ls-files", "-z"], {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    } catch {
+      continue; // not a git repo (or git unavailable) — nothing here is tracked
+    }
+    for (const rel of out.split("\0")) {
+      if (rel) tracked.add(resolve(dir, rel));
+    }
+  }
+  return tracked;
 }
 
 async function collectJsonFiles(targetPaths) {
@@ -97,6 +181,7 @@ async function main() {
       evidence: { type: "string", multiple: true, default: [] },
       "dry-run": { type: "boolean", default: false },
       "no-push": { type: "boolean", default: false },
+      "allow-unlabelled": { type: "boolean", default: false },
     },
     strict: true,
   });
@@ -175,6 +260,7 @@ async function main() {
   let bankedCount = 0;
   let alreadyPresentCount = 0;
   let prunedSkippedCount = 0;
+  let refusedCount = 0;
 
   // Determine positional input targets
   let targetPaths = positionals;
@@ -184,7 +270,9 @@ async function main() {
     }
   }
 
-  const jsonFiles = await collectJsonFiles(targetPaths.map(p => resolve(process.cwd(), expandPath(p))));
+  const resolvedTargets = targetPaths.map(p => resolve(process.cwd(), expandPath(p)));
+  const jsonFiles = await collectJsonFiles(resolvedTargets);
+  const trackedFiles = collectTrackedFiles(resolvedTargets);
 
   for (const file of jsonFiles) {
     let rawContent = "";
@@ -201,6 +289,30 @@ async function main() {
     }
 
     if (!isFullRecord(data)) {
+      // #124 inversion: a record with NO `agent_transcript` key at all and no
+      // transcript content classifies as "pruned (public-eligible)" — so a
+      // dropped handoff does not merely cost the record its label, it launders
+      // an unlabelled verdict into the public repo's ambit. Genuinely-pruned
+      // records (pre-#123 ones included) DO carry the identity header, so they
+      // keep skipping exactly as before; only the no-header + verdict-bearing
+      // shape is refused on this arm.
+      //
+      // Scoped to UNTRACKED records only. A tracked record is one this repo has
+      // already accepted — refusing it would make `runs:import` permanently red
+      // over history nobody is about to change, which trains people to ignore
+      // the refusal. Untracked is the pre-banking state, i.e. exactly the new
+      // records the guard exists to catch. Same tracked/untracked split
+      // tools/record-lint/lint.mjs already uses.
+      if (!hasAgentTranscriptHeader(data) && data.verdict && !trackedFiles.has(file)) {
+        if (values["allow-unlabelled"]) {
+          console.warn(`[warn] ${file}: unlabelled record — ${NO_HEADER_REASON}; skipping as pruned anyway (--allow-unlabelled)`);
+        } else {
+          // Invariant (Safety Rail C): Never log record/transcript/evidence contents, only metadata/hashes
+          console.error(`[refused] ${file}: unlabelled record — ${NO_HEADER_REASON}`);
+          refusedCount++;
+          continue;
+        }
+      }
       // Invariant (Safety Rail C): Never log record/transcript/evidence contents, only metadata/hashes
       console.log(`[skip] ${file}: skipped: pruned (public-eligible)`);
       prunedSkippedCount++;
@@ -228,6 +340,22 @@ async function main() {
         process.exit(1);
       }
     } else {
+      // #124: the gate applies only to records about to be banked as NEW full
+      // records. Anything already in the store took today's [already-present]
+      // path above and is grandfathered — the historical corpus predates the
+      // label and re-banking it must stay a no-op, not a wall of refusals.
+      const reason = unlabelledReason(data);
+      if (reason) {
+        if (values["allow-unlabelled"]) {
+          console.warn(`[warn] ${file}: unlabelled record — ${reason}; banking anyway (--allow-unlabelled)`);
+        } else {
+          // Invariant (Safety Rail C): Never log record/transcript/evidence contents, only metadata/hashes
+          console.error(`[refused] ${file}: unlabelled record — ${reason}`);
+          refusedCount++;
+          continue;
+        }
+      }
+
       if (values["dry-run"]) {
         // Invariant (Safety Rail C): Never log record/transcript/evidence contents, only metadata/hashes
         console.log(`[dry-run] Would bank records/${recordSha}.json (run_id: ${data.run_id}, ${canonicalBytes.length} bytes)`);
@@ -364,9 +492,17 @@ async function main() {
 
   // Summary output
   if (values["dry-run"]) {
-    console.log(`\nDry-run complete: ${wouldBankCount} full records; ${prunedSkippedCount} pruned skipped; ${wouldBankEvidenceCount} evidence item(s) (${formatBytes(totalEvidenceBytes)})`);
+    console.log(`\nDry-run complete: ${wouldBankCount} full records; ${prunedSkippedCount} pruned skipped; ${refusedCount} refused (unlabelled); ${wouldBankEvidenceCount} evidence item(s) (${formatBytes(totalEvidenceBytes)})`);
   } else {
-    console.log(`\nBanking complete: ${bankedCount} full records banked, ${alreadyPresentCount} already present, ${prunedSkippedCount} pruned skipped, ${bankedEvidenceCount} evidence items archived.`);
+    console.log(`\nBanking complete: ${bankedCount} full records banked, ${alreadyPresentCount} already present, ${prunedSkippedCount} pruned skipped, ${refusedCount} refused (unlabelled), ${bankedEvidenceCount} evidence items archived.`);
+  }
+
+  // #124: refusals are per-record — everything labelled still banked above — but
+  // the run as a whole must fail loudly so an operator (or CI) cannot mistake a
+  // dropped handoff for a clean import.
+  if (refusedCount > 0) {
+    console.error(`\nRefused ${refusedCount} unlabelled record(s): a run record must carry agent_transcript.confinement (#123/#124). Re-run with --allow-unlabelled to bank them anyway (deliberate operator override).`);
+    process.exitCode = 1;
   }
 }
 

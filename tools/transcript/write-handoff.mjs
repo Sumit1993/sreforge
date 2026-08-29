@@ -40,6 +40,12 @@ function run() {
     process.exit(1);
   }
 
+  // Keep the guard below as a single-line chain of `!==` comparisons against
+  // double-quoted tier names. tools/record/test/confinement-tiers-crosscheck.test.mjs
+  // parses the tiers out of this line and pins them against
+  // tools/record/confinement.mjs, which bank.mjs imports to refuse unlabelled
+  // records (#124). The two ends of the handoff — the writer here and the banker
+  // there — must never disagree about which tiers are valid.
   if (values.confinement !== "host-open" && values.confinement !== "host-sandboxed" && values.confinement !== "in-box") {
     console.error("Invalid confinement value. Must be 'host-open', 'host-sandboxed', or 'in-box'");
     process.exit(1);

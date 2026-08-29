@@ -75,6 +75,15 @@ export class FileRunRecorder implements RunRecorder {
       } catch (err: unknown) {
         console.warn(`WARNING: Failed to read or parse transcript handoff at ${this.#handoffPath}:`, err instanceof Error ? err.message : err);
       }
+    } else if (this.#handoffPath) {
+      // A handoff path was configured and nothing arrived: the driver dropped it
+      // (all drivers swallow write-handoff failure, ADR-0004 best-effort). The
+      // record is still written — the verdict is outcome-based and must never be
+      // lost over a metadata write — but it will carry no agent_transcript at
+      // all, so no harness/model/provider and no confinement tier. Say so, at
+      // the same volume as the mismatch and parse-failure paths above.
+      // Whether this should instead REFUSE to write the record is issue #124.
+      console.warn(`WARNING: agent transcript handoff expected at ${this.#handoffPath} but absent — record will be unlabelled (#124)`);
     }
 
     if (this.#rcaHandoffPath && existsSync(this.#rcaHandoffPath)) {
